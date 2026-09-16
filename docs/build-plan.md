@@ -15,8 +15,8 @@ so the repository is legible without opening the artifact.
 |---|---|---|---|
 | 0 | Rubric extraction | 1–2 | rebuilt in this repository |
 | 1 | Instruments | 3–5 | **rebuilt in this repository** — 12 instruments, 158 tests |
-| 2 | Engine and CLI | 6–9 | built previously, live API run never made |
-| 2b | Harness mode | — | built previously, unplanned addition |
+| 2 | Engine and CLI | 6–9 | **rebuilt in this repository** — 55 tests; harness path only, no API credit |
+| 2b | Harness mode | — | **rebuilt in this repository** — shares `accept` with the API path |
 | 3 | Studio shell | 10–15 | built previously, Direction Lock panel cut |
 | 4 | Visual critique and JARVIS mode | 16–19 | built previously, mind-map run never made |
 | 5 | Measurement bridges | 20–22 | built previously, PSI never run live |

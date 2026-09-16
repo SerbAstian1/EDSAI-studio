@@ -16,8 +16,8 @@ drawing the final mark.
 |---|---|
 | 0 · Rubric extraction | **built here** — `@edsai/rubric`, 69 tests |
 | 1 · Instruments | **built here** — `@edsai/instruments`, 12 instruments, 158 tests |
-| 2 · Engine and CLI | not in this repo |
-| 2b · Harness mode | not in this repo |
+| 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 55 tests |
+| 2b · Harness mode | **built here** — same `accept` path as the API |
 | 3 · Studio shell | not in this repo |
 | 4 · Visual critique | not in this repo |
 | 5 · Measurement bridges | not in this repo |
@@ -35,6 +35,8 @@ corpus/          the EDSAI corpus, vendored — canonical for all reasoning
 packages/
   rubric/        parses the corpus into typed, validated data
   instruments/   pure functions that compute what the corpus asks to be measured
+  prompts/       prompt assembly with a frozen, cacheable prefix
+  engine/        the run loop, provenance verifier, FINAL gate, store and CLI
 docs/
   phases/        phase specifications
   runs/          pipeline run records
@@ -46,7 +48,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 242 tests
+pnpm test          # 297 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```

@@ -18,6 +18,21 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.3)
 
+  packages/engine:
+    dependencies:
+      '@edsai/instruments':
+        specifier: workspace:*
+        version: link:../instruments
+      '@edsai/prompts':
+        specifier: workspace:*
+        version: link:../prompts
+      '@edsai/rubric':
+        specifier: workspace:*
+        version: link:../rubric
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/instruments:
     dependencies:
       zod:
@@ -30,6 +45,15 @@ importers:
       wcag-contrast:
         specifier: ^3.0.0
         version: 3.0.0
+
+  packages/prompts:
+    dependencies:
+      '@edsai/rubric':
+        specifier: workspace:*
+        version: link:../rubric
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/rubric:
     dependencies:

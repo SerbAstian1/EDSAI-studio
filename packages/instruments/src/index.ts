@@ -10,4 +10,4 @@ export * from './motion.js';
 export * from './seo.js';
 export * from './score-drift.js';
 export * from './print-gamut.js';
-export { INSTRUMENT_TOOLS, toolNames } from './tools.js';
+export { INSTRUMENT_TOOLS, toolNames, ToolInput, type ToolName, type ClaudeTool } from './tools.js';
