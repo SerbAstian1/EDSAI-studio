@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets — never commit. This repo is public.
+.env
+.env.*
+!.env.example
+
+# Run records hold brief content and client material.
+*.db
+*.db-journal
+*.sqlite
+data/runs/
+
+# Exemplar imagery is third-party client work (Disan's Footwear).
+# The data model marks it "local library, never redistributed".
+# Kept out of this repo while it is public — see docs/notes/gaps.md.
+corpus/assets/exemplars/

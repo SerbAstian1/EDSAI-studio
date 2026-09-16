@@ -1,0 +1,23 @@
+{
+  "name": "@edsai/rubric",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "corpus:diff": "tsc -p tsconfig.json && node dist/bin/corpus-diff.js"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
+}
