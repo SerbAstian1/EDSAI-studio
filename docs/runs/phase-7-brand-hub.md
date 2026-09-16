@@ -5,11 +5,12 @@
 not in this repository, so this run has **no engine record and no run id**.
 **Determination: V1** — three Majors open. FINAL is unreachable.
 
-> **Every target below is `stated-target`, never `instrument`.** The Phase 1
-> instruments are not in this repository, so no value here was computed. The
-> corpus's own rule applies — state the target and the design decision made to
-> hit it — and the verifier would strip any asserted actual. When Phase 1 is
-> rebuilt, this run should be re-executed so the numbers become real.
+> **Re-executed after Phase 1.** The first pass of this run carried eleven
+> `stated-target` rows because no instruments existed. They have now been
+> measured, and **measurement changed four decisions** — see *What the
+> instruments changed* below. Rows still marked `stated-target` are the ones no
+> instrument in this repository can measure yet (Core Web Vitals, axe, CSP),
+> and they are marked as such rather than estimated.
 
 ---
 
@@ -165,10 +166,10 @@ cannot be finalised until the type-scale instrument runs.
 | User Clarity | 8 | Content and chrome are separated structurally, so a reader never mistakes one for the other. |
 | Distinctiveness | 5 | A deliberately recessive system, inheriting Department 2's weakness directly. |
 | Technical Feasibility | 8 | Namespaced properties are cheap; the provenance component is the only real design work. |
-| Hierarchy Legibility | 7 | The brand's content dominates by construction, but the provenance tier's weight is unresolved. |
+| Hierarchy Legibility | 8 | *Revised after measurement.* The provenance tier's weight is now settled: it cannot be chromatic, so it is typographic. |
 | System Consistency | 8 | One section band, one card, one provenance component, used everywhere. |
 | Token Discipline | 9 | The hosting problem makes orphan values structurally impossible — a constraint doing real work. |
-| Optical Precision | 6 | The tier that matters most is the one whose tracking and leading are still unstated. |
+| Optical Precision | 7 | *Revised after measurement.* The scale is measured at a 4.3% spread with tracking per tier; the provenance tier's own treatment is constrained but not yet drawn. |
 
 ---
 
@@ -292,23 +293,85 @@ breaks the hub at build time. Acceptable, and named.
 
 ---
 
+## What the instruments changed
+
+Four decisions moved **because a measurement failed them**, which is the whole
+argument of §2 of the build plan, demonstrated on this system's own next phase.
+
+**1. Six of eight first-draft colour pairings failed.** The hub's chrome was
+drawn to recede, and receding was taken too far: `muted` measured 3.92:1 on the
+ground and 3.64:1 on the panel, `provenance` 3.04:1 and 2.82:1, and the `edge`
+token used for input and card boundaries measured **1.36:1** against WCAG
+1.4.11's 3:1 for non-text. A palette audit reported 25% passing.
+
+**2. The provenance token was the least legible thing on the page.** This is the
+finding worth keeping. The measurement annotation — the entire product thesis,
+the one element that distinguishes this hub from every competitor's — was drawn
+at 3.04:1 because it reads as secondary information. The design contradicted its
+own argument, and no amount of reasoning had noticed.
+
+**3. Measurement settled a design question reasoning had only argued.** Pushed
+to AA against the panel, `muted` lands at `#67707D` and `provenance` at
+`#68707C` — *the same colour to the eye*. So the provenance tier **cannot be
+distinguished chromatically** while both meet AA. It has to be typographic.
+
+Arbitration had already resolved Conflict 1 that way ("the measurement is the
+expression... typographic rather than chromatic"), by reasoning. The instrument
+reached the same place by measurement, from the other direction. That is the
+strongest evidence in this run that the two halves of the system agree.
+
+**4. The reading measure and the page title were both out of range.** A 620px
+measure at 16px reaches **77.5 characters**, past the 45–75 target; 590px lands
+at 73.8. And the obvious title, "Disan Footwear — Brand Hub", is **26
+characters** against a 50–60 target — the natural name for this page is too
+short to be a title, so it has to carry what the page contains.
+
+### The corrected palette — 8 of 8, measured
+
+| Pairing | Measured | Required | |
+|---|---|---|---|
+| ink on ground | **17.21:1** | 4.5 | pass |
+| ink on panel | **16:1** | 4.5 | pass |
+| muted on ground | **4.85:1** | 4.5 | pass |
+| muted on panel | **4.51:1** | 4.5 | pass |
+| provenance on ground | **4.85:1** | 4.5 | pass |
+| provenance on panel | **4.51:1** | 4.5 | pass |
+| edge on ground | **3.23:1** | 3 | pass |
+| edge on panel | **3:1** | 3 | pass |
+
+Tokens: ink `#14181F`, muted and provenance `#67707D`, edge `#898D93`, ground
+`#FBFBFC`, panel `#F1F3F5`.
+
+---
+
 ## Department 8 — Performance, SEO, Accessibility
 
-*Measured, not scored.* **Every row is `stated-target`** — no instrument ran.
+*Measured, not scored.* Rows marked **instrument** were produced by a call in
+this turn. Rows marked stated-target are the ones nothing in this repository can
+measure yet, and they say so rather than guessing.
 
-| Target | Value | Mechanism | Source |
-|---|---|---|---|
-| Lighthouse Performance | ≥ 95 | Static HTML from the edge; three hydrating controls | stated-target |
-| LCP | < 1.8 s | Text-first; brand hero is the only image above the fold, served at display size | stated-target |
-| INP | < 200 ms | Copy and tab handlers are trivial; no main-thread work at rest | stated-target |
-| CLS | < 0.1 | Fixed-ratio boxes for every brand asset; font metrics matched on fallback | stated-target |
-| Initial-route JS | ≤ 40 KB gz | Islands; no chart, canvas or animation library | stated-target |
-| Contrast — hub chrome | AA, ≥ 4.5:1 body | Awaiting the contrast instrument | stated-target |
-| Contrast — hosted brand | reported, not enforced | The hub measures the client's palette; it does not correct it. See QA-2. | stated-target |
-| WCAG 2.1 AA | axe 0 violations | Copy buttons announce their result; tabs use the tab pattern with roving focus | stated-target |
-| Title length | 50–60 chars | Generated as `<Brand> — Brand Hub` with length asserted at build | stated-target |
-| CSP | no `unsafe-inline` | Hashed copy handler; `frame-src` allowlist | stated-target |
-| Reduced motion | honoured | Copy confirmation is a colour and label change, not a transition | stated-target |
+| Target | Value | Source |
+|---|---|---|
+| Contrast — ink on ground | **17.21:1** against 4.5 | `palette_audit` |
+| Contrast — muted on panel | **4.51:1** against 4.5 | `palette_audit` |
+| Contrast — provenance on panel | **4.51:1** against 4.5 | `palette_audit` |
+| Contrast — edge on panel | **3:1** against 3 (WCAG 1.4.11) | `palette_audit` |
+| Palette pass rate | **8 of 8** | `palette_audit` |
+| Type scale | **13 / 16 / 19 / 23 / 28 / 33**, minor third 1.2 | `type_scale` |
+| Type scale consistency | **4.3% spread**, consistent | `type_scale_audit` |
+| Line length | **73.8 characters** at 590px / 16px, within 45–75 | `line_length` |
+| Title length | **54 characters**, within 50–60 | `seo_lengths` |
+| Score drift | **55.2%** in the widest band, under the 70% threshold | `score_drift` |
+| Lighthouse Performance | ≥ 95 — static HTML from the edge, three hydrating controls | stated-target |
+| LCP | < 1.8 s — text-first, one above-fold image at display size | stated-target |
+| INP | < 200 ms — trivial handlers, no main-thread work at rest | stated-target |
+| CLS | < 0.1 — fixed-ratio boxes, fallback font metrics matched | stated-target |
+| Initial-route JS | ≤ 40 KB gz — islands, no chart, canvas or animation library | stated-target |
+| WCAG 2.1 AA | axe 0 violations — axe cannot be probed from a server (Phase 5) | stated-target |
+| CSP | no `unsafe-inline` — hashed copy handler, `frame-src` allowlist | stated-target |
+| Contrast — hosted brand | reported, not enforced — see QA-2 | stated-target |
+
+**10 of 18 rows are now instrument-sourced**, against 0 of 11 on the first pass.
 
 **The performance targets are tighter than the Studio's and should be.** LCP
 < 1.8 s against the Studio's 2.5 s, because this page is text served from a CDN
@@ -365,14 +428,14 @@ the only section with no upstream department feeding it.
 
 ## Department 10 — Agency Critic
 
-Benchmark Gap against the $50K-agency bar. **Mean 7.25 · 2 fail.**
+Benchmark Gap against the $50K-agency bar. **Mean 7.5 · 1 fail** (was 7.25 and 2 fail before the instruments ran).
 
 | Department | Gap | The finding |
 |---|---|---|
 | 1 Strategy | 8 | The three-reader model is sharper than the category; the executive reader is a genuine insight. |
 | 2 Creative Direction | **5** | *Fails.* "Neutral host" is not a creative direction. A $50K agency would give the hub a point of view that still recedes — restraint with a signature, not restraint as absence. This is the same failure the original self-run recorded, one department earlier. |
 | 4 UX Architecture | 8 | Three affordances separated by weight is real craft. |
-| 5 UI Design System | **6** | *Fails.* The provenance component is the entire product thesis and it is specified as "visibly distinct" with no design. The one thing that must be excellent is the one thing not yet designed. |
+| 5 UI Design System | **7** | *Was 6 and failing.* Measurement supplied the constraint the spec was missing — the provenance tier cannot be distinguished by colour, so it must be typographic. That is a real design decision rather than "visibly distinct", and it clears. It only just clears: the constraint is now known, the treatment itself is still undrawn. |
 | 39 Rendering | 9 | Four alternatives priced against the corpus's own cost table and rejected on stated grounds. |
 | 40 Security | 7 | Correctly identifies the iframe surface; leaves its governance open. |
 | 43 Build | 8 | A budget justified by reader context rather than inherited is exactly the discipline. |
@@ -425,11 +488,11 @@ decides before anything reaches the client.
 | Measure | Value |
 |---|---|
 | Mean Universal Dimension score | **7.09** (32 scores) |
-| Mean across all scores | **7.36** (58 scores) |
+| Mean across all scores | **7.4** (58 scores, measured by `score_drift`) |
 | Lowest score | **Department 40 Distinctiveness, 4** — distinctiveness by justified absence |
 | Named weak point | **Department 2 World Specificity, 5** |
-| Benchmark Gap mean | 7.25, 2 departments failing |
-| Measurable targets met | **0 of 11 verified** — all 11 are `stated-target`; no instrument ran |
+| Benchmark Gap mean | 7.5, 1 department failing |
+| Measurable targets met | **10 of 18 instrument-verified, all 10 passing**; the other 8 are stated targets nothing here can measure yet |
 | Cross-System Coherence | **6** |
 
 **Why coherence is 6.** Four conflicts, and three of them are the same shape:
@@ -443,13 +506,16 @@ made — a later concern quietly redefining what an earlier department settled.
 
 Run as required for any run touching three or more departments.
 
-| Band | Share of 58 scores |
-|---|---|
-| 7–8 | 53.4% |
-| 8–9 | 51.7% |
-| 6–7 | 39.7% |
+Run by the `score_drift` instrument rather than by hand.
 
-**Passes.** The widest two-point band holds 53.4%, against the 70% clustering
+| Measure | Value |
+|---|---|
+| Widest two-point band | **7–8 at 55.2%** |
+| Threshold | 70% |
+| Clustered | **no** |
+| Mean | 7.4 |
+
+**Passes.** The widest two-point band holds 55.2%, against the 70% clustering
 threshold. The distribution runs 4 through 9 with genuine low scores where low
 was true — Department 40's Distinctiveness at 4 and Department 2's World
 Specificity at 5 are not softened.
@@ -467,7 +533,9 @@ vetting process for embedded tools. Then design the provenance component, which
 the Critic correctly identifies as the one thing that must be excellent and the
 one thing not yet designed.
 
-**To reach anything real:** rebuild Phase 1. Every target in this run is a
-stated intention. The hub's entire claim is that its values are measured, and
-until the instruments exist this phase would ship a prettier version of what
-already exists.
+**On the instruments, now that they have run:** the dependency was real and is
+discharged. Ten of eighteen rows are measured, six colour pairings were corrected
+because a measurement failed them, and one design question that reasoning could
+only argue was settled by two values landing on the same colour. Phase 1 was the
+right prerequisite, and the evidence is that the first draft of this very run
+would have shipped its own thesis at 3.04:1.

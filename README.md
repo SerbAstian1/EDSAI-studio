@@ -38,6 +38,7 @@ packages/
   prompts/       prompt assembly with a frozen, cacheable prefix
   engine/        the run loop, provenance verifier, FINAL gate, store and CLI
 docs/
+  discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications
   runs/          pipeline run records
   strategy/      product direction
