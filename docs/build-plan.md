@@ -14,7 +14,7 @@ so the repository is legible without opening the artifact.
 | # | Phase | Weeks | State |
 |---|---|---|---|
 | 0 | Rubric extraction | 1–2 | rebuilt in this repository |
-| 1 | Instruments | 3–5 | built previously, not in this repository |
+| 1 | Instruments | 3–5 | **rebuilt in this repository** — 12 instruments, 158 tests |
 | 2 | Engine and CLI | 6–9 | built previously, live API run never made |
 | 2b | Harness mode | — | built previously, unplanned addition |
 | 3 | Studio shell | 10–15 | built previously, Direction Lock panel cut |

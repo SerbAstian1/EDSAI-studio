@@ -15,7 +15,7 @@ drawing the final mark.
 | Phase | State |
 |---|---|
 | 0 · Rubric extraction | **built here** — `@edsai/rubric`, 69 tests |
-| 1 · Instruments | not in this repo |
+| 1 · Instruments | **built here** — `@edsai/instruments`, 12 instruments, 158 tests |
 | 2 · Engine and CLI | not in this repo |
 | 2b · Harness mode | not in this repo |
 | 3 · Studio shell | not in this repo |
@@ -34,7 +34,10 @@ pushed. This repository is a reconstruction that begins at Phase 0. See
 corpus/          the EDSAI corpus, vendored — canonical for all reasoning
 packages/
   rubric/        parses the corpus into typed, validated data
+  instruments/   pure functions that compute what the corpus asks to be measured
 docs/
+  phases/        phase specifications
+  runs/          pipeline run records
   strategy/      product direction
   notes/         known gaps, open questions, weaknesses
 ```
@@ -43,7 +46,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 69 tests
+pnpm test          # 227 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
@@ -74,3 +77,28 @@ The parser reports one genuine drift in the corpus: Department 5's reference fil
 scores **Optical Precision**, which the canonical list in `00-scorecard.md §3`
 does not include. It is treated as scored, because the department file is the
 more specific statement.
+
+## Instruments
+
+`@edsai/instruments` turns each "state the actual number" instruction in the
+corpus into a deterministic function. Every one is pure: no model call, no
+network, no interpretation. They compute; departments interpret.
+
+Each is also emitted as a **strict Claude tool** (`strict: true`, schema closed
+to additional properties), because the engine only accepts a measured `actual`
+when an instrument produced it in that turn.
+
+| Instrument | Computes | Verified against |
+|---|---|---|
+| `contrast` | WCAG 2.1 ratio, APCA Lc alongside | `wcag-contrast` and `apca-w3`, 25 pairs each |
+| `contrast_worst_case` | Worst ratio across possible backdrops | derived from `contrast` |
+| `palette_audit` | Every pairing in a token set at once | derived from `contrast` |
+| `type_scale` | Scale from base and ratio, tracking and leading per tier | the corpus's own 16/20/25/31/39/49 example |
+| `type_scale_audit` | Ratio consistency, tracking stated and varying | — |
+| `spacing_audit` | Orphan values tracing to no scale step | — |
+| `line_length` | Characters per line against the 45–75 target | the Studio's own 680px/17px = 80 finding |
+| `legibility_at_distance` | Readable distance from cap height | run `d7de33c6`'s 4.68 mm → 1.8 ft, 69.3% under |
+| `motion_timing` | Duration against category bands, compositor safety | Department 6's table |
+| `seo_lengths` | Title, meta, H1 count, heading skips | `00-scorecard.md §4` |
+| `score_drift` | Clustering in any 2-point band, templated wording | flags all-8s, passes a 4–9 spread |
+| `print_gamut_risk` | Colours likely to shift in CMYK — **heuristic** | — |

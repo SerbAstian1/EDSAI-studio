@@ -12,7 +12,7 @@ reachable. What is lost, specifically:
 
 | Phase | Was | Status |
 |---|---|---|
-| 1 | 10 instruments, 66 tests | **to rebuild** |
+| 1 | 10 instruments, 66 tests | **rebuilt** — 12 instruments, 158 tests |
 | 2 | `@edsai/prompts`, `@edsai/engine`, `edsai` CLI, 28 tests | **to rebuild** |
 | 2b | harness mode — `harness start/next/tool/submit/retract/finalize` | **to rebuild** |
 | 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **to rebuild** |
@@ -114,6 +114,51 @@ the planning of its own next phase.
 **Cross-System Coherence scored 6**, for the same shape-repetition reason the
 original run scored 6.
 
+## 4c. What Phase 1 does and does not cover
+
+Rebuilt with twelve instruments and 158 tests. Three things are better than the
+original, and four are worse or still missing. Both halves matter.
+
+**Better:**
+
+- **Contrast is cross-checked against two pinned reference implementations**
+  rather than a live fetch. WebAIM's API is unreachable from this environment
+  (the proxy refuses the CONNECT), so `wcag-contrast` and `apca-w3` serve as the
+  references — 25 pairs each, matched to two and four decimals respectively.
+  A lockfile pin is more reproducible than a live fetch, and it removed the
+  original's precision compromise, where WebAIM's own reporting truncated to one
+  decimal above 10:1.
+- **APCA is verified against the library**, not against eight values copied from
+  a README.
+- **`palette_audit` is new** — every pairing in a token set at once, with a pass
+  rate and the worst pairing named. It is what a brand hub renders, so Phase 7
+  now has its input.
+
+**Worse or missing:**
+
+- **`line_length` does not read font metrics.** The plan says "characters per
+  line from font metrics × measure"; this takes an `averageCharWidth` parameter
+  defaulting to 0.5em. That reproduces the Studio's own recorded numbers exactly,
+  but a condensed or wide face needs the real advance width, and nothing here
+  reads a font file. *Fix: parse the metrics from the actual face.*
+- **Pantone-nearest is not implemented.** The plan's instrument table lists it
+  under print gamut. The matching needs a licensed colour dataset that is not in
+  this repository, so it is absent rather than approximated — a wrong Pantone
+  reference is worse than none.
+- **`print_gamut_risk` is still a heuristic**, as the original was and as the
+  plan intended. Hue and saturation only: no ICC profile, no paper stock, no ink
+  limit. It says so in its own findings and in its tool description, and it must
+  never be reported as a conversion.
+- **`legibility_at_distance` inherits the corpus's rule of thumb** — cap height
+  in inches ≈ readable distance in tens of feet. That is an approximation about
+  typical acuity, not a measurement, and it says nothing about weight, contrast
+  or ambient light. It reproduces run `d7de33c6` exactly, which confirms the
+  implementation but not the rule.
+
+**Still true of the whole set:** an instrument measures, it does not judge. None
+of them can tell you a palette is *good* — only that a pairing reaches 4.5:1.
+That boundary is the point, and it is the same boundary named in section 4.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
@@ -131,13 +176,19 @@ Things asserted somewhere that nothing has actually verified:
 - **axe** cannot be probed from a server at all — it ships as an importer with a
   Playwright snippet rather than a probe.
 - **Every target in the Phase 7 run.** All eleven rows in its Department 8 table
-  are `stated-target`; no instrument ran, because Phase 1 is not in this
-  repository. The run says so in its own header and should be re-executed once
-  the instruments are rebuilt.
+  are `stated-target`; no instrument ran, because Phase 1 did not exist when it
+  was written. Phase 1 now exists, so **that run is due a re-execution** — its
+  contrast, type-scale and SEO rows can become instrument-sourced, and its
+  Department 5 and 8 sections should change as a result.
 
 ## 6. Honest accounting on this rebuild
 
-- **69 tests here, against 101 in the original Phase 0.** The acceptance numbers
+- **227 tests across both packages** (69 rubric, 158 instruments), against the
+  original's 101 and 66. Phase 1's count is higher because contrast is
+  cross-checked pair-by-pair against two libraries; Phase 0's is lower because
+  the original likely parameterised per-department assertions. Neither number
+  was padded to match.
+- **69 rubric tests here, against 101 in the original Phase 0.** The acceptance numbers
   all reproduce (28 / 79 / 13 / 29 / 7 / 118 / 4 tracks / 19-24-25), but the test
   count does not. The original likely parameterised per-department assertions.
   Not padded to match.
