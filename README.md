@@ -22,7 +22,7 @@ drawing the final mark.
 | 4 · Visual critique | not in this repo |
 | 5 · Measurement bridges | not in this repo |
 | 6 · Bridges and exports | not started |
-| 7 · Brand Hub *(proposed)* | not started — see `docs/strategy/` |
+| 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
 
 Phases 1–5 were built in earlier sessions on a local machine and were never
 pushed. This repository is a reconstruction that begins at Phase 0. See

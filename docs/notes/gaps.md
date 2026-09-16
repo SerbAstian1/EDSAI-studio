@@ -82,6 +82,38 @@ instruments.
 Any Phase 7 brand hub inherits this directly: a hub that proves its own
 compliance is still forgettable if the palette inside it is safe.
 
+## 4b. Open findings from the Phase 7 run
+
+`runs/phase-7-brand-hub.md` closed at **V1 with three Majors open**. All three
+are the same shape, and the shape is worth naming: *the hub crosses from an
+internal artifact into a client-facing publication, and no department owns that
+transition.*
+
+- **QA-1 — staleness has no owner.** The hub is generated from a run; the Studio
+  changes afterwards. No source of truth, no regeneration trigger, no stated
+  behaviour when the hub is behind. The failure is silent: a client copying a hex
+  the studio revised last week.
+- **QA-2 — a failing contrast pair has no decided behaviour, and it is a business
+  decision.** The hub measures the *client's* palette, and real palettes fail AA.
+  Omit it and the hub lies by silence; show it and the hub publishes the client's
+  non-compliance to their own staff; block publishing and the studio cannot ship.
+  Arbitration resolved it as report-plus-pre-publish-gate, at the cost of
+  one-click publish — but the decision needs a human owner, not a default.
+- **QA-3 — embedded third-party tools on a client-branded domain have no vetting
+  process.** Sandboxing is specified; who approves a tool, what happens when it
+  breaks in front of the client, and who is liable are unassigned. Inheriting
+  DesignerHQ's embed pattern inherits this problem.
+
+The Critic also failed two departments, and both failures are the familiar one:
+Department 2 at 5 (*"neutral host" is not a creative direction*) and Department 5
+at 6 (*the provenance component is the entire product thesis and is specified as
+"visibly distinct" with no design*). Strong where the answer is computable, weak
+where it is taste — the same verdict as the original self-run, now reproduced in
+the planning of its own next phase.
+
+**Cross-System Coherence scored 6**, for the same shape-repetition reason the
+original run scored 6.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
@@ -98,6 +130,10 @@ Things asserted somewhere that nothing has actually verified:
   sites, which has not itself been tested.
 - **axe** cannot be probed from a server at all — it ships as an importer with a
   Playwright snippet rather than a probe.
+- **Every target in the Phase 7 run.** All eleven rows in its Department 8 table
+  are `stated-target`; no instrument ran, because Phase 1 is not in this
+  repository. The run says so in its own header and should be re-executed once
+  the instruments are rebuilt.
 
 ## 6. Honest accounting on this rebuild
 
@@ -133,4 +169,9 @@ And one new question this rebuild raises:
 5. **Does Phase 7 (Brand Hub) come before Phase 6 (Figma plugin)?** The plan
    calls the Figma plugin its highest-variance item. The brand hub is lower risk,
    is the client-facing payoff, and is the thing that makes the instruments
-   visible to someone who is not the designer.
+   visible to someone who is not the designer. *Partly answered:* the Phase 7 run
+   establishes that Phase 1 gates Phase 7 regardless, so the ordering question is
+   really Phase 1 → 7 → 6 versus Phase 1 → 6 → 7.
+6. **Who decides QA-2?** Whether a client's failing palette is published,
+   corrected or blocked is a studio policy question, not an engineering one, and
+   it should be answered before the generator is built rather than after.

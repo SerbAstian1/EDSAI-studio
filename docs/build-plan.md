@@ -21,10 +21,14 @@ so the repository is legible without opening the artifact.
 | 4 | Visual critique and JARVIS mode | 16–19 | built previously, mind-map run never made |
 | 5 | Measurement bridges | 20–22 | built previously, PSI never run live |
 | 6 | Bridges and exports | 23–26 | not started |
-| 7 | Brand Hub | — | **proposed** — see `strategy/designerhq-analysis.md` |
+| 7 | Brand Hub | — | **specified** — `phases/07-brand-hub.md`; run at `runs/phase-7-brand-hub.md` closed V1 |
 
 See `notes/gaps.md` for what "built previously" means for this repository, and
 for the findings each phase left open.
+
+Phase 7 is specified but gated: its own run names Phase 1 as a hard prerequisite,
+because a brand hub whose values are `stated-target` rather than `instrument` is
+a prettier version of what competitors already ship.
 
 ## What the plan fixes that this repository must not drift from
 
