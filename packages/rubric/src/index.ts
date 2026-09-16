@@ -11,10 +11,12 @@ import {
 } from './parse/scorecard.js';
 import { parseTracks } from './parse/tracks.js';
 import { Rubric, type Activation, type Department, type SystemLevel } from './types.js';
+import { FULL_SCOPE, isExcluded, type DeliveryScope } from './scope.js';
 
 export * from './types.js';
 export { corpusRoot } from './corpus.js';
 export { slug } from './parse/composition.js';
+export * from './scope.js';
 
 /**
  * Builds the typed rubric from the vendored corpus.
@@ -82,6 +84,7 @@ export function activatedDepartments(
   rubric: Rubric,
   level: SystemLevel,
   trackIds: readonly string[] = ['digital-product', 'frontend-block', 'closing'],
+  scope: DeliveryScope = FULL_SCOPE,
 ): Department[] {
   const seen = new Set<number>();
   const out: Department[] = [];
@@ -92,6 +95,9 @@ export function activatedDepartments(
 
     for (const id of track.order) {
       if (seen.has(id)) continue;
+      // A department outside the studio's delivery scope never enters the run,
+      // for the same reason an unactivated one does not: there is no row to skip.
+      if (isExcluded(scope, id)) continue;
       if (activationAt(rubric, id, level) === 'off') continue;
       const department = rubric.departments.find((d) => d.id === id);
       if (!department) throw new Error(`track ${trackId} names unknown department ${id}`);

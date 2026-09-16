@@ -159,6 +159,64 @@ original, and four are worse or still missing. Both halves matter.
 of them can tell you a palette is *good* — only that a pairing reaches 4.5:1.
 That boundary is the point, and it is the same boundary named in section 4.
 
+## 4d. Stated competence boundary: motion authoring
+
+**Motion design is not offered as a deliverable.** Stated by the studio owner as
+an area without solid expertise, and encoded in the rubric rather than left as
+something to remember.
+
+This is the corpus's own discipline turned on its author. `00-scorecard.md §3`
+requires a skipped department to produce no row — "not a zero, not an N/A" — and
+`01-strategy-and-direction.md` treats a department with nothing brand-specific to
+say as a signal that more input is needed, never as permission to fill the gap. A
+discipline outside the studio's competence should leave the pipeline, not produce
+a confident paragraph nobody can stand behind in front of a client.
+
+It is also the same judgement `strategy/designerhq-analysis.md` reaches about
+invoicing: do not compete where there is no edge. Applied to oneself rather than
+to a competitor.
+
+### What the scope actually does
+
+`DeliveryScope` in `@edsai/rubric` gates departments the way the activation
+matrix gates Departments 35–47. The `no-motion-authoring` scope:
+
+| Department | Treatment | Why |
+|---|---|---|
+| 6 · Motion & Cinematic System | **excluded** | Creative direction for motion — narrative purpose, timing as expression, choreography. Scored on taste. Out of scope. |
+| 15 · Motion Engineering | **reduced** | Cannot leave with it. See below. |
+
+A Level 1 run drops from 24 departments to 23.
+
+### Why Department 15 stays
+
+Its own reference file calls itself *"the concrete implementation of Department
+6's non-negotiable `prefers-reduced-motion` requirement"*, and Department 8's
+accessibility checklist audits reduced-motion, reduced-transparency and
+reduced-contrast whether or not anyone designed an animation.
+
+The practical point: **a site inherits motion it did not author** — from a
+component library, a CSS framework, a browser default. That inherited motion
+still needs a reduced-motion fallback and compositor-safe properties, and the
+animation library still costs bundle against the JS budget. Declining to design
+motion does not decline responsibility for the motion that ships.
+
+So Department 15 is reduced to accessibility and payload: reduced-motion,
+reduced-transparency and reduced-contrast handling, animation-library bundle
+cost, lifecycle cleanup. No engine selection for expressive motion, no
+choreography. The reduction carries its reason in the scope object, because a
+reduced department with no stated basis is just an excluded one someone flinched
+on.
+
+The `motion_timing` instrument stays for the same reason, with its job changed:
+it is a **guard on motion that exists** rather than a tool for designing motion.
+
+### If this changes
+
+Reversible in one line — swap the scope back to `full`, or build a per-project
+one with `scopeWithout`. Worth revisiting if a motion specialist is ever
+partnered with or hired, since the corpus half is already written and tested.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

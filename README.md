@@ -46,7 +46,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 227 tests
+pnpm test          # 242 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
@@ -78,6 +78,23 @@ scores **Optical Precision**, which the canonical list in `00-scorecard.md §3`
 does not include. It is treated as scored, because the department file is the
 more specific statement.
 
+## Delivery scope
+
+Not every studio delivers every discipline. `DeliveryScope` gates departments the
+way the activation matrix gates the frontend block — an out-of-scope department
+produces no output record and no row, rather than a weak one.
+
+The scope this studio runs is **`no-motion-authoring`**: Department 6 (Motion &
+Cinematic System) is excluded, and Department 15 (Motion Engineering) is reduced
+to accessibility and payload — `prefers-reduced-motion`, reduced-transparency and
+reduced-contrast handling, animation-library bundle cost, lifecycle cleanup.
+
+Department 15 stays because a site inherits motion it did not author, from a
+component library or a browser default, and that motion still needs a fallback
+and still costs bundle. Declining to design motion is not declining
+responsibility for the motion that ships. A Level 1 run is 23 departments rather
+than 24. See `docs/notes/gaps.md` §4d.
+
 ## Instruments
 
 `@edsai/instruments` turns each "state the actual number" instruction in the
@@ -98,7 +115,7 @@ when an instrument produced it in that turn.
 | `spacing_audit` | Orphan values tracing to no scale step | — |
 | `line_length` | Characters per line against the 45–75 target | the Studio's own 680px/17px = 80 finding |
 | `legibility_at_distance` | Readable distance from cap height | run `d7de33c6`'s 4.68 mm → 1.8 ft, 69.3% under |
-| `motion_timing` | Duration against category bands, compositor safety | Department 6's table |
+| `motion_timing` | Duration against category bands, compositor safety | Department 6's table — kept as a guard on *inherited* motion |
 | `seo_lengths` | Title, meta, H1 count, heading skips | `00-scorecard.md §4` |
 | `score_drift` | Clustering in any 2-point band, templated wording | flags all-8s, passes a 4–9 spread |
 | `print_gamut_risk` | Colours likely to shift in CMYK — **heuristic** | — |
