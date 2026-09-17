@@ -1,7 +1,7 @@
 # Phase 6 — Bridges and exports
 
-**Status:** three of four parts built. The fourth is blocked, not deferred by
-preference — see *Tauri* below.
+**Status:** built, all four parts. Tauri was blocked on Phase 3 and is not any
+more — see *Tauri* below for what it took and what it found.
 
 ## What shipped
 
@@ -62,26 +62,77 @@ response race and who owns which part of it; performance budgets carrying their
 provenance. Where the run named no endpoints it says so rather than inventing
 them, and labels everything downstream as stated against an assumed contract.
 
-## Tauri — blocked, and why
+## Tauri — unblocked, and built
 
-**There is no Studio app for a desktop shell to wrap.** Phase 3 built
-`@edsai/studio` in the sessions that were lost, and this repository has not
-rebuilt it. Rust and the toolchain are present; the thing to put in the window
-is not.
-
+The original entry read: *"There is no Studio app for a desktop shell to wrap.
 Scaffolding a Tauri project around nothing would produce a window that launches
 in under two seconds and contains an empty page — which would satisfy the
-phase's stated acceptance criterion while delivering nothing. **Phase 3 is the
-prerequisite.** When it exists, the desktop shell is a small piece of work, and
-the plan's own exit clause already says a PWA gives "installed" for free if the
-native build proves not worth it.
+phase's stated acceptance criterion while delivering nothing."*
+
+Phase 3 exists now, so `@edsai/desktop` wraps it. The shell is deliberately
+almost empty: a window, an icon, a frontend served from disk, and one command
+(`api_origin`) that is the single place the engine's address is stated. A shell
+that started reimplementing the Studio in Rust would create a second place for
+the same rule to live, which is the thing this codebase refuses everywhere else.
+
+**What it does not add is the engine.** The API is a Node process the user runs
+alongside it. Bundling a Node sidecar is a real option and a real cost; until
+someone wants it, `EDSAI_API_ORIGIN` names the address and the default is the
+Studio's own dev-proxy target.
+
+### The acceptance criterion, taken literally
+
+The warning above is the criterion: not "a window opened" but "a window opened
+with the application in it". So the shell checks rather than asserts — it polls
+`#root` after load and reports how long until the Studio actually mounted,
+exiting non-zero if it never does. `pnpm --filter @edsai/desktop launch-check`
+runs it five times under Xvfb and fails over budget.
+
+**740 ms worst of five**, against a 2000 ms budget. Under Xvfb with software
+rendering, so a real desktop with GPU compositing is faster, not slower.
+
+### Three things the check found, by being made to fail
+
+Each of these would have shipped as a green result.
+
+**A check that could not fail.** The first version counted `#root`'s children.
+The Studio's `#root` ships a pre-paint fallback so a failed chunk is not a blank
+page — so the count is never zero. Stripping the entry script out of a build and
+running it produced a pass. `:not(noscript)` is what makes the check real.
+
+**A failure that exited zero.** `AppHandle::exit(1)` routes the code through the
+event loop and the process still ended 0, so a script driving the check would
+have printed a failure and reported success. It uses `std::process::exit` now.
+
+**`PageLoadEvent::Finished` is not "the app is running".** On WebKitGTK it fires
+*before* deferred module scripts execute, so sampling the DOM there reports an
+empty root on a perfectly healthy build. That one cost the most time and was the
+most worth finding: it briefly looked like the CSP was blocking the bundle, and
+the CSP was innocent. The fix is to poll for the mount, which also makes the
+number honest — it is time-to-usable rather than time-to-load-event.
+
+### Building it
+
+Linux needs the WebKitGTK toolchain, which is not in this repository and not in
+CI:
+
+```
+libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev patchelf
+```
+
+Then `pnpm --filter @edsai/studio build` (the shell embeds `dist` at compile
+time — changing it does not invalidate the Rust build on its own) and
+`pnpm --filter @edsai/desktop tauri:build`.
+
+CI does not build the shell. Adding it would mean installing that toolchain on
+every run for a target nothing else depends on, and the check needs a display.
 
 ## Acceptance
 
 | Criterion | Result |
 |---|---|
 | A frame with a 3.9:1 body pairing is flagged at the exact ratio | **met** — `#818181` on white, reported as `3.9:1 — needs 4.5:1`, severity blocker |
-| The desktop build launches in under 2 s | **not attempted** — nothing to launch |
+| The desktop build launches in under 2 s | **met** — 740 ms worst of five to a mounted app, measured under Xvfb, and the check exits non-zero on a window that opens empty |
 
 ## What is still worth doing here
 

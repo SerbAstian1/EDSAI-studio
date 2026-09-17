@@ -21,7 +21,7 @@ drawing the final mark.
 | 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.0 KB gz |
 | 4 · Visual critique | **computable half built** — `composition_check` + `checkMindMap`; overlay UI deferred |
 | 5 · Measurement bridges | **built here** — `@edsai/measure`, 108 tests; PSI success path unproven |
-| 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri now unblocked |
+| 6 · Bridges and exports | **built here** — `@edsai/figma` + `@edsai/export` + `@edsai/desktop`, 55 tests; shell mounts in 740 ms |
 | 7 · Brand Hub | **built here** — `@edsai/hub`, 28 tests, 2.8 KB gz against a 40 KB budget |
 
 Phases 1–5 were built in earlier sessions on a local machine and were never
@@ -43,6 +43,7 @@ packages/
   api/           node:http contract over the engine, with SSE run progress
   studio/        the React shell — nine screens, CSR, route-split
   hub/           the client-facing brand hub, generated from a FINAL run
+  desktop/       the Tauri shell around the Studio, with a launch check
 docs/
   discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications

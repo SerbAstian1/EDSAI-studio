@@ -20,7 +20,7 @@ so the repository is legible without opening the artifact.
 | 3 | Studio shell | 10–15 | **rebuilt in this repository** — `phases/03-studio-shell.md`; 83.0 KB gz against 170 KB |
 | 4 | Visual critique and JARVIS mode | 16–19 | **computable half rebuilt** — `phases/04-visual-critique.md`; overlay UI and the mind-map run still open |
 | 5 | Measurement bridges | 20–22 | **rebuilt in this repository** — `phases/05-measurement-bridges.md`; 108 tests; PSI still never run live |
-| 6 | Bridges and exports | 23–26 | **3 of 4 built** — `phases/06-bridges-and-exports.md`; Tauri blocked on Phase 3 |
+| 6 | Bridges and exports | 23–26 | **rebuilt in this repository** — `phases/06-bridges-and-exports.md`; Tauri built, 740 ms to a mounted app |
 | 7 | Brand Hub | — | **built in this repository** — `phases/07-brand-hub.md`; 28 tests, 2.8 KB gz; asset pack and gallery still open |
 
 See `notes/gaps.md` for what "built previously" means for this repository, and

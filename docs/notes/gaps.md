@@ -219,6 +219,9 @@ partnered with or hired, since the corpus half is already written and tested.
 
 ## 4e. Phase 6: what is built, and the one part that is not
 
+> **Superseded in part.** Tauri is built — see §4j. The rest of this section
+> stands.
+
 Three of four parts shipped. The fourth is worth being precise about.
 
 **Tauri was blocked; it no longer is.** Phase 3 is now rebuilt, so there is a
@@ -369,6 +372,47 @@ habit rather than derived from anything.
 and the exemplar library is deliberately not in this public repository), the
 embedded tools, the publish path, and a client-shaped performance and
 accessibility section over Phase 5's measurement targets.
+
+## 4j. The desktop shell, and three checks that were lying
+
+`@edsai/desktop` exists. A Tauri window around the built Studio, 4.5 MB binary,
+**740 ms worst of five** from process start to the application mounted, against
+the phase's 2000 ms criterion. Measured under Xvfb with software rendering, so a
+real desktop is faster rather than slower.
+
+The interesting part is not the number. Phase 6 refused to scaffold this shell
+on the grounds that *"a window that launches in under two seconds and contains
+an empty page would satisfy the phase's stated acceptance criterion while
+delivering nothing."* Taking that seriously meant the shell had to prove it had
+the app in it, and three successive versions of that proof were wrong in ways
+that all read as success:
+
+1. **Counting `#root`'s children.** The Studio ships a pre-paint fallback inside
+   `#root`, so the count is never zero. A build with its entry script deleted
+   passed.
+2. **`AppHandle::exit(1)`.** Routes through the event loop; the process still
+   ended 0. A script driving the check would have printed the failure and
+   reported success.
+3. **Sampling at `PageLoadEvent::Finished`.** On WebKitGTK that fires before
+   deferred module scripts run, so a healthy build reported an empty root. This
+   one sent me looking at the CSP for twenty minutes; the CSP was innocent.
+
+Each was found by deliberately breaking the thing being checked and confirming
+the check noticed. None would have been found by running it on a working build,
+which is the only way any of them would ever have been run.
+
+That is the same lesson Phase 5 recorded from the live header probe, arriving
+from the other direction: there, fixtures written by the author of the logic
+tested the author's model of the world. Here, a check only ever exercised on the
+passing case tested nothing at all. **This repository now has two instances of
+the same failure mode and no systematic defence against it.** Nothing forces a
+negative case for a new check.
+
+**Not built:** a bundled Node sidecar, so the engine's API is still a separate
+process the user starts; CI does not build the shell, because that means the
+WebKitGTK toolchain on every run plus a display, for a target nothing else
+depends on; and no installer has been produced or run — `cargo build --release`
+is verified, `tauri build`'s deb and AppImage packaging is not.
 
 ## 5. Unproven claims
 

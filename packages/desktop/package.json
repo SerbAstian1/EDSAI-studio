@@ -1,0 +1,11 @@
+{
+  "name": "@edsai/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri:dev": "cargo run --manifest-path src-tauri/Cargo.toml",
+    "tauri:build": "cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "launch-check": "bash scripts/launch-check.sh"
+  }
+}

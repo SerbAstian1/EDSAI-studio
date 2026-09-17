@@ -1,0 +1,27 @@
+[package]
+name = "edsai-studio-desktop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Desktop shell for EDSAI Studio"
+license = "UNLICENSED"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[[bin]]
+name = "edsai-studio"
+path = "src/main.rs"
+
+[profile.release]
+# The shell is a window around a page. Optimising for size keeps the binary
+# small and the cold start short, which is the only performance claim it makes.
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
