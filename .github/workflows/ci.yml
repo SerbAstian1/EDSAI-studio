@@ -18,12 +18,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Build first, and not as a convenience. Each package typechecks against
+      # its dependencies' emitted `dist/*.d.ts`, so on a fresh checkout there is
+      # nothing to resolve `@edsai/rubric` to until something has emitted it.
+      # Running typecheck first passed on a developer machine with a stale dist
+      # and failed here on every push for weeks — the build has to come first,
+      # and pnpm orders it topologically.
+      - run: pnpm -r build
       - run: pnpm typecheck
       # The drift contract: a scorecard table edited in markdown that the parser
       # does not follow fails here rather than shipping a rubric that disagrees
       # with the document the model reads.
       - run: pnpm test
-      - run: pnpm -r build
       # The bundle budget is the one target in this repository that regresses by
       # accident. It is judged by `@edsai/measure` — the same function that
       # produces Department 43's target row — so the gate and the report cannot

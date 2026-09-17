@@ -414,6 +414,35 @@ WebKitGTK toolchain on every run plus a display, for a target nothing else
 depends on; and no installer has been produced or run — `cargo build --release`
 is verified, `tauri build`'s deb and AppImage packaging is not.
 
+## 4k. CI was red the whole time
+
+Every push to this branch failed CI, from Phase 3 onward, and this session added
+four more before checking. The cause was one line of ordering: the workflow ran
+`pnpm typecheck` before `pnpm -r build`, and each package typechecks against its
+dependencies' emitted `dist/*.d.ts`. On a fresh checkout there is nothing for
+`@edsai/prompts` to resolve `@edsai/rubric` to, so it failed in nineteen
+seconds, every time.
+
+It passed locally because `dist/` was already on disk from the previous build.
+That is the whole failure: **the local check and the CI check were not the same
+check**, and only one of them ran against a clean tree.
+
+Fixed by building first — pnpm orders the build topologically, so the
+declarations exist before anything typechecks against them. Verified by adding a
+git worktree at `HEAD`, installing into it, reproducing the failure in the old
+order, and running the corrected sequence green on that same clean checkout
+rather than on the working tree.
+
+Two things worth saying about this rather than moving on:
+
+- **Nothing in this repository was watching CI.** Every phase document records
+  its own acceptance carefully, and the one signal that runs automatically on
+  every push went unread for nine commits. Careful local verification made the
+  omission easier, not harder, to miss.
+- **It is the third instance of one pattern**, after §4g's fixtures and §4j's
+  desktop checks: a check that only ever ran against the passing case. Here the
+  passing case was "a machine that had already built".
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
