@@ -47,6 +47,13 @@ export const Target = z.object({
   pass: z.boolean().optional(),
   /** Which instrument produced `actual`, matched against the turn's tool calls. */
   instrument: z.string().optional(),
+  /**
+   * The token names this measurement is about.
+   *
+   * Without it, a hub rendering a swatch beside its ratio has to match the two
+   * by reading the metric string, which is a guess wearing a join's clothes.
+   */
+  tokens: z.array(z.string().min(1)).default([]),
 }).superRefine((value, ctx) => {
   if (value.actual !== undefined && value.source !== 'instrument') {
     ctx.addIssue({
@@ -71,6 +78,26 @@ export const Target = z.object({
   }
 });
 export type Target = z.infer<typeof Target>;
+
+/**
+ * A named brand value, as data rather than as prose.
+ *
+ * Added for Phase 7. The hub's whole claim is that every value it renders
+ * carries its measurement, and that is not possible while a hex code exists
+ * only inside a department's paragraph — parsing it back out would be the
+ * fabrication this system exists to prevent, one layer down.
+ *
+ * `default([])` so every run written before this existed still parses.
+ */
+export const BrandToken = z.object({
+  name: z.string().min(1),
+  kind: z.enum(['color', 'font', 'size', 'space', 'radius', 'asset', 'text']),
+  value: z.string().min(1),
+  /** How it is used: e.g. "body text", "primary surface", "display". */
+  role: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type BrandToken = z.infer<typeof BrandToken>;
 
 export const Composition = z.object({
   /** Slug from the catalog. Free text cannot satisfy this. */
@@ -120,6 +147,7 @@ export const DepartmentOutput = z.object({
   body: z.string().min(1),
   scores: z.array(Score),
   targets: z.array(Target),
+  tokens: z.array(BrandToken).default([]),
   compositions: z.array(Composition),
   decisions: z.array(Decision),
   /** Instrument names called during this department's turn. */

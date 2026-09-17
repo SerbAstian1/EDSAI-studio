@@ -22,7 +22,7 @@ drawing the final mark.
 | 4 · Visual critique | **computable half built** — `composition_check` + `checkMindMap`; overlay UI deferred |
 | 5 · Measurement bridges | **built here** — `@edsai/measure`, 108 tests; PSI success path unproven |
 | 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri now unblocked |
-| 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
+| 7 · Brand Hub | **built here** — `@edsai/hub`, 28 tests, 2.8 KB gz against a 40 KB budget |
 
 Phases 1–5 were built in earlier sessions on a local machine and were never
 pushed. This repository is a reconstruction that begins at Phase 0. See
@@ -42,6 +42,7 @@ packages/
   measure/       probes and instruments for Departments 8, 40 and 43
   api/           node:http contract over the engine, with SSE run progress
   studio/        the React shell — nine screens, CSR, route-split
+  hub/           the client-facing brand hub, generated from a FINAL run
 docs/
   discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications
@@ -54,7 +55,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 586 tests
+pnpm test          # 614 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
@@ -73,6 +74,17 @@ judges, touching nothing. Re-judging a stored measurement against a changed
 budget is free, and a measurement taken once is never silently re-taken.
 PageSpeed's keyless quota is routinely exhausted — set `PSI_API_KEY` for the
 Core Web Vitals half.
+
+Emitting a client's brand hub from a FINAL run:
+
+```bash
+node packages/hub/dist/bin/hub.js build <runId> --db data/runs/edsai.db --out hub
+node packages/hub/dist/bin/hub.js check <runId> --digest <digest>
+```
+
+It refuses rather than degrades: a run the gate has not cleared, a colour with
+no contrast measurement behind it, or a target crediting an instrument that was
+never called all stop the build with the reason stated.
 
 ## The drift contract
 

@@ -334,6 +334,42 @@ stops a department from labelling badly.
 images, and the exemplar library is deliberately not in this public repository),
 and the mind-map acceptance run, which needs a model call.
 
+## 4i. Phase 7 built, and the one rule now enforced twice
+
+The Brand Hub exists: `@edsai/hub`, one self-contained HTML file per FINAL run,
+2.8 KB gz against a 40 KB budget, generated from a real seeded run and rendered
+in a browser rather than asserted.
+
+**It required a schema change**, and that is worth naming because it is the kind
+of change that is easy to make quietly. The run record now carries `BrandToken`
+and `Target.tokens`. Without them a hex code lived only inside a department's
+paragraph, and a hub pairing a swatch with a ratio would have had to parse the
+metric string to find the match — a guess wearing a join's clothes, and the
+fabrication this system exists to prevent, one layer down. Both default to `[]`
+and `RunStore` migrates an existing database, so no recorded run is invalidated.
+
+**One rule is now enforced twice, on purpose.** The engine's verifier refuses a
+target crediting an instrument the department never called; the hub refuses the
+same thing again. Everywhere else in this repository a rule enforced in two
+places is a rule enforced in neither, and the API document says so explicitly.
+The exception is argued rather than assumed: the verifier protects the run
+record, and the hub protects the artefact that leaves the building and is read
+by people with no way to check it. If that argument is wrong, the hub's copy is
+the one to delete.
+
+**A finding the hub made about itself.** Audited with the contrast instrument it
+renders, the copy button's border reused the decorative hairline token at
+1.26:1 against the page, where WCAG 1.4.11 holds a control boundary to 3:1. Now
+a separate `--control-line` token at 3.52:1. A product whose argument is "we
+measure what others assert" does not get to ship a component boundary it never
+measured — and the failure was in the one part of the page that was styled by
+habit rather than derived from anything.
+
+**Still open:** the asset pack and gallery (the run record has no asset slice,
+and the exemplar library is deliberately not in this public repository), the
+embedded tools, the publish path, and a client-shaped performance and
+accessibility section over Phase 5's measurement targets.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

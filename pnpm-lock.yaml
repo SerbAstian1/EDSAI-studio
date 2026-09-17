@@ -70,6 +70,21 @@ importers:
         specifier: ^0.25.0
         version: 0.25.12
 
+  packages/hub:
+    dependencies:
+      '@edsai/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@edsai/instruments':
+        specifier: workspace:*
+        version: link:../instruments
+      '@edsai/measure':
+        specifier: workspace:*
+        version: link:../measure
+      '@edsai/rubric':
+        specifier: workspace:*
+        version: link:../rubric
+
   packages/instruments:
     dependencies:
       zod:

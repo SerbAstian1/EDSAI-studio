@@ -41,7 +41,8 @@ function row(
   actual: string,
   pass: boolean,
 ): Target {
-  return { discipline, metric, target, actual, source: 'instrument', instrument, pass };
+  // No brand tokens: these measure a URL, a response or a build, not a palette.
+  return { discipline, metric, target, actual, source: 'instrument', instrument, pass, tokens: [] };
 }
 
 export function measurementTargets(input: MeasurementInput): Target[] {

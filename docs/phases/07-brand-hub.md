@@ -1,6 +1,7 @@
 # Phase 7 — Brand Hub
 
-**Status:** specified, not started.
+**Status:** built. `@edsai/hub`, 28 tests. Generated from a real FINAL run,
+rendered in a browser, and audited with this system's own instruments.
 **Position:** after Phase 1 (instruments) — see *Dependencies*. Not after Phase 6.
 
 ## Why it exists
@@ -81,3 +82,117 @@ Not a client portal. Proposals, contracts, e-signature, invoicing and multi-tena
 client accounts are deliberately out of scope — they move the system from Level 1
 to Level 3 in one step and compete on features EDSAI has no edge in. The
 reasoning is in `../strategy/designerhq-analysis.md`.
+
+
+---
+
+# As built
+
+## The schema change the claim required
+
+The hub's whole claim is that every value carries its measurement. That was not
+possible while a hex code existed only inside a department's paragraph: parsing
+it back out would be the fabrication this system exists to prevent, one layer
+down. So the run record gained two things:
+
+- `BrandToken` — a named value with a kind (`color`, `font`, `size`, `space`,
+  `radius`, `asset`, `text`), a role and optional notes. Departments write them;
+  nothing else does.
+- `Target.tokens` — which token names a measurement is about.
+
+Both default to `[]`, so every run recorded before they existed still parses,
+and `RunStore` migrates an existing database by adding the column rather than
+failing on the first write.
+
+`Target.tokens` is the part that matters. Without it, a hub rendering a swatch
+beside its ratio has to match the two by reading the metric string — a guess
+wearing a join's clothes. With it the join is exact, and a colour the run never
+measured cannot be silently paired with a ratio that belongs to something else.
+
+## It refuses rather than degrades
+
+A hub is what a client works from every day, so a partial one is worse than
+none. `buildModel` throws `HubRefused` with a stated reason in four cases:
+
+| Reason | When |
+|---|---|
+| `not-final` | the gate does not hold FINAL — an open Blocker or Major, or an unresolved conflict |
+| `unattributed-measurement` | a target reports a measured actual with no instrument named |
+| `uncalled-instrument` | a target credits an instrument the department never called |
+| `unmeasured-colour` | a colour token carries no contrast measurement from this run |
+
+The third is deliberately a second enforcement of the engine's own provenance
+rule, and it is the one place in this repository where a rule is checked twice
+on purpose. The engine's verifier protects the run record; this protects the
+artefact that leaves the building. Everywhere else, a rule enforced in two
+places is a rule enforced in neither.
+
+## One self-contained file
+
+The exit clause said a single self-contained HTML file survives the reduction
+with every claim intact. That is where this starts rather than ends: no
+framework, no build step, no requests. Click-to-copy is the only behaviour and
+it degrades to selectable text.
+
+The hub renders at **2.8 KB gzipped** against a 40 KB budget — a quarter of the
+Studio's 170 KB, which is the "tighter, because the hub is content" the
+acceptance criteria asked for. The budget is judged by `bundleAudit` from
+`@edsai/measure`: the same function that gates the Studio's build and produces
+Department 43's target row. Three surfaces, one rule, one implementation.
+
+## Staleness, stated
+
+Every hub carries a digest of the run it was generated from, printed in its own
+footer. `edsai-hub check <runId> --digest <digest>` recomputes it and says
+`current` or `STALE`. The digest deliberately excludes the generation time, so
+regenerating an unchanged run produces the same digest and a rebuild is not
+mistaken for a change.
+
+The policy is therefore stated rather than implied: **a hub is stale the moment
+its digest stops matching its run, and the generator will say so on request.**
+Nothing regenerates automatically, because a client's working reference changing
+under them without anyone deciding is worse than one that is briefly behind.
+
+## Acceptance
+
+| Criterion | Result |
+|---|---|
+| A FINAL run emits a hub with no hand-authored content | **met** — every field is a projection of the run; there is no authoring surface |
+| Every colour renders a ratio from the contrast instrument in that run | **met** — enforced by refusal, tested four ways including a stated target offered in place of a measurement |
+| A failing pairing renders as a failure, not omitted | **met** — `is-fail` styling, and the complete target list renders every row |
+| Meets its own budget | **met** — 2.8 KB gz against 40 KB |
+| Regeneration matches the current run, staleness stated | **met** — digest in the footer, `check` subcommand, time excluded from the digest |
+
+Verified end to end, not asserted: a FINAL run was seeded whose colour targets
+came back from real `contrast` calls (17.76:1, 7.88:1, 5.27:1 — none typed by
+hand), the CLI built the hub from the database, and Chromium rendered it with
+every measured value, the stated target with its mechanism, the accepted risk,
+and the digest present in the output.
+
+## What the hub found in itself
+
+The hub was audited with the instrument it renders. Its own palette passes AA in
+both colour schemes. One thing failed: the copy button's border reused the
+decorative hairline token at **1.26:1** against the page, and WCAG 1.4.11 holds
+the boundary of a UI component to 3:1.
+
+Fixed with a separate `--control-line` token at 3.52:1 against the page and
+3.25:1 against the button's own fill, both measured rather than picked. A
+product whose argument is "we measure what others assert" does not get to ship
+a component boundary it never measured.
+
+## Still not built
+
+- **The asset pack.** Logo files zipped from the run's assets,
+  content-addressed. The run record has no asset slice yet, and inventing one
+  before a department writes to it would be guessing at a shape.
+- **Embedded tools.** The sandboxed iframes for vibe-coded generators. Nothing
+  needs them yet, and an empty extension point is a liability.
+- **A gallery.** Same reason as the asset pack: it needs images, and the
+  exemplar library is deliberately not in this public repository.
+- **The publish path.** The generator emits files; nothing deploys them. That is
+  a hosting decision rather than a code one, and the single-file output means
+  any host will do.
+- **Performance and accessibility sections.** Phase 5's bridges exist now, so a
+  run that carries measurement targets will render them in the complete target
+  list — but there is no dedicated section shaping them for a client reader.

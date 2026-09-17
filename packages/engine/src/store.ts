@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS outputs (
   compositions TEXT NOT NULL,
   decisions TEXT NOT NULL,
   instrument_calls TEXT NOT NULL,
+  tokens TEXT NOT NULL DEFAULT '[]',
   completed_at TEXT NOT NULL,
   PRIMARY KEY (run_id, department_id)
 );
@@ -111,6 +112,22 @@ export class RunStore {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * Columns added after a database was first written.
+   *
+   * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists,
+   * so a store opened against a run recorded before `tokens` existed would read
+   * fine and fail on the first write. Adding the column with a default is the
+   * whole migration: old rows read as `[]`, which is what they meant.
+   */
+  private migrate(): void {
+    const columns = this.db.prepare('PRAGMA table_info(outputs)').all() as { name: string }[];
+    if (!columns.some((column) => column.name === 'tokens')) {
+      this.db.exec("ALTER TABLE outputs ADD COLUMN tokens TEXT NOT NULL DEFAULT '[]'");
+    }
   }
 
   close(): void {
@@ -168,17 +185,19 @@ export class RunStore {
     DepartmentOutput.parse(output);
     this.db.prepare(`
       INSERT INTO outputs (run_id, department_id, body, scores, targets, compositions,
-                           decisions, instrument_calls, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           decisions, instrument_calls, tokens, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(run_id, department_id) DO UPDATE SET
         body = excluded.body, scores = excluded.scores, targets = excluded.targets,
         compositions = excluded.compositions, decisions = excluded.decisions,
-        instrument_calls = excluded.instrument_calls, completed_at = excluded.completed_at
+        instrument_calls = excluded.instrument_calls, tokens = excluded.tokens,
+        completed_at = excluded.completed_at
     `).run(
       output.runId, output.departmentId, output.body,
       JSON.stringify(output.scores), JSON.stringify(output.targets),
       JSON.stringify(output.compositions), JSON.stringify(output.decisions),
-      JSON.stringify(output.instrumentCalls), output.completedAt,
+      JSON.stringify(output.instrumentCalls), JSON.stringify(output.tokens),
+      output.completedAt,
     );
   }
 
@@ -219,6 +238,7 @@ export class RunStore {
       compositions: JSON.parse(String(row['compositions'])),
       decisions: JSON.parse(String(row['decisions'])),
       instrumentCalls: JSON.parse(String(row['instrument_calls'])),
+      tokens: JSON.parse(String(row['tokens'] ?? '[]')),
       completedAt: row['completed_at'],
     });
   }

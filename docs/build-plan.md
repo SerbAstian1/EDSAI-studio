@@ -21,14 +21,16 @@ so the repository is legible without opening the artifact.
 | 4 | Visual critique and JARVIS mode | 16–19 | **computable half rebuilt** — `phases/04-visual-critique.md`; overlay UI and the mind-map run still open |
 | 5 | Measurement bridges | 20–22 | **rebuilt in this repository** — `phases/05-measurement-bridges.md`; 108 tests; PSI still never run live |
 | 6 | Bridges and exports | 23–26 | **3 of 4 built** — `phases/06-bridges-and-exports.md`; Tauri blocked on Phase 3 |
-| 7 | Brand Hub | — | **specified** — `phases/07-brand-hub.md`; run at `runs/phase-7-brand-hub.md` closed V1 |
+| 7 | Brand Hub | — | **built in this repository** — `phases/07-brand-hub.md`; 28 tests, 2.8 KB gz; asset pack and gallery still open |
 
 See `notes/gaps.md` for what "built previously" means for this repository, and
 for the findings each phase left open.
 
-Phase 7 is specified but gated: its own run names Phase 1 as a hard prerequisite,
-because a brand hub whose values are `stated-target` rather than `instrument` is
-a prettier version of what competitors already ship.
+Phase 7's own run named Phase 1 as a hard prerequisite, because a brand hub whose
+values are `stated-target` rather than `instrument` is a prettier version of what
+competitors already ship. Phase 1 exists, so Phase 7 is built — and the generator
+enforces that prerequisite rather than trusting it: a colour token with no contrast
+measurement from its own run stops the build.
 
 ## What the plan fixes that this repository must not drift from
 
