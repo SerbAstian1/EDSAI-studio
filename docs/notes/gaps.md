@@ -217,6 +217,30 @@ Reversible in one line — swap the scope back to `full`, or build a per-project
 one with `scopeWithout`. Worth revisiting if a motion specialist is ever
 partnered with or hired, since the corpus half is already written and tested.
 
+## 4e. Phase 6: what is built, and the one part that is not
+
+Three of four parts shipped. The fourth is worth being precise about.
+
+**Tauri is blocked, not deprioritised.** There is no Studio app for a desktop
+shell to wrap — Phase 3 built `@edsai/studio` in the lost sessions and this
+repository has not rebuilt it. Rust is installed and the toolchain works; the
+thing to put in the window does not exist. Scaffolding a Tauri project around
+nothing would satisfy the phase's stated acceptance criterion ("launches in
+under 2 s") while delivering an empty window, which is the kind of green tick
+this project exists to refuse. **Phase 3 is the prerequisite.**
+
+**The Figma plugin has never run inside Figma.** The analysis is tested
+exhaustively — 29 tests, including the phase's 3.9:1 acceptance case — and the
+bundle builds to a self-contained 326 KB. But nothing in this environment can
+load a plugin into the editor, so first real use will find bugs. They will be
+in the adapter rather than the analysis, which is precisely why the boundary
+sits between them: `analyzeFrame` takes plain data and is testable anywhere;
+only the Figma reading is not.
+
+**Exports emit Markdown, not PDF or DOCX.** The plan names both. Chromium is
+available here and could render PDF via Playwright, but that is a heavy runtime
+dependency for a library — it belongs in the CLI or the Studio. DOCX is unbuilt.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

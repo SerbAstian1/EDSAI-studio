@@ -20,7 +20,7 @@ so the repository is legible without opening the artifact.
 | 3 | Studio shell | 10–15 | built previously, Direction Lock panel cut |
 | 4 | Visual critique and JARVIS mode | 16–19 | built previously, mind-map run never made |
 | 5 | Measurement bridges | 20–22 | built previously, PSI never run live |
-| 6 | Bridges and exports | 23–26 | not started |
+| 6 | Bridges and exports | 23–26 | **3 of 4 built** — `phases/06-bridges-and-exports.md`; Tauri blocked on Phase 3 |
 | 7 | Brand Hub | — | **specified** — `phases/07-brand-hub.md`; run at `runs/phase-7-brand-hub.md` closed V1 |
 
 See `notes/gaps.md` for what "built previously" means for this repository, and

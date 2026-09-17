@@ -1,0 +1,28 @@
+{
+  "name": "@edsai/figma",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "plugin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bundle": "esbuild plugin/code.ts --bundle --format=iife --target=es2017 --minify --outfile=plugin/dist/code.js"
+  },
+  "dependencies": {
+    "@edsai/instruments": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

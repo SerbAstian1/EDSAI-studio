@@ -21,7 +21,7 @@ drawing the final mark.
 | 3 · Studio shell | not in this repo |
 | 4 · Visual critique | not in this repo |
 | 5 · Measurement bridges | not in this repo |
-| 6 · Bridges and exports | not started |
+| 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri blocked on Phase 3 |
 | 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
 
 Phases 1–5 were built in earlier sessions on a local machine and were never
@@ -37,6 +37,8 @@ packages/
   instruments/   pure functions that compute what the corpus asks to be measured
   prompts/       prompt assembly with a frozen, cacheable prefix
   engine/        the run loop, provenance verifier, FINAL gate, store and CLI
+  figma/         Department 5 critique of a frame, plus the Figma plugin
+  export/        internal document, gated client summary, DEVPOINT handoff
 docs/
   discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications
@@ -49,7 +51,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 316 tests
+pnpm test          # 371 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```

@@ -17,3 +17,6 @@ data/runs/
 # The data model marks it "local library, never redistributed".
 # Kept out of this repo while it is public — see docs/notes/gaps.md.
 corpus/assets/exemplars/
+
+# Bundled plugin output — rebuilt with `pnpm --filter @edsai/figma bundle`.
+packages/figma/plugin/dist/

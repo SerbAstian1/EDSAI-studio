@@ -1,0 +1,13 @@
+{
+  "name": "EDSAI — Department 5 critique",
+  "id": "edsai-department-5-critique",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "Every check runs locally on the selected frame. The plugin never sends a design anywhere."
+  }
+}

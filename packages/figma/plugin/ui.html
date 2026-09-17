@@ -1,0 +1,169 @@
+<!-- The plugin panel. Figma injects this whole file as __html__, so it carries
+     its own styles and script and loads nothing. -->
+<style>
+  :root {
+    --bg: var(--figma-color-bg, #FFFFFF);
+    --surface: var(--figma-color-bg-secondary, #F5F5F5);
+    --ink: var(--figma-color-text, #1E1E1E);
+    --muted: var(--figma-color-text-secondary, #6B6B6B);
+    --line: var(--figma-color-border, #E0E0E0);
+    --blocker: #B32A21;
+    --major: #A8571F;
+    --minor: #5C6470;
+    --ok: #2F6D4F;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 12px/1.45 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 8px; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+    background: var(--bg);
+  }
+  .bar h1 { font-size: 12px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .bar .sub { color: var(--muted); font-size: 11px; }
+  button {
+    font: inherit; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .summary { padding: 10px 12px; border-bottom: 1px solid var(--line);
+             display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+  .stat.bad b { color: var(--blocker); }
+  .stat.good b { color: var(--ok); }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { border-bottom: 1px solid var(--line); padding: 11px 12px; cursor: pointer; }
+  li:hover { background: var(--surface); }
+  .row { display: flex; gap: 8px; align-items: baseline; }
+  .sev { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; flex: none; }
+  .sev.blocker { color: var(--blocker); }
+  .sev.major { color: var(--major); }
+  .sev.minor, .sev.nitpick, .sev.info { color: var(--minor); }
+  .headline { font-weight: 600; }
+  .layer { color: var(--muted); margin-top: 1px; }
+  .detail { color: var(--muted); margin-top: 5px; }
+  .fix { margin-top: 5px; padding-left: 8px; border-left: 2px solid var(--line); color: var(--muted); }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+  .empty b { display: block; color: var(--ink); margin-bottom: 4px; font-size: 13px; }
+  .foot { padding: 10px 12px; display: flex; gap: 8px; border-top: 1px solid var(--line); }
+</style>
+
+<div class="bar">
+  <div>
+    <h1>Department 5 critique</h1>
+    <div class="sub" id="frame">no frame selected</div>
+  </div>
+  <button id="rerun">Re-run</button>
+</div>
+
+<div id="summary" class="summary" hidden></div>
+<ul id="list"></ul>
+<div id="empty" class="empty">
+  <b>Select a frame</b>
+  Every check runs locally. Nothing leaves this file.
+</div>
+
+<div class="foot">
+  <button id="annotate" class="primary" disabled>Pin findings to canvas</button>
+  <button id="close">Close</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var report = null;
+
+  var post = function (msg) { parent.postMessage({ pluginMessage: msg }, '*'); };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function stat(value, label, tone) {
+    var d = document.createElement('div');
+    d.className = 'stat' + (tone ? ' ' + tone : '');
+    var b = document.createElement('b'); b.textContent = String(value);
+    var s = document.createElement('span'); s.textContent = label;
+    d.appendChild(b); d.appendChild(s);
+    return d;
+  }
+
+  function render() {
+    var list = $('list'), summary = $('summary'), empty = $('empty');
+    list.textContent = '';
+    summary.textContent = '';
+
+    if (!report) { summary.hidden = true; empty.hidden = false; return; }
+
+    $('frame').textContent = report.frame;
+    var s = report.summary;
+    summary.hidden = false;
+    summary.appendChild(stat(s.textNodes, 'text layers'));
+    summary.appendChild(stat(s.contrastFailing, 'contrast fails',
+      s.contrastFailing > 0 ? 'bad' : 'good'));
+    summary.appendChild(stat(s.distinctSizes.length, 'type sizes'));
+
+    if (report.annotations.length === 0) {
+      empty.hidden = false;
+      empty.innerHTML = '<b>Nothing measured failed.</b>' +
+        'Contrast, scale, tracking and spacing all clear. This says nothing ' +
+        'about whether the design is any good.';
+      $('annotate').disabled = true;
+      return;
+    }
+
+    empty.hidden = true;
+    $('annotate').disabled = false;
+
+    report.annotations.forEach(function (a) {
+      var li = document.createElement('li');
+
+      var row = document.createElement('div'); row.className = 'row';
+      var sev = document.createElement('span'); sev.className = 'sev ' + a.severity;
+      sev.textContent = a.severity;
+      var head = document.createElement('span'); head.className = 'headline';
+      head.textContent = a.headline;
+      row.appendChild(sev); row.appendChild(head);
+
+      var layer = document.createElement('div'); layer.className = 'layer';
+      layer.textContent = a.layer;
+
+      var detail = document.createElement('div'); detail.className = 'detail';
+      detail.textContent = a.detail;
+
+      li.appendChild(row); li.appendChild(layer); li.appendChild(detail);
+      if (a.remediation) {
+        var fix = document.createElement('div'); fix.className = 'fix';
+        fix.textContent = a.remediation;
+        li.appendChild(fix);
+      }
+      if (a.nodeId) {
+        li.addEventListener('click', function () { post({ type: 'focus', nodeId: a.nodeId }); });
+      }
+      list.appendChild(li);
+    });
+  }
+
+  onmessage = function (event) {
+    var msg = event.data && event.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === 'report') { report = msg.report; render(); }
+    else if (msg.type === 'empty') { report = null; render(); }
+    else if (msg.type === 'error') {
+      report = null;
+      $('empty').hidden = false;
+      $('empty').innerHTML = '<b>Could not read that frame.</b>' + msg.message;
+    }
+  };
+
+  $('rerun').addEventListener('click', function () { post({ type: 'run' }); });
+  $('close').addEventListener('click', function () { post({ type: 'close' }); });
+  $('annotate').addEventListener('click', function () {
+    if (report) post({ type: 'annotate', annotations: report.annotations });
+  });
+})();
+</script>
