@@ -23,3 +23,4 @@ packages/figma/plugin/dist/
 
 # Studio build output — rebuilt with `pnpm --filter @edsai/studio build`.
 packages/studio/dist/
+measurements.json

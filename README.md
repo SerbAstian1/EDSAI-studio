@@ -18,9 +18,9 @@ drawing the final mark.
 | 1 · Instruments | **built here** — `@edsai/instruments`, 12 instruments, 158 tests |
 | 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 55 tests |
 | 2b · Harness mode | **built here** — same `accept` path as the API |
-| 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.7 KB gz |
+| 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.0 KB gz |
 | 4 · Visual critique | not in this repo |
-| 5 · Measurement bridges | not in this repo |
+| 5 · Measurement bridges | **built here** — `@edsai/measure`, 108 tests; PSI success path unproven |
 | 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri now unblocked |
 | 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
 
@@ -39,6 +39,7 @@ packages/
   engine/        the run loop, provenance verifier, FINAL gate, store and CLI
   figma/         Department 5 critique of a frame, plus the Figma plugin
   export/        internal document, gated client summary, DEVPOINT handoff
+  measure/       probes and instruments for Departments 8, 40 and 43
   api/           node:http contract over the engine, with SSE run progress
   studio/        the React shell — nine screens, CSR, route-split
 docs/
@@ -53,10 +54,25 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 427 tests
+pnpm test          # 535 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
+
+Measuring a live site, for Departments 8, 40 and 43:
+
+```bash
+pnpm -r build
+node packages/measure/dist/bin/measure.js collect https://example.com/ \
+  --out measurements.json --dist packages/studio/dist
+node packages/measure/dist/bin/measure.js report measurements.json
+```
+
+`collect` reaches the network and writes a records file; `report` reads it and
+judges, touching nothing. Re-judging a stored measurement against a changed
+budget is free, and a measurement taken once is never silently re-taken.
+PageSpeed's keyless quota is routinely exhausted — set `PSI_API_KEY` for the
+Core Web Vitals half.
 
 ## The drift contract
 

@@ -15,9 +15,9 @@ reachable. What is lost, specifically:
 | 1 | 10 instruments, 66 tests | **rebuilt** — 12 instruments, 158 tests |
 | 2 | `@edsai/prompts`, `@edsai/engine`, `edsai` CLI, 28 tests | **to rebuild** |
 | 2b | harness mode — `harness start/next/tool/submit/retract/finalize` | **to rebuild** |
-| 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **rebuilt** — 46 tests, 83.7 KB gz |
+| 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **rebuilt** — 46 tests, 83.0 KB gz |
 | 4 | `composition_check`, overlay with pointer physics, mind map | **to rebuild** |
-| 5 | 4 instruments + 3 probes, 400 tests | **to rebuild** |
+| 5 | 4 instruments + 3 probes, 400 tests | **rebuilt** — 4 instruments, 2 probes, 2 importers, 108 tests |
 
 Also lost, and **not rebuildable**: run records `f44f6852` (the 24-department
 self-run) and `d7de33c6` (the Titans critique). Those are data, not code. Their
@@ -267,6 +267,45 @@ than built. Building it inside the Studio would split it across two places.
 violations.** Neither exists. The bundle budget *is* gated by a script that
 exits non-zero when over; accessibility is not gated at all.
 
+## 4g. Phase 5 rebuilt: what it closed, and what it opened
+
+**Closed.** Departments 8, 40 and 43 can now report `source: 'instrument'`
+actuals. Before this, their "Real Measurable Targets to report" lists could only
+ever be asserted, and the engine — correctly — refused to accept an assertion as
+a measurement. `targets.test.ts` checks every emitted row against the engine's
+own `Target` schema rather than against a local expectation, so the two cannot
+drift apart quietly.
+
+**Closed, unexpectedly.** The Studio's bundle gate and Department 43's bundle row
+were two implementations of one rule, and they disagreed. The gate inferred the
+initial route from filenames and counted a shared module as initial because its
+name resembled a lazy screen's. Both now read the Vite manifest through
+`@edsai/measure`. The corrected figure is 83.0 KB gz, not 83.7 — a smaller
+number, arrived at by fixing a measurement rather than the thing measured, which
+is worth saying out loud.
+
+**Opened.**
+
+- **No API route.** `@edsai/measure` is a library and a CLI. Nothing in the
+  Studio calls it, so a run's Department 8 table is still filled by hand from
+  `edsai-measure report` output. `POST /api/measure` is the seam; it is deferred
+  until the screen that calls it exists, because the probe needs injecting to
+  stay testable and that shape should be decided with a caller in view.
+- **Department 43 is half-covered.** Bundle weight and render-blocking counts are
+  computed. Dependency advisory counts, lockfile/frozen-install pass-fail, and
+  "source maps generated but not publicly served" are not — they read a
+  repository rather than a URL, which is a different probe shape entirely.
+- **The guard does not defeat DNS rebinding.** It checks the hostname as
+  written. A name that resolves to a private address gets through, and closing
+  that needs resolution at fetch time plus a pinned socket. The limit is stated
+  in the module rather than papered over, but it is a real limit and this is a
+  package whose whole job is to fetch URLs a client supplied.
+- **One live-only bug class is now known to exist.** Both bugs the live run found
+  were in judging, not fetching, and neither was reachable from the fixtures —
+  because the fixtures were written from the same understanding as the code. The
+  lesson generalises past this package: a fixture written by the author of the
+  logic tests the author's model of the world, not the world.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
@@ -274,15 +313,24 @@ Things asserted somewhere that nothing has actually verified:
 - **API cost and wall-clock (§10).** Every figure is an estimate. Run `5bac36cb`
   failed at Department 1 with $0.000 spent; the account has no credit. The
   estimate is ≈ $3.4 per Level 1 run before thinking tokens.
-- **PageSpeed against a live URL.** The parser is fixture-proven, including
-  CrUX's CLS×100 and page-versus-origin precedence, but the shared anonymous
-  quota was exhausted during testing and no live response has been through it.
+- **PageSpeed against a live URL.** Still true after the Phase 5 rebuild, and
+  for the same reason. The parser is fixture-proven, including CrUX's CLS×100
+  and page-versus-origin precedence; the request reaches Google and the failure
+  path is proven live (`429 Quota exceeded for quota metric 'Queries'` on the
+  shared anonymous quota, surfaced as a `ProbeFailed` naming the status rather
+  than an empty record). **No real PSI response has ever been parsed.** Needs a
+  `PSI_API_KEY`. This is the one acceptance criterion Phase 5 did not meet.
+- **The header probe, by contrast, is proven live** — run against `github.com`,
+  8 of 10 header targets met, and it found two bugs in its own judging that the
+  fixtures did not: inverted `Referrer-Policy` precedence, and an error page
+  being audited as though it were the page.
 - **The mind-map acceptance run.** `checkMindMap` was written and tested; no
   brand questionnaire has ever been through Department 12.
 - **Local Lighthouse.** Not built. §5's exit clause says PSI is enough for hosted
   sites, which has not itself been tested.
-- **axe** cannot be probed from a server at all — it ships as an importer with a
-  Playwright snippet rather than a probe.
+- **axe** cannot be probed from a server at all — it ships as an importer
+  (`axeFromResults`) rather than a probe, and nothing in this repository runs
+  axe yet, so no real results file has been through it.
 - **Every target in the Phase 7 run.** All eleven rows in its Department 8 table
   are `stated-target`; no instrument ran, because Phase 1 did not exist when it
   was written. Phase 1 now exists, so **that run is due a re-execution** — its

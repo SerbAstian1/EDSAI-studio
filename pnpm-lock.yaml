@@ -83,6 +83,18 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
 
+  packages/measure:
+    dependencies:
+      '@edsai/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@edsai/instruments':
+        specifier: workspace:*
+        version: link:../instruments
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/prompts:
     dependencies:
       '@edsai/rubric':
@@ -110,6 +122,9 @@ importers:
         specifier: ^19.2.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@edsai/measure':
+        specifier: workspace:*
+        version: link:../measure
       '@types/react':
         specifier: ^19.2.0
         version: 19.3.0

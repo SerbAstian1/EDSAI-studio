@@ -6,6 +6,10 @@ export default defineConfig({
   build: {
     // Reported so the budget script can read real numbers rather than estimates.
     reportCompressedSize: true,
+    // The manifest states which chunks the entry reaches statically, which is
+    // what "initial route" means. Without it the budget script has to infer it
+    // from filenames, and that inference breaks silently when a screen is renamed.
+    manifest: true,
     rollupOptions: {
       output: {
         // React and the query client are the stable half of the bundle; splitting

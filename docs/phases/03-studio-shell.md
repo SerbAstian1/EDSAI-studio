@@ -65,19 +65,19 @@ nobody reads. A rescore also requires a stated reason; without one it is a nudge
 |---|---|
 | The brief runs end-to-end in the UI with state persisted | **met** — booted in headless Chromium against the real API, rendering a seeded run |
 | FINAL provably unreachable while a Major is open | **met** — rendered "FINAL is withheld · determination V1 · 1 open Major", `Mark FINAL` disabled |
-| Meets its own budget | **met** — 83.7 KB gz initial route against 170 KB, measured with gzip at level 9 |
+| Meets its own budget | **met** — 83.0 KB gz initial route against 170 KB, measured with gzip at level 9 |
 
 The bundle breakdown, from `pnpm --filter @edsai/studio budget`:
 
 | | Size |
 |---|---|
-| Initial route | **83.7 KB gz** |
+| Initial route | **83.0 KB gz** |
 | — app shell + screens | 67.3 KB |
 | — TanStack Query | 13.1 KB |
 | — React | 1.4 KB |
 | — CSS | 1.2 KB |
-| Deferred, 4 chunks | 5.5 KB |
-| Headroom | 86.3 KB |
+| Deferred, 5 chunks | 6.2 KB |
+| Headroom | 87.0 KB |
 
 "Initial route" means what a first paint costs — the entry chunk and what it
 statically imports — not the whole `dist`, which includes screens a visitor has
@@ -85,6 +85,12 @@ not opened. Measuring the dist total would make the figure look worse than the
 experience and push toward the wrong optimisations.
 
 For comparison, the original Phase 3 recorded 90 KB against the same budget.
+
+**Revised in Phase 5, from 83.7 KB.** The script originally decided which chunks
+were initial with a regex over filenames, which counted `assets/scorecard-*.js`
+as initial because it matched the `Scorecard` screen — when it is a shared module
+reached only from lazy screens. The gate now reads the Vite manifest through
+`@edsai/measure`, the same function that produces Department 43's target row.
 
 ## Two things the browser check found
 

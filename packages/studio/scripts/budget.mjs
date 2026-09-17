@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-import { gzipSync } from 'node:zlib';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundleFromViteDist, bundleAudit } from '@edsai/measure';
 
 /**
  * Measure the initial route against the budget.
@@ -10,45 +9,35 @@ import { fileURLToPath } from 'node:url';
  * The budget is 170 KB gzipped, per the build plan's §11. "Initial route" means
  * what a first paint actually costs — the entry chunk plus everything it
  * statically imports — not the whole dist, which includes the lazy screens a
- * visitor has not opened. Measuring the dist total would make the number look
- * worse than the experience and would push toward the wrong optimisations.
+ * visitor has not opened.
  *
- * Gzip at level 9 rather than an estimate, so the figure is the one a CDN sends.
+ * The measurement itself lives in `@edsai/measure`, which is also what produces
+ * Department 43's target row for a run. One rule in one place: a build that
+ * passes this gate and a run that reports the number cannot disagree, because
+ * they are the same function over the same manifest.
  */
 const BUDGET_BYTES = 170 * 1024;
-const here = dirname(fileURLToPath(import.meta.url));
-const dist = join(here, '..', 'dist', 'assets');
+const dist = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
-const LAZY = /RunView|Scorecard|Review|Finalize/;
-
-const rows = readdirSync(dist)
-  .filter((name) => name.endsWith('.js') || name.endsWith('.css'))
-  .map((name) => ({
-    name,
-    lazy: LAZY.test(name),
-    raw: statSync(join(dist, name)).size,
-    gz: gzipSync(readFileSync(join(dist, name)), { level: 9 }).length,
-  }))
-  .sort((a, b) => b.gz - a.gz);
-
+const record = bundleFromViteDist(dist);
+const { value } = bundleAudit(record, BUDGET_BYTES);
 const kb = (n) => (n / 1024).toFixed(1);
-const initial = rows.filter((r) => !r.lazy);
-const deferred = rows.filter((r) => r.lazy);
-const total = initial.reduce((n, r) => n + r.gz, 0);
 
-for (const row of rows) {
+for (const chunk of [...record.chunks].sort((a, b) => b.gzipBytes - a.gzipBytes)) {
   process.stdout.write(
-    `${row.lazy ? 'lazy   ' : 'initial'} ${kb(row.gz).padStart(7)} KB gz  ${row.name}\n`,
+    `${chunk.initial ? 'initial' : 'lazy   '} ${kb(chunk.gzipBytes).padStart(7)} KB gz  ` +
+    `${chunk.name}${chunk.renderBlocking ? '  (render-blocking)' : ''}\n`,
   );
 }
 
 process.stdout.write(
-  `\ninitial route  ${kb(total)} KB gz against a ${kb(BUDGET_BYTES)} KB budget\n` +
-  `deferred       ${kb(deferred.reduce((n, r) => n + r.gz, 0))} KB gz across ${deferred.length} chunks\n`,
+  `\ninitial route  ${kb(value.initialGzipBytes)} KB gz against a ${kb(BUDGET_BYTES)} KB budget\n` +
+  `deferred       ${kb(value.deferredGzipBytes)} KB gz across ` +
+  `${value.chunkCount - value.initial.length} chunks\n`,
 );
 
-if (total > BUDGET_BYTES) {
-  process.stderr.write(`\nOVER BUDGET by ${kb(total - BUDGET_BYTES)} KB\n`);
+if (!value.withinBudget) {
+  process.stderr.write(`\nOVER BUDGET by ${kb(-value.headroomBytes)} KB\n`);
   process.exit(1);
 }
-process.stdout.write(`under budget by ${kb(BUDGET_BYTES - total)} KB\n`);
+process.stdout.write(`under budget by ${kb(value.headroomBytes)} KB\n`);

@@ -23,3 +23,9 @@ jobs:
       # does not follow fails here rather than shipping a rubric that disagrees
       # with the document the model reads.
       - run: pnpm test
+      - run: pnpm -r build
+      # The bundle budget is the one target in this repository that regresses by
+      # accident. It is judged by `@edsai/measure` — the same function that
+      # produces Department 43's target row — so the gate and the report cannot
+      # disagree, and a build over 170 KB gz fails here.
+      - run: pnpm --filter @edsai/studio budget
