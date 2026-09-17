@@ -15,11 +15,11 @@ drawing the final mark.
 | Phase | State |
 |---|---|
 | 0 · Rubric extraction | **built here** — `@edsai/rubric`, 69 tests |
-| 1 · Instruments | **built here** — `@edsai/instruments`, 12 instruments, 158 tests |
+| 1 · Instruments | **built here** — `@edsai/instruments`, 14 instruments, 209 tests |
 | 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 55 tests |
 | 2b · Harness mode | **built here** — same `accept` path as the API |
 | 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.0 KB gz |
-| 4 · Visual critique | not in this repo |
+| 4 · Visual critique | **computable half built** — `composition_check` + `checkMindMap`; overlay UI deferred |
 | 5 · Measurement bridges | **built here** — `@edsai/measure`, 108 tests; PSI success path unproven |
 | 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri now unblocked |
 | 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
@@ -54,7 +54,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 535 tests
+pnpm test          # 586 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```

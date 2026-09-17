@@ -12,11 +12,11 @@ reachable. What is lost, specifically:
 
 | Phase | Was | Status |
 |---|---|---|
-| 1 | 10 instruments, 66 tests | **rebuilt** — 12 instruments, 158 tests |
+| 1 | 10 instruments, 66 tests | **rebuilt** — 14 instruments, 209 tests |
 | 2 | `@edsai/prompts`, `@edsai/engine`, `edsai` CLI, 28 tests | **to rebuild** |
 | 2b | harness mode — `harness start/next/tool/submit/retract/finalize` | **to rebuild** |
 | 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **rebuilt** — 46 tests, 83.0 KB gz |
-| 4 | `composition_check`, overlay with pointer physics, mind map | **to rebuild** |
+| 4 | `composition_check`, overlay with pointer physics, mind map | **half rebuilt** — both instruments; overlay deferred, mind-map run still never made |
 | 5 | 4 instruments + 3 probes, 400 tests | **rebuilt** — 4 instruments, 2 probes, 2 importers, 108 tests |
 
 Also lost, and **not rebuildable**: run records `f44f6852` (the 24-department
@@ -306,6 +306,34 @@ is worth saying out loud.
   lesson generalises past this package: a fixture written by the author of the
   logic tests the author's model of the world, not the world.
 
+## 4h. Phase 4's computable half, and the label problem it exposed
+
+`composition_check` and `checkMindMap` are built. Both are refutation
+instruments rather than identification ones: they take a claim the department
+made and ask whether the data contradicts it. Ten of the catalog's twenty-nine
+structures return `not-computable` with a stated reason, because a spiral, a
+tunnel and a set of leading lines are claims about curvature, perspective and
+line direction that axis-aligned boxes do not carry.
+
+**The precondition worth naming.** Run against the Studio's own workspace screen
+in headless Chromium, `composition_check` reported the `<h1>` wordmark at 0.9%
+of the visual weight against the runs panel at 61.5%, and called it a hierarchy
+failure. The arithmetic is right. The finding is not — in an application shell
+the content panel *should* dominate and the wordmark should not, and Department
+14's hierarchy rule is a poster rule about one surface seen once at a distance.
+
+The fault was the harness labelling the `<h1>` as the primary message. That is
+the instrument's real precondition: `role: 'primary'` means *the primary
+message of this composition*, and whoever applies the label has to mean it. Fed
+a bad label it computes a correct number about the wrong thing — a sharper
+failure mode than vagueness, and the reason the labelling belongs to the
+department rather than to a DOM heuristic. Nothing in this repository currently
+stops a department from labelling badly.
+
+**Still open from Phase 4:** the composition overlay UI (deferred — it needs
+images, and the exemplar library is deliberately not in this public repository),
+and the mind-map acceptance run, which needs a model call.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
@@ -324,8 +352,10 @@ Things asserted somewhere that nothing has actually verified:
   8 of 10 header targets met, and it found two bugs in its own judging that the
   fixtures did not: inverted `Referrer-Policy` precedence, and an error page
   being audited as though it were the page.
-- **The mind-map acceptance run.** `checkMindMap` was written and tested; no
-  brand questionnaire has ever been through Department 12.
+- **The mind-map acceptance run.** Still true after the Phase 4 rebuild.
+  `checkMindMap` is tested against sixteen cases; **no brand questionnaire has
+  ever been through Department 12**, because that needs a model call and the
+  account has no credit.
 - **Local Lighthouse.** Not built. §5's exit clause says PSI is enough for hosted
   sites, which has not itself been tested.
 - **axe** cannot be probed from a server at all — it ships as an importer

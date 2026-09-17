@@ -122,6 +122,45 @@ export const ToolInput = {
     colors: z.array(z.object({ name: z.string().optional(), value: colorString })).min(1),
     saturationThreshold: z.number().positive().optional(),
   }),
+
+  composition_check: z.object({
+    frame: z.object({ width: z.number().positive(), height: z.number().positive() }),
+    elements: z.array(z.object({
+      id: z.string(),
+      x: z.number(), y: z.number(),
+      width: z.number().nonnegative(), height: z.number().nonnegative(),
+      role: z.enum(['primary', 'secondary', 'tertiary']).optional()
+        .describe('Where this sits in the message hierarchy (14.1).'),
+      contrast: z.number().min(0).max(1).optional()
+        .describe('0-1 separation from the ground behind it. Defaults to 1.'),
+      kind: z.enum(['type', 'image', 'shape', 'mark', 'texture']).optional(),
+    })).min(1),
+    structure: z.string()
+      .describe('The catalog slug being claimed, e.g. radiating-radial, rule-of-thirds.'),
+    eyePath: z.array(z.string()).optional()
+      .describe('Element ids in the order the eye is meant to travel.'),
+    priorStructures: z.array(z.string()).optional()
+      .describe('Structures claimed on earlier deliverables, to catch a safe-by-default habit.'),
+  }),
+
+  mind_map_check: z.object({
+    nodes: z.array(z.object({
+      id: z.string(),
+      branch: z.enum(['literal', 'metaphor', 'letterform', 'abstract', 'cultural']),
+      text: z.string(),
+    })).optional().describe('The divergent stage, before narrowing (12.1).'),
+    directions: z.array(z.object({
+      name: z.string(),
+      concept: z.string(),
+      branches: z.array(z.enum(['literal', 'metaphor', 'letterform', 'abstract', 'cultural'])),
+      tracesTo: z.string().optional()
+        .describe('The specific Department 1 or 2 input this direction comes from.'),
+      construction: z.string().optional(),
+      structure: z.string().optional()
+        .describe('The composition-frameworks structure the construction is built on.'),
+      risk: z.string().optional(),
+    })).describe('The surviving directions (12.3-12.4).'),
+  }),
 } as const;
 
 export type ToolName = keyof typeof ToolInput;
@@ -160,6 +199,14 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   print_gamut_risk:
     'Flag brand colours likely to shift when converted to CMYK. Heuristic — hue and saturation ' +
     'only, no ICC profile. Report it as a prompt to proof, never as a conversion.',
+  composition_check:
+    'Test a claimed composition structure against where the visual weight actually sits, and ' +
+    'check the eye-path and message hierarchy against it. Use whenever a layout names a ' +
+    'structure — the instrument refutes a claim, it does not choose one for you.',
+  mind_map_check:
+    'Check a Department 12 narrowing: how many conceptual territories survived, whether the ' +
+    'count is 3-5, whether every direction traces to a Department 1 or 2 input and carries ' +
+    'construction logic, and whether two directions are the same idea worded twice.',
 };
 
 export interface ClaudeTool {

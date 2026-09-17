@@ -191,6 +191,8 @@ const INSTRUMENT_FUNCTIONS: Record<string, InstrumentFn> = {
   score_drift: call((i: { scores: Parameters<typeof instruments.scoreDrift>[0] }) =>
     instruments.scoreDrift(i.scores)),
   print_gamut_risk: call(instruments.printGamutRisk),
+  composition_check: call(instruments.compositionCheck),
+  mind_map_check: call(instruments.checkMindMap),
 };
 
 export const instrumentNames = (): string[] => Object.keys(INSTRUMENT_FUNCTIONS).sort();

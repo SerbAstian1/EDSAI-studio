@@ -14,11 +14,11 @@ so the repository is legible without opening the artifact.
 | # | Phase | Weeks | State |
 |---|---|---|---|
 | 0 | Rubric extraction | 1–2 | rebuilt in this repository |
-| 1 | Instruments | 3–5 | **rebuilt in this repository** — 12 instruments, 158 tests |
+| 1 | Instruments | 3–5 | **rebuilt in this repository** — 14 instruments, 209 tests |
 | 2 | Engine and CLI | 6–9 | **rebuilt in this repository** — 55 tests; harness path only, no API credit |
 | 2b | Harness mode | — | **rebuilt in this repository** — shares `accept` with the API path |
 | 3 | Studio shell | 10–15 | **rebuilt in this repository** — `phases/03-studio-shell.md`; 83.0 KB gz against 170 KB |
-| 4 | Visual critique and JARVIS mode | 16–19 | built previously, mind-map run never made |
+| 4 | Visual critique and JARVIS mode | 16–19 | **computable half rebuilt** — `phases/04-visual-critique.md`; overlay UI and the mind-map run still open |
 | 5 | Measurement bridges | 20–22 | **rebuilt in this repository** — `phases/05-measurement-bridges.md`; 108 tests; PSI still never run live |
 | 6 | Bridges and exports | 23–26 | **3 of 4 built** — `phases/06-bridges-and-exports.md`; Tauri blocked on Phase 3 |
 | 7 | Brand Hub | — | **specified** — `phases/07-brand-hub.md`; run at `runs/phase-7-brand-hub.md` closed V1 |

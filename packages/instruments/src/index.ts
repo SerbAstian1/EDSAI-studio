@@ -11,3 +11,5 @@ export * from './seo.js';
 export * from './score-drift.js';
 export * from './print-gamut.js';
 export { INSTRUMENT_TOOLS, toolNames, ToolInput, type ToolName, type ClaudeTool } from './tools.js';
+export * from './composition.js';
+export * from './mind-map.js';

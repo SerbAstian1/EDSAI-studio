@@ -11,7 +11,7 @@ import * as instruments from '../src/index.js';
 describe('Claude tool definitions', () => {
   it('emits one tool per instrument input schema', () => {
     expect(INSTRUMENT_TOOLS).toHaveLength(Object.keys(ToolInput).length);
-    expect(INSTRUMENT_TOOLS).toHaveLength(12);
+    expect(INSTRUMENT_TOOLS).toHaveLength(14);
   });
 
   it('marks every tool strict', () => {
