@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS conflicts (
   PRIMARY KEY (run_id, id)
 );
 
+CREATE TABLE IF NOT EXISTS rescores (
+  run_id TEXT NOT NULL,
+  department_id INTEGER NOT NULL,
+  dimension TEXT NOT NULL,
+  from_value INTEGER NOT NULL,
+  from_justification TEXT NOT NULL,
+  to_value INTEGER NOT NULL,
+  to_justification TEXT NOT NULL,
+  directed_by TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  applied_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS violations (
   run_id TEXT NOT NULL,
   department_id INTEGER NOT NULL,
@@ -262,6 +275,53 @@ export class RunStore {
       description: row['description'],
       ...(row['resolution'] ? { resolution: row['resolution'] } : {}),
       ...(row['what_was_lost'] ? { whatWasLost: row['what_was_lost'] } : {}),
+    }));
+  }
+
+  /* --------------------------------------------------------------- rescores */
+
+  /**
+   * The audit trail for a directed rescore. Append-only by design: the original
+   * score is what makes a correction reviewable rather than a quiet rewrite.
+   */
+  saveRescore(record: {
+    runId: string; departmentId: number; dimension: string;
+    fromValue: number; fromJustification: string;
+    toValue: number; toJustification: string;
+    directedBy: string; reason: string; appliedAt: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO rescores (run_id, department_id, dimension, from_value, from_justification,
+                            to_value, to_justification, directed_by, reason, applied_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.runId, record.departmentId, record.dimension,
+      record.fromValue, record.fromJustification,
+      record.toValue, record.toJustification,
+      record.directedBy, record.reason, record.appliedAt,
+    );
+  }
+
+  getRescores(runId: string): {
+    runId: string; departmentId: number; dimension: string;
+    fromValue: number; fromJustification: string;
+    toValue: number; toJustification: string;
+    directedBy: string; reason: string; appliedAt: string;
+  }[] {
+    const rows = this.db
+      .prepare('SELECT * FROM rescores WHERE run_id = ? ORDER BY applied_at')
+      .all(runId) as Record<string, string | number>[];
+    return rows.map((row) => ({
+      runId: String(row['run_id']),
+      departmentId: Number(row['department_id']),
+      dimension: String(row['dimension']),
+      fromValue: Number(row['from_value']),
+      fromJustification: String(row['from_justification']),
+      toValue: Number(row['to_value']),
+      toJustification: String(row['to_justification']),
+      directedBy: String(row['directed_by']),
+      reason: String(row['reason']),
+      appliedAt: String(row['applied_at']),
     }));
   }
 

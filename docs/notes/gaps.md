@@ -15,7 +15,7 @@ reachable. What is lost, specifically:
 | 1 | 10 instruments, 66 tests | **rebuilt** — 12 instruments, 158 tests |
 | 2 | `@edsai/prompts`, `@edsai/engine`, `edsai` CLI, 28 tests | **to rebuild** |
 | 2b | harness mode — `harness start/next/tool/submit/retract/finalize` | **to rebuild** |
-| 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **to rebuild** |
+| 3 | `@edsai/api`, `@edsai/studio`, 9 screens, 264 tests | **rebuilt** — 46 tests, 83.7 KB gz |
 | 4 | `composition_check`, overlay with pointer physics, mind map | **to rebuild** |
 | 5 | 4 instruments + 3 probes, 400 tests | **to rebuild** |
 
@@ -221,9 +221,11 @@ partnered with or hired, since the corpus half is already written and tested.
 
 Three of four parts shipped. The fourth is worth being precise about.
 
-**Tauri is blocked, not deprioritised.** There is no Studio app for a desktop
-shell to wrap — Phase 3 built `@edsai/studio` in the lost sessions and this
-repository has not rebuilt it. Rust is installed and the toolchain works; the
+**Tauri was blocked; it no longer is.** Phase 3 is now rebuilt, so there is a
+Studio app for a desktop shell to wrap. The work was never large — the plan's
+own exit clause notes a PWA gives "installed" for free if the native build does
+not earn its keep. *Originally recorded as:* there is no Studio app for a
+desktop shell to wrap. Rust is installed and the toolchain works; the
 thing to put in the window does not exist. Scaffolding a Tauri project around
 nothing would satisfy the phase's stated acceptance criterion ("launches in
 under 2 s") while delivering an empty window, which is the kind of green tick
@@ -240,6 +242,30 @@ only the Figma reading is not.
 **Exports emit Markdown, not PDF or DOCX.** The plan names both. Chromium is
 available here and could render PDF via Playwright, but that is a heavy runtime
 dependency for a library — it belongs in the CLI or the Studio. DOCX is unbuilt.
+
+## 4f. Phase 3 rebuilt, and what it still lacks
+
+Both acceptance criteria are met and neither is asserted: the bundle was
+measured with gzip at level 9 (**83.7 KB gz** against a 170 KB budget, against
+the original's recorded 90 KB), and the FINAL gate was demonstrated in headless
+Chromium rendering "FINAL is withheld · determination V1 · 1 open Major" with
+the button disabled.
+
+**46 tests against the original's 264.** The gap is honest and worth naming:
+this rebuild tests the API over real HTTP (26) and the board's arithmetic and
+routing (20), but it has **no component-level rendering tests** — no jsdom, no
+testing-library. The browser check covers that the app boots and that the gate
+renders correctly; it does not cover the other seven screens rendering, or any
+interaction. That is the single largest testing gap in the repository.
+
+**The Direction Lock panel is still not built**, but for a different reason than
+before. The sub-skill is vendored now, so the original blocker is gone; the
+panel belongs with the discovery flow, which is specified and prototyped rather
+than built. Building it inside the Studio would split it across two places.
+
+**Department 42 asks for visual regression snapshots and axe in CI at zero
+violations.** Neither exists. The bundle budget *is* gated by a script that
+exits non-zero when over; accessibility is not gated at all.
 
 ## 5. Unproven claims
 

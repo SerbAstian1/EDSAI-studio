@@ -3,4 +3,5 @@ export * from './verify.js';
 export * from './gate.js';
 export * from './store.js';
 export * from './run.js';
+export * from './rescore.js';
 export * from './harness.js';

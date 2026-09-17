@@ -20,3 +20,6 @@ corpus/assets/exemplars/
 
 # Bundled plugin output — rebuilt with `pnpm --filter @edsai/figma bundle`.
 packages/figma/plugin/dist/
+
+# Studio build output — rebuilt with `pnpm --filter @edsai/studio build`.
+packages/studio/dist/

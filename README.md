@@ -18,10 +18,10 @@ drawing the final mark.
 | 1 · Instruments | **built here** — `@edsai/instruments`, 12 instruments, 158 tests |
 | 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 55 tests |
 | 2b · Harness mode | **built here** — same `accept` path as the API |
-| 3 · Studio shell | not in this repo |
+| 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.7 KB gz |
 | 4 · Visual critique | not in this repo |
 | 5 · Measurement bridges | not in this repo |
-| 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri blocked on Phase 3 |
+| 6 · Bridges and exports | **3 of 4 built** — `@edsai/figma` + `@edsai/export`, 55 tests; Tauri now unblocked |
 | 7 · Brand Hub | **specified** — `docs/phases/07-brand-hub.md`; run closed at V1, 3 Majors open |
 
 Phases 1–5 were built in earlier sessions on a local machine and were never
@@ -39,6 +39,8 @@ packages/
   engine/        the run loop, provenance verifier, FINAL gate, store and CLI
   figma/         Department 5 critique of a frame, plus the Figma plugin
   export/        internal document, gated client summary, DEVPOINT handoff
+  api/           node:http contract over the engine, with SSE run progress
+  studio/        the React shell — nine screens, CSR, route-split
 docs/
   discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications
@@ -51,7 +53,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 371 tests
+pnpm test          # 427 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
