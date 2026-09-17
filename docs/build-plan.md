@@ -15,7 +15,7 @@ so the repository is legible without opening the artifact.
 |---|---|---|---|
 | 0 | Rubric extraction | 1–2 | rebuilt in this repository |
 | 1 | Instruments | 3–5 | **rebuilt in this repository** — 14 instruments, 209 tests |
-| 2 | Engine and CLI | 6–9 | **rebuilt in this repository** — 55 tests; harness path only, no API credit |
+| 2 | Engine and CLI | 6–9 | **rebuilt in this repository** — 84 tests; harness path only, no API credit |
 | 2b | Harness mode | — | **rebuilt in this repository** — shares `accept` with the API path |
 | 3 | Studio shell | 10–15 | **rebuilt in this repository** — `phases/03-studio-shell.md`; 83.0 KB gz against 170 KB |
 | 4 | Visual critique and JARVIS mode | 16–19 | **computable half rebuilt** — `phases/04-visual-critique.md`; overlay UI and the mind-map run still open |

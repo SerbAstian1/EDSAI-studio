@@ -14,9 +14,9 @@ drawing the final mark.
 
 | Phase | State |
 |---|---|
-| 0 · Rubric extraction | **built here** — `@edsai/rubric`, 69 tests |
+| 0 · Rubric extraction | **built here** — `@edsai/rubric`, 84 tests |
 | 1 · Instruments | **built here** — `@edsai/instruments`, 14 instruments, 209 tests |
-| 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 55 tests |
+| 2 · Engine and CLI | **built here** — `@edsai/engine` + `@edsai/prompts`, 84 tests |
 | 2b · Harness mode | **built here** — same `accept` path as the API |
 | 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.0 KB gz |
 | 4 · Visual critique | **computable half built** — `composition_check` + `checkMindMap`; overlay UI deferred |
@@ -24,9 +24,12 @@ drawing the final mark.
 | 6 · Bridges and exports | **built here** — `@edsai/figma` + `@edsai/export` + `@edsai/desktop`, 55 tests; shell mounts in 740 ms |
 | 7 · Brand Hub | **built here** — `@edsai/hub`, 28 tests, 2.8 KB gz against a 40 KB budget |
 
-Phases 1–5 were built in earlier sessions on a local machine and were never
-pushed. This repository is a reconstruction that begins at Phase 0. See
-`docs/notes/gaps.md` for exactly what is and is not carried over.
+Every phase now has code here, but this repository is a reconstruction rather
+than the original: Phases 1–5 were built in earlier sessions on a local machine
+and were never pushed. Several acceptance criteria are met in a narrower form
+than the original claimed, and a few are still open — the PageSpeed success
+path, the mind-map run, the composition overlay, the hub's asset pack. See
+`docs/notes/gaps.md`, which is kept blunt on purpose.
 
 ## Layout
 
