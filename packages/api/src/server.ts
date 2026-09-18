@@ -564,9 +564,35 @@ export class ApiServer {
             send(res, 400, { error: 'bad_request', message: 'A value needs a name and a value.' });
             return;
           }
+
+          // The name becomes part of a URL, so a name that slugifies to nothing
+          // is refused rather than stored raw. Falling back to the raw text
+          // created values that could never be edited afterwards — the edit
+          // route could not match them.
+          const name = slugify(input.name);
+          if (name === '') {
+            send(res, 400, {
+              error: 'bad_request',
+              message: `"${input.name}" leaves no usable name. Give it at least one letter or digit.`,
+            });
+            return;
+          }
+
+          // Creating and editing are different intents. Overwriting silently
+          // discards whatever was there — including a reason someone recorded
+          // for a deliberate decision — so a collision is reported rather than
+          // resolved by guessing which one was meant.
+          if (scoped.listBrandValues(clientId).some((value) => value.name === name)) {
+            send(res, 409, {
+              error: 'already_exists',
+              message: `This brand already has a value called "${name}". Edit it instead.`,
+            });
+            return;
+          }
+
           const value = {
             clientId,
-            name: slugify(input.name) || input.name.trim(),
+            name,
             kind: (input.kind ?? 'color') as 'color',
             value: input.value.trim(),
             ...(input.role?.trim() ? { role: input.role.trim() } : {}),

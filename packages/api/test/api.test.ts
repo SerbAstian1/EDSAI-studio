@@ -1120,3 +1120,84 @@ describe('the brand system', () => {
     cookie = saved;
   });
 });
+
+describe('brand value names', () => {
+  const freshClient = async (name: string) => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  it('refuses a name that would leave nothing to put in a URL', async () => {
+    // Stored raw, such a value could never be edited: the edit route matches
+    // [\w-]+ and would 404 on it forever.
+    const clientId = await freshClient('Name Co');
+    const { status, body } = await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST', body: JSON.stringify({ name: '!!!', kind: 'color', value: '#000000' }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toContain('no usable name');
+  });
+
+  it('makes every accepted name editable afterwards', async () => {
+    const clientId = await freshClient('Editable Co');
+    const created = await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Brand/Primary Ink', kind: 'color', value: '#111111' }),
+    });
+    const name = (created.body['value'] as unknown as { name: string }).name;
+    expect(name).toBe('brand-primary-ink');
+    const edited = await json(`/api/clients/${clientId}/brand/${name}`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#222222' }),
+    });
+    expect(edited.status).toBe(200);
+  });
+
+  it('refuses to create over an existing value rather than overwriting it', async () => {
+    const clientId = await freshClient('Collide Co');
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'paper', kind: 'color', value: '#FFFFFF', role: 'surface' }),
+    });
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ink', kind: 'color', value: '#16181C', role: 'body text' }),
+    });
+    await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value: '#CCCCCC', reason: 'A deliberate, recorded decision.' }),
+    });
+
+    const { status, body } = await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST', body: JSON.stringify({ name: 'ink', kind: 'color', value: '#999999' }),
+    });
+    expect(status).toBe(409);
+    expect(body['message']).toContain('Edit it instead');
+  });
+
+  it('keeps the recorded reason when a collision is refused', async () => {
+    const clientId = await freshClient('Keep Co');
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'paper', kind: 'color', value: '#FFFFFF', role: 'surface' }),
+    });
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ink', kind: 'color', value: '#16181C', role: 'body text' }),
+    });
+    await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value: '#CCCCCC', reason: 'A deliberate, recorded decision.' }),
+    });
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST', body: JSON.stringify({ name: 'ink', kind: 'color', value: '#999999' }),
+    });
+
+    const { body } = await json(`/api/clients/${clientId}/brand`);
+    const ink = (body['values'] as unknown as { name: string; value: string; reason?: string }[])
+      .find((v) => v.name === 'ink');
+    expect(ink?.value).toBe('#CCCCCC');
+    expect(ink?.reason).toBe('A deliberate, recorded decision.');
+  });
+});

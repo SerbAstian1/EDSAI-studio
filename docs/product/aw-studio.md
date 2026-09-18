@@ -342,7 +342,7 @@ by, because a client who is never told uses it anyway.
 | Seeding | never overwrites an edited value; refuses a run belonging to another client |
 | Isolation | a portal session for another client 404s on the whole brand |
 | Budget | 89 KB gz against 170 KB |
-| Suite | 825 tests |
+| Suite | 829 tests |
 
 Three bugs came out of driving it, and the first two would have shipped:
 
@@ -358,7 +358,16 @@ Three bugs came out of driving it, and the first two would have shipped:
 - **"Edited" showed on values that were never edited**, because a hand-created
   value is studio-origin with nothing earlier to differ from.
 
-A fourth was in the test rather than the product, and is the recurring one: a hub
+Two more came out of probing the endpoints afterwards, and both were data
+problems rather than display ones. **A name that slugified to nothing was stored
+raw** — `!!!` became a value that could never be edited, because the edit route
+matches `[\w-]+` and would 404 on it forever. And **creating a value over an
+existing name silently overwrote it**, discarding the recorded reason: a designer
+adding "ink" without realising it was already there destroyed a deliberate
+decision with no warning. Creating and editing are different intents, so a
+collision is now reported rather than resolved by guessing.
+
+A further one was in the test rather than the product, and is the recurring one: a hub
 assertion checked that the rendered page did not contain the word "origin", which
 passed only because it was matching `original` — a variable name in the inlined
 copy script. It asserted nothing about the claim it was named for.
