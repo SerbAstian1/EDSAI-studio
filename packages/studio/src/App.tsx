@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { useRunStream } from './useRunStream.js';
 import { Sidebar } from './shell/Sidebar.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
+import { Gate } from './shell/Gate.js';
 import Home from './screens/Home.js';
 
 /**
@@ -26,6 +27,8 @@ const Scorecard = lazy(() => import('./screens/Scorecard.js'));
 const Review = lazy(() => import('./screens/Review.js'));
 const Finalize = lazy(() => import('./screens/Finalize.js'));
 const Runs = lazy(() => import('./screens/Runs.js'));
+const Clients = lazy(() => import('./screens/Clients.js'));
+const ClientDetail = lazy(() => import('./screens/ClientDetail.js'));
 const Brands = lazy(() => import('./screens/Brands.js'));
 const Portals = lazy(() => import('./screens/Portals.js'));
 const Activity = lazy(() => import('./screens/Activity.js'));
@@ -34,11 +37,13 @@ const Planned = lazy(() => import('./screens/Planned.js'));
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
-  | 'runs' | 'brands' | 'portals' | 'activity' | 'settings' | 'planned';
+  | 'runs' | 'brands' | 'portals' | 'activity' | 'settings' | 'planned'
+  | 'clients' | 'client';
 
 export interface Route {
   screen: Screen;
   runId?: string;
+  clientId?: string;
   /** The section id, when a planned section was opened. */
   sectionId?: string;
 }
@@ -46,6 +51,7 @@ export interface Route {
 /** Top-level sections that are a screen of their own, by hash segment. */
 const SECTION_SCREENS: Record<string, Screen> = {
   runs: 'runs',
+  clients: 'clients',
   brands: 'brands',
   portals: 'portals',
   activity: 'activity',
@@ -62,6 +68,7 @@ export function parseRoute(hash: string): Route {
     }
     return { screen: 'run', runId: path[1] };
   }
+  if (path[0] === 'clients' && path[1]) return { screen: 'client', clientId: path[1] };
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
   if (section) return { screen: section };
@@ -72,6 +79,7 @@ export function parseRoute(hash: string): Route {
 export function activeSection(route: Route): string {
   if (route.screen === 'planned') return route.sectionId ?? '';
   if (route.screen === 'workspace') return 'overview';
+  if (route.screen === 'client') return 'clients';
   if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
     || route.screen === 'review' || route.screen === 'finalize'
     || route.screen === 'runs') return 'runs';
@@ -193,6 +201,8 @@ function Intake(): ReactElement {
 const TITLES: Record<Screen, string> = {
   workspace: 'Overview',
   runs: 'Runs',
+  clients: 'Clients',
+  client: 'Client',
   intake: 'New run',
   run: 'Run',
   scorecard: 'Scorecard',
@@ -244,6 +254,8 @@ function Shell(): ReactElement {
             {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
             {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
             {route.screen === 'runs' && <Runs />}
+            {route.screen === 'clients' && <Clients />}
+            {route.screen === 'client' && route.clientId && <ClientDetail clientId={route.clientId} />}
             {route.screen === 'brands' && <Brands />}
             {route.screen === 'portals' && <Portals />}
             {route.screen === 'activity' && <Activity />}
@@ -272,7 +284,7 @@ const client = new QueryClient({
 export default function App(): ReactElement {
   return (
     <QueryClientProvider client={client}>
-      <Shell />
+      <Gate><Shell /></Gate>
     </QueryClientProvider>
   );
 }

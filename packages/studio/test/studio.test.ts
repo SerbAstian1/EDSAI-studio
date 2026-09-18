@@ -202,6 +202,18 @@ describe('routing — sections', () => {
   });
 });
 
+describe('routing — clients', () => {
+  it('reads the clients list and one client', () => {
+    expect(parseRoute('#/clients').screen).toBe('clients');
+    expect(parseRoute('#/clients/client-acme'))
+      .toEqual({ screen: 'client', clientId: 'client-acme' });
+  });
+
+  it('marks the clients entry current for a single client', () => {
+    expect(activeSection(parseRoute('#/clients/client-acme'))).toBe('clients');
+  });
+});
+
 describe('navigation model', () => {
   it('gives every planned section a phase and an intent', () => {
     for (const section of SECTIONS.filter((s) => s.status === 'planned')) {

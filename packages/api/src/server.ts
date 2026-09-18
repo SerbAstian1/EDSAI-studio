@@ -8,6 +8,12 @@ import {
   ClientSummaryRefused, clientSummary, handoffPack, internalDocument, type RunBundle,
 } from '@edsai/export';
 import { RunEvents } from './events.js';
+import { ScopedStore, ensureLocalProject, slugify, type Run } from '@edsai/engine';
+import {
+  Forbidden, mintSessionToken, digestToken, verifyPassword, hashPassword,
+  readSessionCookie, serializeSession, serializeLogout, isCsrfSafe,
+  type Principal,
+} from '@edsai/auth';
 
 /**
  * The API.
@@ -30,11 +36,26 @@ export interface ApiOptions {
   scopeId?: string;
   /** Allowed browser origins. Empty means same-origin only. */
   origins?: readonly string[];
+  /**
+   * Off only for plain-http local development. The session cookie loses its
+   * `Secure` attribute, so it has to be asked for rather than inferred.
+   */
+  insecureCookies?: boolean;
 }
+
+/** How long a session lasts before it has to be renewed by signing in again. */
+const SESSION_HOURS = 12;
 
 interface Handler {
   method: string;
   pattern: RegExp;
+  /**
+   * `public` routes are reachable without a session and there are exactly
+   * three: health, sign-in, and the first-run bootstrap. Everything else
+   * requires one, and the default is deliberately the strict value — a route
+   * added without thinking about auth fails closed.
+   */
+  auth?: 'public';
   run(ctx: RequestContext): void | Promise<void>;
 }
 
@@ -44,6 +65,15 @@ interface RequestContext {
   params: Record<string, string>;
   body: unknown;
   url: URL;
+  /** Absent only on a public route. */
+  principal?: Principal;
+  /** The only store a route may touch. Absent only on a public route. */
+  scoped?: ScopedStore;
+  /**
+   * The run this route is about, already proven visible to the session.
+   * Present on every `/api/runs/:id/...` route.
+   */
+  run?: Run;
 }
 
 export class ApiServer {
@@ -53,6 +83,7 @@ export class ApiServer {
   private readonly context: RunContext;
   private readonly origins: readonly string[];
   private readonly routes: Handler[];
+  private readonly insecureCookies: boolean;
   private server?: Server;
 
   constructor(options: ApiOptions = {}) {
@@ -63,6 +94,7 @@ export class ApiServer {
       ...(options.scopeId ? { scopeId: options.scopeId } : {}),
     });
     this.origins = options.origins ?? [];
+    this.insecureCookies = options.insecureCookies ?? false;
     this.routes = this.buildRoutes();
   }
 
@@ -97,9 +129,26 @@ export class ApiServer {
       res.setHeader('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'content-type');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.writeHead(204).end();
+      return;
+    }
+
+    // §40.3's third mitigation, applied before anything else reads the body:
+    // SameSite is a strong baseline and not a complete one, so a state-changing
+    // request from an origin this server does not know is refused outright.
+    if (!isCsrfSafe({
+      origin,
+      method: req.method ?? 'GET',
+      contentType: req.headers['content-type'],
+      allowedOrigins: this.origins,
+    })) {
+      send(res, 403, {
+        error: 'bad_origin',
+        message: 'This request came from an origin this server does not accept.',
+      });
       return;
     }
 
@@ -110,7 +159,40 @@ export class ApiServer {
 
       try {
         const body = req.method === 'GET' ? undefined : await readJson(req);
-        await route.run({ req, res, params: match.groups ?? {}, body, url });
+        const context: RequestContext = { req, res, params: match.groups ?? {}, body, url };
+
+        if (route.auth !== 'public') {
+          const principal = this.principalFor(req);
+          if (!principal) {
+            send(res, 401, {
+              error: 'unauthenticated',
+              message: 'This endpoint needs a session. Sign in at POST /api/session.',
+            });
+            return;
+          }
+          context.principal = principal;
+          const scoped = new ScopedStore(this.store, principal);
+          context.scoped = scoped;
+
+          // Structural, not per-route: every `/api/runs/:id/...` endpoint is
+          // resolved through the scope here, so a route added later inherits
+          // the check instead of having to remember it. A run outside the
+          // session's scope is reported as missing, which is what it is as far
+          // as that session may know.
+          const runId = match.groups?.['id'];
+          if (runId !== undefined && url.pathname.startsWith('/api/runs/')) {
+            const run = scoped.getRun(runId);
+            if (!run) {
+              send(res, 404, {
+                error: 'not_found', message: `No run ${runId} is visible to this session.`,
+              });
+              return;
+            }
+            context.run = run;
+          }
+        }
+
+        await route.run(context);
       } catch (error) {
         this.fail(res, error);
       }
@@ -148,8 +230,16 @@ export class ApiServer {
     send(res, 500, { error: 'internal', message });
   }
 
-  private bundle(runId: string): RunBundle {
-    const run = this.store.getRun(runId);
+  /**
+   * Everything a run-detail route needs, resolved through the scope.
+   *
+   * Every such route goes through here, which is why the scope check lives here
+   * rather than in each of them: a route added later inherits it instead of
+   * having to remember it. A run outside the session's scope is reported as
+   * missing, because it is missing as far as that session may know.
+   */
+  private bundle(runId: string, scoped: ScopedStore): RunBundle {
+    const run = scoped.getRun(runId);
     if (!run) throw new Error(`no such run: ${runId}`);
     return {
       run,
@@ -161,13 +251,154 @@ export class ApiServer {
     };
   }
 
+  /* -------------------------------------------------------------- principals */
+
+  /**
+   * Turn a cookie into a principal, or nothing.
+   *
+   * The session's scope is read from the stored record, never from the request.
+   * A client id supplied by the caller would let a portal session widen itself
+   * by asking, which is the entire attack this design exists to prevent.
+   */
+  private principalFor(req: IncomingMessage): Principal | undefined {
+    const token = readSessionCookie(req.headers.cookie);
+    if (!token) return undefined;
+
+    const session = this.store.getSession(digestToken(token));
+    if (!session) return undefined;
+
+    return session.kind === 'studio'
+      ? { kind: 'studio', userId: session.userId, role: session.role }
+      : {
+        kind: 'portal',
+        userId: session.userId,
+        clientId: session.clientId ?? '',
+        role: session.role,
+      };
+  }
+
+  private issueSession(
+    res: ServerResponse,
+    session: { userId: string; kind: 'studio' | 'portal'; role: Principal['role']; clientId?: string },
+  ): void {
+    const { token, digest } = mintSessionToken();
+    const now = new Date();
+    const expires = new Date(now.getTime() + SESSION_HOURS * 60 * 60 * 1000);
+
+    this.store.saveSession({
+      digest,
+      userId: session.userId,
+      kind: session.kind,
+      ...(session.clientId ? { clientId: session.clientId } : {}),
+      role: session.role,
+      createdAt: now.toISOString(),
+      expiresAt: expires.toISOString(),
+    });
+
+    res.setHeader('Set-Cookie', serializeSession(token, {
+      secure: !this.insecureCookies,
+      maxAgeSeconds: SESSION_HOURS * 60 * 60,
+    }));
+  }
+
   /* ------------------------------------------------------------------ routes */
 
   private buildRoutes(): Handler[] {
     return [
       {
-        method: 'GET', pattern: /^\/api\/health$/,
-        run: ({ res }) => send(res, 200, { ok: true, departments: this.rubric.departments.length }),
+        method: 'GET', pattern: /^\/api\/health$/, auth: 'public',
+        run: ({ res }) => send(res, 200, {
+          ok: true,
+          departments: this.rubric.departments.length,
+          // The first-run experience needs to know whether anyone exists yet
+          // without being able to enumerate who. A boolean is the whole answer.
+          needsSetup: this.store.countUsers() === 0,
+        }),
+      },
+
+      /**
+       * First run. Creates the first owner, and only ever the first — once a
+       * user exists this route refuses, so it cannot be used to add an account
+       * to a running studio.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/setup$/, auth: 'public',
+        run: async ({ res, body }) => {
+          if (this.store.countUsers() > 0) {
+            send(res, 409, {
+              error: 'already_set_up',
+              message: 'This studio already has a user. Sign in instead.',
+            });
+            return;
+          }
+          const input = body as { email?: string; name?: string; password?: string };
+          if (!input?.email?.trim() || !input?.name?.trim() || !input?.password) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'Setting up the studio needs a name, an email and a password.',
+            });
+            return;
+          }
+          let record;
+          try {
+            record = await hashPassword(input.password);
+          } catch (error) {
+            send(res, 400, { error: 'weak_password', message: (error as Error).message });
+            return;
+          }
+          const user = {
+            id: `user-${Date.now().toString(36)}`,
+            email: input.email.trim(),
+            name: input.name.trim(),
+            role: 'owner' as const,
+            passwordSalt: record.salt,
+            passwordHash: record.hash,
+            createdAt: new Date().toISOString(),
+          };
+          this.store.saveUser(user);
+          this.issueSession(res, { userId: user.id, kind: 'studio', role: 'owner' });
+          send(res, 201, { id: user.id, name: user.name, email: user.email, role: user.role });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/session$/, auth: 'public',
+        run: async ({ res, body }) => {
+          const input = body as { email?: string; password?: string };
+          const user = input?.email ? this.store.getUserByEmail(input.email) : undefined;
+
+          // One message and one shape for both failures. Saying "no such user"
+          // turns the sign-in form into a way to enumerate who works here.
+          const ok = user !== undefined && typeof input?.password === 'string'
+            && await verifyPassword(input.password, {
+              salt: user.passwordSalt, hash: user.passwordHash,
+            });
+
+          if (!ok || !user) {
+            send(res, 401, {
+              error: 'bad_credentials', message: 'That email and password do not match.',
+            });
+            return;
+          }
+
+          this.issueSession(res, { userId: user.id, kind: 'studio', role: user.role });
+          send(res, 200, { id: user.id, name: user.name, email: user.email, role: user.role });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/session$/,
+        run: ({ res, principal }) => send(res, 200, { principal }),
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/session$/,
+        run: ({ req, res }) => {
+          const token = readSessionCookie(req.headers.cookie);
+          if (token) this.store.deleteSession(digestToken(token));
+          res.setHeader('Set-Cookie', serializeLogout({ secure: !this.insecureCookies }));
+          send(res, 200, { ok: true });
+        },
       },
 
       {
@@ -184,10 +415,154 @@ export class ApiServer {
         }),
       },
 
+      /* ------------------------------------------------------------- clients */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients$/,
+        run: ({ res, scoped }) => {
+          const clients = scoped?.listClients() ?? [];
+          send(res, 200, {
+            clients: clients.map((client) => ({
+              ...client,
+              projects: scoped?.listProjects(client.id).length ?? 0,
+              contacts: scoped?.listContacts(client.id).length ?? 0,
+            })),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients$/,
+        run: ({ res, body, scoped }) => {
+          if (!scoped) return;
+          const input = body as { name?: string; website?: string; industry?: string;
+            location?: string; notes?: string; status?: string };
+          if (!input?.name?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A client needs a name.' });
+            return;
+          }
+
+          const now = new Date().toISOString();
+          const base = slugify(input.name);
+          if (base === '') {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'That name produces no usable address. Give it at least one letter or digit.',
+            });
+            return;
+          }
+
+          // A portal address is built from the slug, so it has to be unique.
+          // Suffixing is friendlier than refusing a second "Acme".
+          let slug = base;
+          for (let n = 2; this.store.getClientBySlug(slug); n += 1) slug = `${base}-${n}`;
+
+          const client = {
+            id: `client-${slug}`,
+            name: input.name.trim(),
+            slug,
+            ...(input.website?.trim() ? { website: input.website.trim() } : {}),
+            ...(input.industry?.trim() ? { industry: input.industry.trim() } : {}),
+            ...(input.location?.trim() ? { location: input.location.trim() } : {}),
+            ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+            status: (input.status ?? 'prospect') as 'prospect',
+            createdAt: now,
+            updatedAt: now,
+          };
+          scoped.saveClient(client);
+          send(res, 201, client);
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          const client = scoped?.getClient(params['clientId'] ?? '');
+          if (!client) {
+            send(res, 404, {
+              error: 'not_found',
+              message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+          send(res, 200, {
+            client,
+            contacts: scoped?.listContacts(client.id) ?? [],
+            projects: scoped?.listProjects(client.id) ?? [],
+            runs: (scoped?.listRuns() ?? []).filter((run) => run.clientId === client.id),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/contacts$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, {
+              error: 'not_found',
+              message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+          const input = body as { name?: string; email?: string; phone?: string;
+            title?: string; decisionMaker?: boolean };
+          if (!input?.name?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A contact needs a name.' });
+            return;
+          }
+          const contact = {
+            id: `contact-${Date.now().toString(36)}`,
+            clientId,
+            name: input.name.trim(),
+            ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+            ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+            ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+            decisionMaker: Boolean(input.decisionMaker),
+            createdAt: new Date().toISOString(),
+          };
+          scoped.saveContact(contact);
+          send(res, 201, contact);
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/projects$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, {
+              error: 'not_found',
+              message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+          const input = body as { name?: string; kind?: string; phase?: string };
+          if (!input?.name?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A project needs a name.' });
+            return;
+          }
+          const now = new Date().toISOString();
+          const project = {
+            id: `project-${slugify(input.name) || 'untitled'}-${Date.now().toString(36).slice(-4)}`,
+            clientId,
+            name: input.name.trim(),
+            kind: (input.kind ?? 'brand-identity') as 'brand-identity',
+            phase: (input.phase ?? 'discovery') as 'discovery',
+            createdAt: now,
+            updatedAt: now,
+          };
+          scoped.saveProject(project);
+          send(res, 201, project);
+        },
+      },
+
       {
         method: 'GET', pattern: /^\/api\/runs$/,
-        run: ({ res }) => send(res, 200, {
-          runs: this.store.listRuns().map((run) => ({
+        run: ({ res, scoped }) => send(res, 200, {
+          runs: (scoped?.listRuns() ?? []).map((run) => ({
             ...run,
             completed: this.store.completedDepartments(run.id).length,
           })),
@@ -196,16 +571,44 @@ export class ApiServer {
 
       {
         method: 'POST', pattern: /^\/api\/runs$/,
-        run: ({ res, body }) => {
+        run: ({ res, body, scoped }) => {
           const input = body as {
-            projectId?: string; brief?: string; level?: number; tracks?: string[];
+            projectId?: string; clientId?: string; brief?: string;
+            level?: number; tracks?: string[];
           };
           if (!input?.brief?.trim()) {
             send(res, 400, { error: 'bad_request', message: 'A run needs a brief.' });
             return;
           }
+          if (!scoped) return;
+
+          // A run belongs to a client, and the caller has to be allowed to
+          // write to that client. Where no project is named the run lands under
+          // the Unattributed client, which the studio can see and a portal
+          // cannot — so a portal session naming nothing gets a refusal rather
+          // than a run in a scope it does not own.
+          const resolved = input.projectId
+            ? scoped.getProject(input.projectId)
+            : ensureLocalProject(this.store, 'default').project;
+
+          if (!resolved) {
+            send(res, 404, {
+              error: 'no_project',
+              message: 'No project by that id is visible to this session.',
+            });
+            return;
+          }
+          if (!scoped.canWrite('run', resolved.clientId)) {
+            send(res, 403, {
+              error: 'forbidden',
+              message: 'This session cannot start a run for that client.',
+            });
+            return;
+          }
+
           const run = this.context.start({
-            projectId: input.projectId ?? 'default',
+            projectId: resolved.id,
+            clientId: resolved.clientId,
             brief: input.brief,
             level: (input.level ?? 1) as SystemLevel,
             ...(input.tracks ? { tracks: input.tracks } : {}),
@@ -217,8 +620,9 @@ export class ApiServer {
 
       {
         method: 'GET', pattern: /^\/api\/runs\/(?<id>[\w-]+)$/,
-        run: ({ res, params }) => {
-          const bundle = this.bundle(params['id'] ?? '');
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const bundle = this.bundle(params['id'] ?? '', scoped);
           const gate = evaluateGate({
             proposed: bundle.run.determination ?? bundle.run.version,
             issues: bundle.issues, conflicts: bundle.conflicts,
@@ -319,9 +723,10 @@ export class ApiServer {
        */
       {
         method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/finalize$/,
-        run: ({ res, params, body }) => {
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
           const runId = params['id'] ?? '';
-          const bundle = this.bundle(runId);
+          const bundle = this.bundle(runId, scoped);
           const proposed = (body as { proposed?: string })?.proposed ?? 'FINAL';
 
           const gate = evaluateGate({
@@ -342,24 +747,27 @@ export class ApiServer {
 
       {
         method: 'GET', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/document$/,
-        run: ({ res, params }) => {
-          sendText(res, 200, internalDocument(this.bundle(params['id'] ?? '')));
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          sendText(res, 200, internalDocument(this.bundle(params['id'] ?? '', scoped)));
         },
       },
 
       {
         method: 'GET', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/handoff$/,
-        run: ({ res, params }) => {
-          sendText(res, 200, handoffPack({ bundle: this.bundle(params['id'] ?? '') }));
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          sendText(res, 200, handoffPack({ bundle: this.bundle(params['id'] ?? '', scoped) }));
         },
       },
 
       {
         method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/summary$/,
-        run: ({ res, params, body }) => {
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
           const input = body as { body?: string; headline?: string };
           const summary = clientSummary({
-            bundle: this.bundle(params['id'] ?? ''),
+            bundle: this.bundle(params['id'] ?? '', scoped),
             body: input?.body ?? '',
             ...(input?.headline ? { headline: input.headline } : {}),
           });

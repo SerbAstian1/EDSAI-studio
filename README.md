@@ -36,10 +36,12 @@ path, the mind-map run, the composition overlay, the hub's asset pack. See
 ```
 corpus/          the EDSAI corpus, vendored — canonical for all reasoning
 packages/
+  auth/          principals, roles, the policy, passwords and session tokens
   rubric/        parses the corpus into typed, validated data
   instruments/   pure functions that compute what the corpus asks to be measured
   prompts/       prompt assembly with a frozen, cacheable prefix
   engine/        the run loop, provenance verifier, FINAL gate, store and CLI
+                 plus clients, contacts, projects and the scoped store
   figma/         Department 5 critique of a frame, plus the Figma plugin
   export/        internal document, gated client summary, DEVPOINT handoff
   measure/       probes and instruments for Departments 8, 40 and 43
@@ -60,7 +62,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 640 tests
+pnpm test          # 738 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```

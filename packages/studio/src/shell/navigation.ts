@@ -47,9 +47,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'clients', label: 'Clients', glyph: '◉', group: 'Workspace',
-    status: 'planned', phase: 'P2',
-    intent: 'Client records, contacts and the onboarding a project is built from. '
-      + 'A run currently carries a project id and nothing behind it.',
+    status: 'built', href: '#/clients',
   },
   {
     id: 'assets', label: 'Assets', glyph: '◈', group: 'Workspace',

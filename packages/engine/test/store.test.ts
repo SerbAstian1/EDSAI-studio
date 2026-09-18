@@ -18,6 +18,7 @@ import type { DepartmentOutput, Run } from '../src/types.js';
 const run: Run = {
   id: 'r1',
   projectId: 'p',
+  clientId: 'client-test',
   brief: 'A brief.',
   level: 1,
   tracks: ['brand'],

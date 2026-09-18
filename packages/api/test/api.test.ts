@@ -12,26 +12,64 @@ import { ApiServer } from '../src/server.js';
 const rubric = buildRubric();
 let server: ApiServer;
 let base: string;
+let store: RunStore;
+/** The session cookie every authenticated request carries. */
+let cookie = '';
 
 beforeEach(async () => {
-  server = new ApiServer({ store: new RunStore(), rubric, scopeId: 'no-motion-authoring' });
+  store = new RunStore();
+  server = new ApiServer({
+    store, rubric, scopeId: 'no-motion-authoring', insecureCookies: true,
+  });
   base = `http://localhost:${await server.listen(0)}`;
+  cookie = await signIn();
 });
 afterEach(async () => { await server.close(); });
+
+/** Create the first owner and keep the cookie the server hands back. */
+async function signIn(): Promise<string> {
+  const res = await fetch(`${base}/api/setup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Studio Owner', email: 'owner@example.com', password: 'a-long-enough-password',
+    }),
+  });
+  return (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+}
 
 const json = async (path: string, init?: RequestInit) => {
   const res = await fetch(base + path, {
     ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(cookie ? { cookie } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   return { status: res.status, body: await res.json() as Record<string, never> };
 };
 
+/** A client and project to hang runs on, since a run now needs both. */
+const seedProject = (clientId = 'c-test', projectId = 'p-test') => {
+  const now = new Date().toISOString();
+  store.saveClient({
+    id: clientId, name: 'Disan Footwear', slug: clientId, status: 'active',
+    createdAt: now, updatedAt: now,
+  });
+  store.saveProject({
+    id: projectId, clientId, name: 'Brand Identity', kind: 'brand-identity',
+    phase: 'discovery', createdAt: now, updatedAt: now,
+  });
+  return { clientId, projectId };
+};
+
 const startRun = async () => {
+  const { projectId } = seedProject();
   const { body } = await json('/api/runs', {
     method: 'POST',
     body: JSON.stringify({
-      projectId: 'Disan Footwear', level: 1,
+      projectId, level: 1,
       brief: 'A booking interface for the Kampala workshop.',
     }),
   });
@@ -146,7 +184,7 @@ describe('runs', () => {
   it('404s an unknown run', async () => {
     const { status, body } = await json('/api/runs/nope');
     expect(status).toBe(404);
-    expect(body['message']).toMatch(/no such run/);
+    expect(body['message']).toMatch(/No run nope is visible to this session/);
   });
 });
 
@@ -247,14 +285,15 @@ describe('documents', () => {
     await json(`/api/runs/${run.id}/departments/1`, {
       method: 'POST', body: JSON.stringify({ submission: fullSubmission(1) }),
     });
-    const res = await fetch(`${base}/api/runs/${run.id}/document`);
+    const res = await fetch(`${base}/api/runs/${run.id}/document`, { headers: { cookie } });
     expect(res.headers.get('content-type')).toContain('text/markdown');
     expect(await res.text()).toContain('internal run document');
   });
 
   it('serves the DEVPOINT handoff pack', async () => {
     const run = await startRun();
-    const text = await (await fetch(`${base}/api/runs/${run.id}/handoff`)).text();
+    const text = await (await fetch(`${base}/api/runs/${run.id}/handoff`,
+      { headers: { cookie } })).text();
     expect(text).toContain('DEVPOINT handoff');
     expect(text).toContain('| 429 |');
   });
@@ -331,7 +370,7 @@ describe('SSE', () => {
     });
 
     const res = await fetch(`${base}/api/runs/${run.id}/stream`, {
-      headers: { 'last-event-id': '0' },
+      headers: { cookie, 'last-event-id': '0' },
     });
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     expect(res.headers.get('x-accel-buffering')).toBe('no');
@@ -353,7 +392,7 @@ describe('SSE', () => {
     });
 
     const res = await fetch(`${base}/api/runs/${run.id}/stream`, {
-      headers: { 'last-event-id': '1' },
+      headers: { cookie, 'last-event-id': '1' },
     });
     const reader = res.body?.getReader();
     const text = new TextDecoder().decode((await reader?.read())?.value);
@@ -367,5 +406,258 @@ describe('SSE', () => {
     const run = await startRun();
     for (let i = 0; i < 260; i++) server.events.emit(run.id, 'tick', { i });
     expect(server.events.eventsFor(run.id).length).toBeLessThanOrEqual(200);
+  });
+});
+
+/* --------------------------------------------------------------------- auth */
+
+describe('authentication', () => {
+  it('refuses every protected endpoint without a session', async () => {
+    const saved = cookie;
+    cookie = '';
+    for (const path of ['/api/runs', '/api/rubric', '/api/session']) {
+      const { status, body } = await json(path);
+      expect(status, path).toBe(401);
+      expect(body['error']).toBe('unauthenticated');
+    }
+    cookie = saved;
+  });
+
+  it('leaves health public, so a first run can discover it needs setting up', async () => {
+    const saved = cookie;
+    cookie = '';
+    const { status, body } = await json('/api/health');
+    expect(status).toBe(200);
+    expect(body['needsSetup']).toBe(false);
+    cookie = saved;
+  });
+
+  it('reports the signed-in principal', async () => {
+    const { status, body } = await json('/api/session');
+    expect(status).toBe(200);
+    expect(body['principal']).toMatchObject({ kind: 'studio', role: 'owner' });
+  });
+
+  it('sets an HttpOnly SameSite cookie, never a readable one', async () => {
+    const store2 = new RunStore();
+    const other = new ApiServer({ store: store2, rubric, insecureCookies: true });
+    const otherBase = `http://localhost:${await other.listen(0)}`;
+    const res = await fetch(`${otherBase}/api/setup`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'A', email: 'a@b.c', password: 'a-long-enough-password' }),
+    });
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('SameSite=Lax');
+    await other.close();
+  });
+
+  it('refuses to set the studio up twice', async () => {
+    const { status, body } = await json('/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'B', email: 'b@c.d', password: 'a-long-enough-password' }),
+    });
+    expect(status).toBe(409);
+    expect(body['error']).toBe('already_set_up');
+  });
+
+  it('gives the same answer for a wrong password and an unknown account', async () => {
+    const wrong = await json('/api/session', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'owner@example.com', password: 'not-the-password' }),
+    });
+    const unknown = await json('/api/session', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'nobody@example.com', password: 'not-the-password' }),
+    });
+    expect(wrong.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(wrong.body['message']).toBe(unknown.body['message']);
+  });
+
+  it('ends the session on logout, and the cookie stops working', async () => {
+    const { status } = await json('/api/session', { method: 'DELETE' });
+    expect(status).toBe(200);
+    const after = await json('/api/runs');
+    expect(after.status).toBe(401);
+  });
+
+  it('refuses a forged cookie', async () => {
+    const saved = cookie;
+    cookie = 'edsai_session=not-a-real-token';
+    expect((await json('/api/runs')).status).toBe(401);
+    cookie = saved;
+  });
+});
+
+describe('CSRF', () => {
+  it('refuses a state-changing request from an unknown origin', async () => {
+    const res = await fetch(`${base}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, origin: 'https://evil.example' },
+      body: JSON.stringify({ brief: 'x' }),
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json() as { error: string }).error).toBe('bad_origin');
+  });
+
+  it('refuses a form-encoded POST with no origin, which is what a cross-site form sends', async () => {
+    const res = await fetch(`${base}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      body: 'brief=x',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('allows a GET from anywhere, which changes nothing', async () => {
+    const res = await fetch(`${base}/api/health`, { headers: { origin: 'https://evil.example' } });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('client isolation over HTTP', () => {
+  /** Sign in as a portal user for one client, by writing the session directly. */
+  const portalCookie = (clientId: string): string => {
+    const token = 'portal-token-for-' + clientId;
+    const { createHash } = require('node:crypto') as typeof import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'portal-user', kind: 'portal', clientId, role: 'editor',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    return `edsai_session=${token}`;
+  };
+
+  it('hides another client’s run from the list', async () => {
+    const run = await startRun();
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+    const { body } = await json('/api/runs');
+    expect((body['runs'] as unknown as unknown[])).toEqual([]);
+    cookie = saved;
+    expect(run.id).toBeTruthy();
+  });
+
+  it('404s another client’s run even when its id is known', async () => {
+    const run = await startRun();
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+    const { status } = await json(`/api/runs/${run.id}`);
+    expect(status).toBe(404);
+    cookie = saved;
+  });
+
+  it('404s every sub-resource of another client’s run, not only the run itself', async () => {
+    const run = await startRun();
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+    for (const path of ['', '/document', '/handoff', '/next']) {
+      const res = await fetch(`${base}/api/runs/${run.id}${path}`, { headers: { cookie } });
+      expect(res.status, path).toBe(404);
+    }
+    cookie = saved;
+  });
+
+  it('lets the client who owns the run see it', async () => {
+    const run = await startRun();
+    const saved = cookie;
+    cookie = portalCookie('c-test');
+    const { status } = await json(`/api/runs/${run.id}`);
+    expect(status).toBe(200);
+    cookie = saved;
+  });
+});
+
+describe('clients', () => {
+  it('creates a client and derives a portal-safe address from its name', async () => {
+    const { status, body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: "Disan's Footwear", industry: 'Footwear' }),
+    });
+    expect(status).toBe(201);
+    expect(body['slug']).toBe('disan-s-footwear');
+    expect(body['status']).toBe('prospect');
+  });
+
+  it('gives a second client of the same name a distinct address', async () => {
+    await json('/api/clients', { method: 'POST', body: JSON.stringify({ name: 'Acme' }) });
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Acme' }),
+    });
+    expect(body['slug']).toBe('acme-2');
+  });
+
+  it('refuses a name that produces no usable address', async () => {
+    const { status } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: '!!!' }),
+    });
+    expect(status).toBe(400);
+  });
+
+  it('refuses a client with no name', async () => {
+    expect((await json('/api/clients', { method: 'POST', body: '{}' })).status).toBe(400);
+  });
+
+  it('counts projects and contacts alongside each client', async () => {
+    const created = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Morrow Coffee' }),
+    });
+    const id = created.body['id'] as unknown as string;
+    await json(`/api/clients/${id}/contacts`, {
+      method: 'POST', body: JSON.stringify({ name: 'A Person', decisionMaker: true }),
+    });
+    await json(`/api/clients/${id}/projects`, {
+      method: 'POST', body: JSON.stringify({ name: 'Rebrand' }),
+    });
+
+    const { body } = await json('/api/clients');
+    const client = (body['clients'] as unknown as { id: string; contacts: number; projects: number }[])
+      .find((c) => c.id === id);
+    expect(client).toMatchObject({ contacts: 1, projects: 1 });
+  });
+
+  it('serves a client with its contacts, projects and runs', async () => {
+    const created = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Atlas Sports' }),
+    });
+    const id = created.body['id'] as unknown as string;
+    const { status, body } = await json(`/api/clients/${id}`);
+    expect(status).toBe(200);
+    expect(body['client']).toMatchObject({ name: 'Atlas Sports' });
+    expect(body['contacts']).toEqual([]);
+    expect(body['runs']).toEqual([]);
+  });
+
+  it('404s a client that does not exist', async () => {
+    expect((await json('/api/clients/client-nope')).status).toBe(404);
+  });
+
+  it('refuses a contact on a client this session cannot see', async () => {
+    const created = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Private Co' }),
+    });
+    const id = created.body['id'] as unknown as string;
+
+    const saved = cookie;
+    const token = 'portal-token-elsewhere';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'editor',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+
+    const { status } = await json(`/api/clients/${id}/contacts`, {
+      method: 'POST', body: JSON.stringify({ name: 'Intruder' }),
+    });
+    expect(status).toBe(404);
+    cookie = saved;
+
+    // And nothing was written.
+    const { body } = await json(`/api/clients/${id}`);
+    expect(body['contacts']).toEqual([]);
   });
 });

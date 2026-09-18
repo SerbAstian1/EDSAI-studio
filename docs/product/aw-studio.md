@@ -124,25 +124,92 @@ A test caught a real navigation bug on the way: Overview and Runs both resolved
 to the same screen, so the sidebar would have highlighted the wrong entry. They
 are now genuinely different screens sharing one `RunTable`.
 
-## The largest open risk
+## Phase 1b — authentication (built, and deliberately before Phase 2)
 
-**There is no authentication anywhere in this codebase.** The API is open to
-anything that can reach the port. That was defensible for a single-user local
-workstation and it is not defensible for the product described in the brief:
-§53 requires per-client isolation enforced at the data layer, and the moment a
-portal is published or a client is invited, that gap becomes the product's
-biggest liability rather than a known limitation.
+The studio had no authentication of any kind: the API was open to anything that
+could reach the port. That was defensible for one user on one machine and not
+for the product the brief describes. The decision taken was to close it **before**
+Phase 2 rather than after, because retrofitting authorization onto entities that
+were designed without it is how the isolation bug gets written — the row that
+predates the scope column is the row nobody remembers to filter.
 
-Nothing in Phase 1 addresses it, and Phase 1 should not be deployed anywhere
-reachable. It has to land before Phase 2 introduces a second client's data, not
-after — retrofitting authorization onto entities that were designed without it
-is how the isolation bug gets written.
+`@edsai/auth` is a leaf package with no dependency that could compromise a
+credential: `node:crypto` only.
 
-## What Phases 2–10 need first
+- **Passwords** are scrypt with a per-password salt, compared with
+  `timingSafeEqual`. String comparison returns on the first differing byte,
+  which leaks how much of a guess was right.
+- **Session tokens** are 256-bit and opaque, and the database stores only their
+  SHA-256. A leaked database yields no usable sessions — the same argument as
+  not storing passwords, applied one layer along, which almost nothing does.
+- **The cookie** is `HttpOnly; Secure; SameSite=Lax`, straight from Department
+  40.4's own table. `localStorage` was never a candidate: §40.4 says not to, and
+  the reason it is convenient is the reason injected script finds it convenient.
+- **Roles** are the brief's five, ordered, with the thresholds in one table.
 
-Almost everything in the brief is blocked on entities that do not exist yet:
-`Client`, `Project`, `Brand`, `Asset`. They belong in `@edsai/engine` beside
-`Run`, with the same schema discipline, and `Run.projectId` becomes a foreign
-key instead of a string. That migration is the first task of Phase 2 and it is
-deliberately not started here — Phase 1 had to be a vertical slice that builds
-and runs, not a half-finished schema change underneath a new shell.
+### Where the rule is enforced
+
+The policy is a pure function in `@edsai/auth`; enforcement is `ScopedStore` in
+the engine, at the data boundary. A policy that route handlers are trusted to
+call is a policy that stops being applied the first time someone adds a route —
+and the brief is explicit that hiding something in the interface is not
+authorization.
+
+Two properties fell out of building it that are worth keeping:
+
+- **Reads filter, writes throw.** A read that threw on another client's id would
+  confirm that something exists there, which is the same disclosure the refusal
+  messages are careful not to make.
+- **Run scope is checked in the request pipeline, not per route.** Every
+  `/api/runs/:id/...` endpoint resolves its run through the scope before the
+  handler runs, so a route added later inherits the check rather than having to
+  remember it. Five existing routes were reading by id with no check at all.
+
+### The CSRF rule, and the mistake in the first version
+
+§40.3 says SameSite is "a strong baseline, **not** a complete solution", so the
+Origin is checked server-side too. The first version refused any state-changing
+request with no `Origin` header — which locked the studio out of its own sign-in
+endpoint, because no non-browser client sends one.
+
+The resolution is the content type: a cross-origin HTML form can only send
+`x-www-form-urlencoded`, `multipart/form-data` or `text/plain`, and cannot send
+`application/json` without a preflight this server answers only for origins it
+allows. So JSON with no Origin is a programmatic client and a form-encoded body
+with no Origin is refused. The residual risk is stated in the module: it trusts
+a specification guarantee, which is a guarantee and not a proof.
+
+## Phase 2 — clients (built)
+
+`Client`, `Contact` and `Project` exist in `@edsai/engine` beside `Run`, and
+**`Run.clientId` is required rather than optional**. Making it optional for the
+CLI's convenience would put an unscoped row in the same table as scoped ones,
+and the unscoped row is the one no isolation rule can reason about. The CLI
+resolves an explicit "Unattributed" client instead, which says what it is.
+
+`Run.projectId` is now a foreign key. It used to be a free string, so the
+migration turns every distinct string into a real `Project` under that client —
+nothing is discarded, and the migration is idempotent.
+
+The studio gained a sign-in gate with the first-run setup the brief's §48 asks
+for, a Clients list with creation, and a client record with contacts, projects
+and runs.
+
+### Verified, not asserted
+
+| Check | Result |
+|---|---|
+| Isolation at the boundary | a portal session for one client gets `[]` from every list, `undefined` from every get-by-id, and `Forbidden` on every write to another client |
+| Isolation over HTTP | another client's run 404s at `/api/runs/:id`, `/document`, `/handoff` and `/next` — not only at the run itself |
+| The full flow, in a browser | first-run setup → shell → create client → open client → sign out → gate returns, driven over CDP against the real API |
+| The session cookie | `document.cookie` cannot see it, checked in the running page |
+| Account enumeration | a wrong password and an unknown account return the same status and the same message |
+| Budget | 88.3 KB gz against 170 KB |
+| Suite | 738 tests |
+
+## What Phases 3–10 still need
+
+`Asset` and `Brand` do not exist as entities yet, and asset storage is the
+larger of the two — the brief's library, versions and approval states all need a
+storage layer the engine does not have. Onboarding (Phase 3) is the next slice
+and now has somewhere to put its answers.

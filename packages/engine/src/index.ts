@@ -5,3 +5,6 @@ export * from './store.js';
 export * from './run.js';
 export * from './rescore.js';
 export * from './harness.js';
+export * from './entities.js';
+export * from './bootstrap.js';
+export * from './scoped.js';

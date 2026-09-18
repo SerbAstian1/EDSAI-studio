@@ -5,6 +5,7 @@ import { evaluateGate, gateSummary } from '../gate.js';
 import { Harness, instrumentNames } from '../harness.js';
 import { RunContext } from '../run.js';
 import { RunStore } from '../store.js';
+import { ensureLocalProject } from '../bootstrap.js';
 
 /**
  * The CLI.
@@ -66,10 +67,16 @@ function main(argv: string[]): number {
       }
       const level = Number.parseInt(flag(args, 'level') ?? '1', 10) as SystemLevel;
       const scopeId = flag(args, 'scope');
-      const { context: ctx } = context(scopeId);
+      const { context: ctx, store: runStore } = context(scopeId);
+
+      // A run belongs to a client. The CLI does not know which, so it resolves
+      // the named project under an explicit "Unattributed" client rather than
+      // leaving the scope blank.
+      const resolved = ensureLocalProject(runStore, flag(args, 'project') ?? 'default');
 
       const run = ctx.start({
-        projectId: flag(args, 'project') ?? 'default',
+        projectId: resolved.project.id,
+        clientId: resolved.client.id,
         brief: readFileSync(briefPath, 'utf8'),
         level,
         ...(flag(args, 'id') ? { runId: flag(args, 'id') as string } : {}),

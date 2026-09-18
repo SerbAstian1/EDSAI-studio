@@ -20,6 +20,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@edsai/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@edsai/engine':
         specifier: workspace:*
         version: link:../engine
@@ -33,8 +36,19 @@ importers:
         specifier: workspace:*
         version: link:../rubric
 
+  packages/auth:
+    dependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
+  packages/desktop: {}
+
   packages/engine:
     dependencies:
+      '@edsai/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@edsai/instruments':
         specifier: workspace:*
         version: link:../instruments

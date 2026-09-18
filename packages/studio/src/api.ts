@@ -140,6 +140,9 @@ export class ApiError extends Error {
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
+    // The session lives in an HttpOnly cookie, which JavaScript cannot read and
+    // therefore cannot attach by hand — `same-origin` is what sends it.
+    credentials: 'same-origin',
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
 
@@ -161,7 +164,77 @@ const tryParse = (text: string): unknown => {
   try { return JSON.parse(text); } catch { return text; }
 };
 
+export interface Principal {
+  kind: 'studio' | 'portal';
+  userId: string;
+  clientId?: string;
+  role: 'limited' | 'viewer' | 'editor' | 'brand_manager' | 'owner';
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  slug: string;
+  website?: string;
+  industry?: string;
+  location?: string;
+  notes?: string;
+  status: 'prospect' | 'active' | 'dormant' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+  projects?: number;
+  contacts?: number;
+}
+
+export interface Contact {
+  id: string;
+  clientId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  title?: string;
+  decisionMaker: boolean;
+}
+
+export interface Project {
+  id: string;
+  clientId: string;
+  name: string;
+  kind: string;
+  phase: string;
+  deadline?: string;
+}
+
 export const api = {
+  health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
+
+  session: () => call<{ principal: Principal }>('/api/session'),
+  signIn: (email: string, password: string) =>
+    call<Principal>('/api/session', {
+      method: 'POST', body: JSON.stringify({ email, password }),
+    }),
+  signOut: () => call<{ ok: boolean }>('/api/session', { method: 'DELETE' }),
+  setup: (name: string, email: string, password: string) =>
+    call<Principal>('/api/setup', {
+      method: 'POST', body: JSON.stringify({ name, email, password }),
+    }),
+
+  clients: () => call<{ clients: Client[] }>('/api/clients').then((r) => r.clients),
+  client: (id: string) => call<{
+    client: Client; contacts: Contact[]; projects: Project[]; runs: unknown[];
+  }>(`/api/clients/${id}`),
+  createClient: (input: Partial<Client> & { name: string }) =>
+    call<Client>('/api/clients', { method: 'POST', body: JSON.stringify(input) }),
+  createContact: (clientId: string, input: { name: string; email?: string; title?: string;
+    decisionMaker?: boolean }) =>
+    call<Contact>(`/api/clients/${clientId}/contacts`, {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+  createProject: (clientId: string, input: { name: string; kind?: string }) =>
+    call<Project>(`/api/clients/${clientId}/projects`, {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+
   rubric: () => call<RubricSummary>('/api/rubric'),
   runs: () => call<{ runs: Run[] }>('/api/runs').then((r) => r.runs),
   run: (id: string) => call<RunDetail>(`/api/runs/${id}`),

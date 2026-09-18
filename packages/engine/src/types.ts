@@ -164,7 +164,18 @@ export type RunStatus = z.infer<typeof RunStatus>;
 
 export const Run = z.object({
   id: z.string().min(1),
+  /**
+   * The project this run belongs to. A foreign key since Phase 2 — it used to
+   * be a free string with nothing behind it, and the migration turned every
+   * distinct string into a real `Project`.
+   */
   projectId: z.string().min(1),
+  /**
+   * The client whose data this is. Every scope check reads this field, so it is
+   * required rather than optional: a run with no client is a run no isolation
+   * rule can reason about.
+   */
+  clientId: z.string().min(1),
   brief: z.string().min(1),
   level: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   tracks: z.array(z.string().min(1)).min(1),

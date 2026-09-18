@@ -24,7 +24,14 @@ import {
  */
 
 export interface StartRunInput {
+  /** The project this run belongs to. */
   projectId: string;
+  /**
+   * The client whose data this run becomes. Required rather than optional: an
+   * unscoped run cannot be reasoned about by any isolation rule, and "we will
+   * attach it later" is how the row that leaks gets written.
+   */
+  clientId: string;
   brief: string;
   level: SystemLevel;
   tracks?: readonly string[];
@@ -78,6 +85,7 @@ export class RunContext {
     const run: RunType = Run.parse({
       id: input.runId ?? crypto.randomUUID().slice(0, 8),
       projectId: input.projectId,
+      clientId: input.clientId,
       brief: input.brief,
       level: input.level,
       tracks: [...tracks],

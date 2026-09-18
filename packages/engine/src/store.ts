@@ -6,6 +6,12 @@ import {
   type Conflict as ConflictType, type DepartmentOutput as OutputType,
   type Issue as IssueType, type Run as RunType,
 } from './types.js';
+import { slugify } from './entities.js';
+import {
+  Client, Contact, Project, Session, StudioUser,
+  type Client as ClientType, type Contact as ContactType, type Project as ProjectType,
+  type Session as SessionType, type StudioUser as StudioUserType,
+} from './entities.js';
 
 /**
  * Run persistence.
@@ -25,6 +31,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
+  client_id TEXT NOT NULL DEFAULT '',
   brief TEXT NOT NULL,
   level INTEGER NOT NULL,
   tracks TEXT NOT NULL,
@@ -36,6 +43,66 @@ CREATE TABLE IF NOT EXISTS runs (
   completed_at TEXT,
   determination TEXT
 );
+
+CREATE TABLE IF NOT EXISTS clients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  website TEXT,
+  industry TEXT,
+  location TEXT,
+  notes TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  title TEXT,
+  decision_maker INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  deadline TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  digest TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  client_id TEXT,
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS contacts_by_client ON contacts (client_id);
+CREATE INDEX IF NOT EXISTS projects_by_client ON projects (client_id);
+CREATE INDEX IF NOT EXISTS runs_by_client ON runs (client_id);
 
 CREATE TABLE IF NOT EXISTS outputs (
   run_id TEXT NOT NULL,
@@ -166,9 +233,64 @@ export class RunStore {
    * whole migration: old rows read as `[]`, which is what they meant.
    */
   private migrate(): void {
-    const columns = this.db.prepare('PRAGMA table_info(outputs)').all() as { name: string }[];
-    if (!columns.some((column) => column.name === 'tokens')) {
+    const columns = (table: string): string[] =>
+      (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+        .map((column) => column.name);
+
+    if (!columns('outputs').includes('tokens')) {
       this.db.exec("ALTER TABLE outputs ADD COLUMN tokens TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!columns('runs').includes('client_id')) {
+      this.db.exec("ALTER TABLE runs ADD COLUMN client_id TEXT NOT NULL DEFAULT ''");
+    }
+    this.attachOrphanedRuns();
+  }
+
+  /**
+   * Give every run that predates clients a client and a project.
+   *
+   * Runs used to carry `project_id` as a free string with nothing behind it.
+   * Now it is a foreign key, so the string becomes a `Project.name` under one
+   * client created for the purpose. Nothing is discarded and nothing is left
+   * unscoped: a run with no client is a run no scope check can reason about,
+   * which is precisely the row that leaks later.
+   *
+   * Idempotent — it only touches runs whose client is still empty.
+   */
+  private attachOrphanedRuns(): void {
+    const orphans = this.db
+      .prepare("SELECT id, project_id, started_at FROM runs WHERE client_id = '' OR client_id IS NULL")
+      .all() as { id: string; project_id: string; started_at: string }[];
+    if (orphans.length === 0) return;
+
+    const now = new Date().toISOString();
+    const client = this.ensureClient({
+      id: 'client-unattributed',
+      name: 'Unattributed',
+      slug: 'unattributed',
+      notes: 'Created by migration for runs recorded before clients existed.',
+      status: 'archived',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const byName = new Map<string, string>();
+    for (const project of this.listProjects(client.id)) byName.set(project.name, project.id);
+
+    const update = this.db.prepare('UPDATE runs SET client_id = ?, project_id = ? WHERE id = ?');
+    for (const orphan of orphans) {
+      const name = orphan.project_id || 'Untitled';
+      let projectId = byName.get(name);
+      if (!projectId) {
+        projectId = `project-${slugify(name) || 'untitled'}-${client.id.slice(-4)}`;
+        this.saveProject({
+          id: projectId, clientId: client.id, name,
+          kind: 'other', phase: 'complete',
+          createdAt: orphan.started_at || now, updatedAt: now,
+        });
+        byName.set(name, projectId);
+      }
+      update.run(client.id, projectId, orphan.id);
     }
   }
 
@@ -176,19 +298,189 @@ export class RunStore {
     this.db.close();
   }
 
+  /* ----------------------------------------------------------------- clients */
+
+  saveClient(client: ClientType): void {
+    Client.parse(client);
+    this.db.prepare(`
+      INSERT INTO clients (id, name, slug, website, industry, location, notes, status,
+                           created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, slug = excluded.slug, website = excluded.website,
+        industry = excluded.industry, location = excluded.location, notes = excluded.notes,
+        status = excluded.status, updated_at = excluded.updated_at
+    `).run(
+      client.id, client.name, client.slug, client.website ?? null, client.industry ?? null,
+      client.location ?? null, client.notes ?? null, client.status,
+      client.createdAt, client.updatedAt,
+    );
+  }
+
+  /** Save unless the slug is already taken by someone else. */
+  ensureClient(client: ClientType): ClientType {
+    const existing = this.getClientBySlug(client.slug);
+    if (existing) return existing;
+    this.saveClient(client);
+    return client;
+  }
+
+  getClient(id: string): ClientType | undefined {
+    const row = this.db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
+    return row ? hydrateClient(row as Record<string, unknown>) : undefined;
+  }
+
+  getClientBySlug(slug: string): ClientType | undefined {
+    const row = this.db.prepare('SELECT * FROM clients WHERE slug = ?').get(slug);
+    return row ? hydrateClient(row as Record<string, unknown>) : undefined;
+  }
+
+  listClients(): ClientType[] {
+    return (this.db.prepare('SELECT * FROM clients ORDER BY name').all() as Record<string, unknown>[])
+      .map(hydrateClient);
+  }
+
+  /* ---------------------------------------------------------------- contacts */
+
+  saveContact(contact: ContactType): void {
+    Contact.parse(contact);
+    this.db.prepare(`
+      INSERT INTO contacts (id, client_id, name, email, phone, title, decision_maker, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, email = excluded.email, phone = excluded.phone,
+        title = excluded.title, decision_maker = excluded.decision_maker
+    `).run(
+      contact.id, contact.clientId, contact.name, contact.email ?? null,
+      contact.phone ?? null, contact.title ?? null, contact.decisionMaker ? 1 : 0,
+      contact.createdAt,
+    );
+  }
+
+  listContacts(clientId: string): ContactType[] {
+    const rows = this.db
+      .prepare('SELECT * FROM contacts WHERE client_id = ? ORDER BY decision_maker DESC, name')
+      .all(clientId) as Record<string, unknown>[];
+    return rows.map((row) => Contact.parse({
+      id: row['id'], clientId: row['client_id'], name: row['name'],
+      ...(row['email'] ? { email: row['email'] } : {}),
+      ...(row['phone'] ? { phone: row['phone'] } : {}),
+      ...(row['title'] ? { title: row['title'] } : {}),
+      decisionMaker: row['decision_maker'] === 1,
+      createdAt: row['created_at'],
+    }));
+  }
+
+  /* ---------------------------------------------------------------- projects */
+
+  saveProject(project: ProjectType): void {
+    Project.parse(project);
+    this.db.prepare(`
+      INSERT INTO projects (id, client_id, name, kind, phase, deadline, notes,
+                            created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, kind = excluded.kind, phase = excluded.phase,
+        deadline = excluded.deadline, notes = excluded.notes, updated_at = excluded.updated_at
+    `).run(
+      project.id, project.clientId, project.name, project.kind, project.phase,
+      project.deadline ?? null, project.notes ?? null, project.createdAt, project.updatedAt,
+    );
+  }
+
+  getProject(id: string): ProjectType | undefined {
+    const row = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+    return row ? hydrateProject(row as Record<string, unknown>) : undefined;
+  }
+
+  listProjects(clientId?: string): ProjectType[] {
+    const rows = (clientId === undefined
+      ? this.db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all()
+      : this.db.prepare('SELECT * FROM projects WHERE client_id = ? ORDER BY updated_at DESC')
+        .all(clientId)) as Record<string, unknown>[];
+    return rows.map(hydrateProject);
+  }
+
+  /* ------------------------------------------------------- users and sessions */
+
+  saveUser(user: StudioUserType): void {
+    StudioUser.parse(user);
+    this.db.prepare(`
+      INSERT INTO users (id, email, name, role, password_salt, password_hash, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        email = excluded.email, name = excluded.name, role = excluded.role,
+        password_salt = excluded.password_salt, password_hash = excluded.password_hash
+    `).run(user.id, user.email.toLowerCase(), user.name, user.role,
+      user.passwordSalt, user.passwordHash, user.createdAt);
+  }
+
+  getUserByEmail(email: string): StudioUserType | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ?')
+      .get(email.toLowerCase()) as Record<string, unknown> | undefined;
+    return row ? StudioUser.parse({
+      id: row['id'], email: row['email'], name: row['name'], role: row['role'],
+      passwordSalt: row['password_salt'], passwordHash: row['password_hash'],
+      createdAt: row['created_at'],
+    }) : undefined;
+  }
+
+  countUsers(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+    return row.n;
+  }
+
+  saveSession(session: SessionType): void {
+    Session.parse(session);
+    this.db.prepare(`
+      INSERT INTO sessions (digest, user_id, kind, client_id, role, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at
+    `).run(session.digest, session.userId, session.kind, session.clientId ?? null,
+      session.role, session.createdAt, session.expiresAt);
+  }
+
+  /** A session is returned only while it is still valid; expiry is not the caller's to judge. */
+  getSession(digest: string, now = new Date()): SessionType | undefined {
+    const row = this.db.prepare('SELECT * FROM sessions WHERE digest = ?')
+      .get(digest) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    const session = Session.parse({
+      digest: row['digest'], userId: row['user_id'], kind: row['kind'],
+      ...(row['client_id'] ? { clientId: row['client_id'] } : {}),
+      role: row['role'], createdAt: row['created_at'], expiresAt: row['expires_at'],
+    });
+    if (new Date(session.expiresAt).getTime() <= now.getTime()) {
+      this.deleteSession(digest);
+      return undefined;
+    }
+    return session;
+  }
+
+  deleteSession(digest: string): void {
+    this.db.prepare('DELETE FROM sessions WHERE digest = ?').run(digest);
+  }
+
+  /** Housekeeping: drop everything already expired. */
+  pruneSessions(now = new Date()): number {
+    const result = this.db.prepare('DELETE FROM sessions WHERE expires_at <= ?')
+      .run(now.toISOString());
+    return Number(result.changes ?? 0);
+  }
+
   /* -------------------------------------------------------------------- runs */
 
   saveRun(run: RunType): void {
     Run.parse(run);
     this.db.prepare(`
-      INSERT INTO runs (id, project_id, brief, level, tracks, scope_id, activated,
+      INSERT INTO runs (id, project_id, client_id, brief, level, tracks, scope_id, activated,
                         version, status, started_at, completed_at, determination)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         version = excluded.version, status = excluded.status,
         completed_at = excluded.completed_at, determination = excluded.determination
     `).run(
-      run.id, run.projectId, run.brief, run.level, JSON.stringify(run.tracks),
+      run.id, run.projectId, run.clientId, run.brief, run.level, JSON.stringify(run.tracks),
       run.scopeId, JSON.stringify(run.activatedDepartments), run.version, run.status,
       run.startedAt, run.completedAt ?? null, run.determination ?? null,
     );
@@ -202,6 +494,7 @@ export class RunStore {
     return Run.parse({
       id: row['id'],
       projectId: row['project_id'],
+      clientId: row['client_id'],
       brief: row['brief'],
       level: row['level'],
       tracks: JSON.parse(String(row['tracks'])),
@@ -215,9 +508,12 @@ export class RunStore {
     });
   }
 
-  listRuns(): RunType[] {
-    const rows = this.db.prepare('SELECT id FROM runs ORDER BY started_at DESC').all() as
-      { id: string }[];
+  /** Every run, or only one client's. The filter is SQL, not a post-filter. */
+  listRuns(clientId?: string): RunType[] {
+    const rows = (clientId === undefined
+      ? this.db.prepare('SELECT id FROM runs ORDER BY started_at DESC').all()
+      : this.db.prepare('SELECT id FROM runs WHERE client_id = ? ORDER BY started_at DESC')
+        .all(clientId)) as { id: string }[];
     return rows.map((r) => this.getRun(r.id)).filter((r): r is RunType => Boolean(r));
   }
 
@@ -413,4 +709,25 @@ export class RunStore {
       detail: String(row['detail']),
     }));
   }
+}
+
+function hydrateClient(row: Record<string, unknown>): ClientType {
+  return Client.parse({
+    id: row['id'], name: row['name'], slug: row['slug'],
+    ...(row['website'] ? { website: row['website'] } : {}),
+    ...(row['industry'] ? { industry: row['industry'] } : {}),
+    ...(row['location'] ? { location: row['location'] } : {}),
+    ...(row['notes'] ? { notes: row['notes'] } : {}),
+    status: row['status'], createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateProject(row: Record<string, unknown>): ProjectType {
+  return Project.parse({
+    id: row['id'], clientId: row['client_id'], name: row['name'],
+    kind: row['kind'], phase: row['phase'],
+    ...(row['deadline'] ? { deadline: row['deadline'] } : {}),
+    ...(row['notes'] ? { notes: row['notes'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
 }
