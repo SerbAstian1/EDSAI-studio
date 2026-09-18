@@ -7,7 +7,7 @@ import { parseRoute, activeSection } from '../src/App.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
-import type { Asset, DepartmentOutput, Issue } from '../src/api.js';
+import type { Asset, Client, DepartmentOutput, Issue } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
 
@@ -324,6 +324,11 @@ describe('studio summary', () => {
 
 /* --------------------------------------------------------------------- files */
 
+const client = (id: string, name: string): Client => ({
+  id, name, slug: id, status: 'active',
+  createdAt: '2026-09-17T00:00:00Z', updatedAt: '2026-09-17T00:00:00Z',
+});
+
 const asset = (over: Partial<Asset> & { id: string }): Asset => ({
   clientId: 'acme', digest: 'd'.repeat(64), filename: `${over.id}.png`, kind: 'logo',
   contentType: 'image/png', bytes: 1024, approved: true,
@@ -365,8 +370,7 @@ describe('the files shelf', () => {
 
   it('ranks a client with unapproved files above a fuller one with none', () => {
     const clients = [
-      { id: 'full', name: 'Full', slug: 'full', status: 'active' as const },
-      { id: 'waiting', name: 'Waiting', slug: 'waiting', status: 'active' as const },
+      client('full', 'Full'), client('waiting', 'Waiting'),
     ];
     const ranked = shelves(clients, [
       asset({ id: 'a', clientId: 'full' }), asset({ id: 'b', clientId: 'full' }),
@@ -378,10 +382,7 @@ describe('the files shelf', () => {
   });
 
   it('leaves out a client with no files rather than showing an empty shelf', () => {
-    const ranked = shelves(
-      [{ id: 'empty', name: 'Empty', slug: 'empty', status: 'active' as const }],
-      [],
-    );
+    const ranked = shelves([client('empty', 'Empty')], []);
     expect(ranked).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { buildRubric, type Rubric, type SystemLevel } from '@edsai/rubric';
 import {
   applyRescore, evaluateGate, RescoreRefused, RunContext, RunStore,
@@ -7,14 +8,16 @@ import {
 import {
   ClientSummaryRefused, clientSummary, handoffPack, internalDocument, type RunBundle,
 } from '@edsai/export';
+import { renderPortal, escapeHtml, STYLE } from '@edsai/hub';
 import { RunEvents } from './events.js';
 import {
   ScopedStore, ensureLocalProject, slugify,
   QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject,
-  measure, applyEdit, seedFromRun, EditRefused,
+  measure, applyEdit, seedFromRun, forClient, EditRefused,
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
+  PORTAL_KEY_DAYS, portalUserId,
   type AssetStore,
-  type Run, type Onboarding,
+  type Run, type Onboarding, type PortalKey,
 } from '@edsai/engine';
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
@@ -61,6 +64,15 @@ const SESSION_HOURS = 12;
 /** How long a client has to fill the form in before the link stops working. */
 const ONBOARDING_INVITE_DAYS = 30;
 
+/**
+ * Roles a portal link may be issued with.
+ *
+ * `owner` is absent deliberately: the studio's own owner role carries
+ * `manage-access`, and a portal link that granted it would let its holder mint
+ * further links — a bearer credential that reproduces itself.
+ */
+const PORTAL_ROLES = ['limited', 'viewer', 'editor', 'brand_manager'] as const;
+
 interface Handler {
   method: string;
   pattern: RegExp;
@@ -71,6 +83,14 @@ interface Handler {
    * added without thinking about auth fails closed.
    */
   auth?: 'public';
+  /**
+   * Whether this route answers in HTML.
+   *
+   * It only changes what a refusal looks like: a person who followed a link
+   * from an email and whose session has lapsed should be told so in a page, not
+   * handed `{"error":"unauthenticated"}`.
+   */
+  html?: true;
   /**
    * How this route's body is read. The pipeline reads the stream exactly once,
    * so the route cannot read it again — an upload route that did would wait
@@ -192,10 +212,13 @@ export class ApiServer {
         if (route.auth !== 'public') {
           const principal = this.principalFor(req);
           if (!principal) {
-            send(res, 401, {
-              error: 'unauthenticated',
-              message: 'This endpoint needs a session. Sign in at POST /api/session.',
-            });
+            if (route.html) sendHtml(res, 401, expiredPage());
+            else {
+              send(res, 401, {
+                error: 'unauthenticated',
+                message: 'This endpoint needs a session. Sign in at POST /api/session.',
+              });
+            }
             return;
           }
           context.principal = principal;
@@ -319,12 +342,19 @@ export class ApiServer {
         userId: session.userId,
         clientId: session.clientId ?? '',
         role: session.role,
+        // Read from the stored session, never from the request — a caller who
+        // could name their own collections would widen their own access, which
+        // is the whole attack this design exists to prevent.
+        ...(session.collections ? { collections: session.collections } : {}),
       };
   }
 
   private issueSession(
     res: ServerResponse,
-    session: { userId: string; kind: 'studio' | 'portal'; role: Principal['role']; clientId?: string },
+    session: {
+      userId: string; kind: 'studio' | 'portal'; role: Principal['role'];
+      clientId?: string; collections?: readonly string[];
+    },
   ): void {
     const { token, digest } = mintSessionToken();
     const now = new Date();
@@ -335,6 +365,8 @@ export class ApiServer {
       userId: session.userId,
       kind: session.kind,
       ...(session.clientId ? { clientId: session.clientId } : {}),
+      ...(session.collections && session.collections.length > 0
+        ? { collections: [...session.collections] } : {}),
       role: session.role,
       createdAt: now.toISOString(),
       expiresAt: expires.toISOString(),
@@ -406,7 +438,7 @@ export class ApiServer {
           }
 
           const user = {
-            id: `user-${Date.now().toString(36)}`,
+            id: newId('user'),
             email: input.email.trim(),
             name: input.name.trim(),
             role: 'owner' as const,
@@ -542,7 +574,14 @@ export class ApiServer {
 
           const digest = this.assets.put(bytes);
           const asset = {
-            id: `asset-${digest.slice(0, 12)}-${clientId}`,
+            // The bytes are content-addressed; the **record** is not. Deriving
+            // the id from the digest made two files with identical bytes one
+            // row, so uploading the same artwork as `logo.png` and then as
+            // `draft.png` silently destroyed the first — and the portal then
+            // showed the survivor under the wrong name and the wrong approval.
+            // Storage still dedupes: one `digest`, one file on disk, many
+            // records pointing at it.
+            id: newId('asset'),
             clientId,
             digest,
             filename,
@@ -631,6 +670,251 @@ export class ApiServer {
             'cache-control': 'private, max-age=300',
           });
           res.end(bytes);
+        },
+      },
+
+      /* --------------------------------------------------------- portal keys */
+
+      /**
+       * Issue a portal key.
+       *
+       * The token is shown exactly once, here. Only its digest is stored, so
+       * nobody — the studio included — can recover it later; a lost link is
+       * reissued, which is an action the client can see, rather than looked up.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/portal-keys$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          // Issuing a way in is access management, which is the studio's alone —
+          // a client who could mint their own keys would make every scope rule
+          // here decorative.
+          if (!scoped.canManageAccess(clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot issue portal links.',
+            });
+            return;
+          }
+
+          const input = body as {
+            label?: string; role?: string; collections?: string[]; days?: number;
+          };
+          const label = (input?.label ?? '').trim();
+          if (!label) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A portal link needs a label — who it was given to.',
+            });
+            return;
+          }
+
+          const role = PORTAL_ROLES.includes(input?.role as never)
+            ? input?.role as PortalKey['role'] : 'viewer';
+          const collections = (input?.collections ?? []).map((c) => c.trim()).filter(Boolean);
+          if (role === 'limited' && collections.length === 0) {
+            // A limited key with no collections opens nothing. Refusing beats
+            // issuing a link that silently shows an empty portal.
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A limited link needs at least one collection, or it opens nothing.',
+            });
+            return;
+          }
+
+          const days = Number.isFinite(input?.days) && (input?.days ?? 0) > 0
+            ? Math.min(Math.round(input?.days ?? 0), 365) : PORTAL_KEY_DAYS;
+          const { token, digest } = mintSessionToken();
+          const now = new Date();
+          const expires = new Date(now.getTime() + days * 86_400_000);
+
+          this.store.savePortalKey({
+            digest,
+            clientId,
+            label,
+            role,
+            ...(role === 'limited' ? { collections } : {}),
+            createdAt: now.toISOString(),
+            expiresAt: expires.toISOString(),
+          });
+
+          send(res, 201, {
+            key: {
+              label, role, clientId, expiresAt: expires.toISOString(),
+              ...(role === 'limited' ? { collections } : {}), uses: 0,
+            },
+            // Shown once. There is no route that returns it again.
+            link: { token, path: `/portal/enter/${token}` },
+          });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/portal-keys$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId) || !scoped.canManageAccess(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          // Digests never leave the server: a designer identifies a link by its
+          // label, and an id that could be replayed would defeat storing a
+          // digest in the first place.
+          send(res, 200, {
+            keys: this.store.listPortalKeys(clientId).map(({ digest, ...rest }) => ({
+              ...rest, id: digest.slice(0, 12),
+            })),
+          });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/portal-keys\/(?<keyId>[0-9a-f]{12})$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId) || !scoped.canManageAccess(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const keyId = params['keyId'] ?? '';
+          // Resolved within the client, so one client's id prefix can never
+          // revoke another's key even if the prefixes collided.
+          const match = this.store.listPortalKeys(clientId)
+            .find((key) => key.digest.startsWith(keyId));
+          if (!match) {
+            send(res, 404, { error: 'not_found', message: 'No such link.' });
+            return;
+          }
+          this.store.revokePortalKey(match.digest);
+          send(res, 200, { revoked: match.label });
+        },
+      },
+
+      /**
+       * Redeem a portal key for a session.
+       *
+       * The key is a capability; what it mints is an ordinary portal session,
+       * with the role and collections recorded when it was issued. There is no
+       * second authorization path — everything `ScopedStore` enforces is
+       * enforced for a client who arrived this way.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/portal\/session$/, auth: 'public',
+        run: ({ res, body }) => {
+          const token = String((body as { token?: string })?.token ?? '');
+          const key = token ? this.store.redeemPortalKey(digestToken(token)) : undefined;
+          if (!key) {
+            send(res, 401, {
+              error: 'bad_link',
+              message: 'That link has expired or been revoked. Ask the studio for a new one.',
+            });
+            return;
+          }
+          const client = this.store.getClient(key.clientId);
+          this.issueSession(res, {
+            userId: portalUserId(key.digest),
+            kind: 'portal',
+            role: key.role,
+            clientId: key.clientId,
+            ...(key.collections ? { collections: key.collections } : {}),
+          });
+          send(res, 200, {
+            client: client ? { id: client.id, name: client.name, slug: client.slug } : undefined,
+            role: key.role,
+          });
+        },
+      },
+
+      /* ------------------------------------------------------------- the portal */
+
+      /**
+       * Every browser asks for this without being told to, and answering a
+       * JSON 404 puts a red line in a client's console on a page whose whole
+       * claim is that it is their copy of record. 204 is "there is nothing
+       * here", which is true and silent.
+       */
+      {
+        method: 'GET', pattern: /^\/favicon\.ico$/, auth: 'public',
+        run: ({ res }) => { res.writeHead(204).end(); },
+      },
+
+      /**
+       * Open a portal link.
+       *
+       * A GET, because it is the URL in an email and a person clicking it is
+       * not submitting a form. It redeems the key, sets the session cookie and
+       * redirects to the portal itself — so the token leaves the address bar
+       * immediately rather than sitting in history, bookmarks and every
+       * `Referer` the page goes on to send.
+       */
+      {
+        method: 'GET', pattern: /^\/portal\/enter\/(?<token>[A-Za-z0-9_-]+)$/, auth: 'public',
+        run: ({ res, params }) => {
+          const key = this.store.redeemPortalKey(digestToken(params['token'] ?? ''));
+          if (!key) {
+            sendHtml(res, 401, expiredPage());
+            return;
+          }
+          this.issueSession(res, {
+            userId: portalUserId(key.digest),
+            kind: 'portal',
+            role: key.role,
+            clientId: key.clientId,
+            ...(key.collections ? { collections: key.collections } : {}),
+          });
+          res.writeHead(303, { location: '/portal' }).end();
+        },
+      },
+
+      /**
+       * The portal.
+       *
+       * Rendered on the server from the scoped store, so what a client can see
+       * is decided by the same boundary every other route goes through — there
+       * is no portal-specific access path to get wrong.
+       */
+      {
+        method: 'GET', pattern: /^\/portal\/?$/, html: true,
+        run: ({ res, principal, scoped }) => {
+          if (!scoped || !principal) return;
+          if (principal.kind !== 'portal') {
+            // A studio session reaching /portal is a designer checking their
+            // own work. Say which portal to open rather than rendering an
+            // arbitrary client's.
+            sendHtml(res, 400, studioAtPortalPage());
+            return;
+          }
+
+          const client = scoped.getClient(principal.clientId);
+          if (!client) {
+            sendHtml(res, 404, expiredPage());
+            return;
+          }
+
+          const files = scoped.listAssets(client.id);
+          const brandValues = forClient(scoped.listBrandValues(client.id));
+
+          sendHtml(res, 200, renderPortal({
+            clientName: client.name,
+            files: files.map((asset) => ({
+              id: asset.id,
+              filename: asset.filename,
+              kind: asset.kind,
+              bytes: asset.bytes,
+              ...(asset.collection ? { collection: asset.collection } : {}),
+              ...(asset.description ? { description: asset.description } : {}),
+            })),
+            brandValues,
+            ...(principal.role === 'limited' && principal.collections
+              ? { limitedTo: principal.collections } : {}),
+            generatedAt: new Date().toISOString(),
+          }));
         },
       },
 
@@ -807,7 +1091,7 @@ export class ApiServer {
           }
 
           const onboarding = {
-            id: `onb-${Date.now().toString(36)}`,
+            id: newId('onb'),
             clientId,
             status: 'sent' as const,
             createdAt: new Date().toISOString(),
@@ -883,7 +1167,7 @@ export class ApiServer {
           const now = new Date().toISOString();
 
           const project = {
-            id: `project-${slugify(derived.name)}-${Date.now().toString(36).slice(-4)}`,
+            id: `project-${slugify(derived.name)}-${randomBytes(3).toString('hex')}`,
             clientId: onboarding.clientId,
             name: derived.name,
             kind: derived.kind,
@@ -1100,7 +1384,7 @@ export class ApiServer {
             return;
           }
           const contact = {
-            id: `contact-${Date.now().toString(36)}`,
+            id: newId('contact'),
             clientId,
             name: input.name.trim(),
             ...(input.email?.trim() ? { email: input.email.trim() } : {}),
@@ -1133,7 +1417,7 @@ export class ApiServer {
           }
           const now = new Date().toISOString();
           const project = {
-            id: `project-${slugify(input.name) || 'untitled'}-${Date.now().toString(36).slice(-4)}`,
+            id: `project-${slugify(input.name) || 'untitled'}-${randomBytes(3).toString('hex')}`,
             clientId,
             name: input.name.trim(),
             kind: (input.kind ?? 'brand-identity') as 'brand-identity',
@@ -1384,6 +1668,72 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(json);
 }
 
+/**
+ * An HTML response.
+ *
+ * Only the portal uses this. `nosniff` and a strict CSP are here rather than on
+ * the route because a page that serves client-uploaded names is exactly the
+ * page where a missing header matters — the inline `<style>` and `<script>` are
+ * the generator's own and are allowed by hash-free `'unsafe-inline'`, which is
+ * the honest trade for a page with no build step. Everything else is refused:
+ * no third-party script, no frame, no form target.
+ */
+function sendHtml(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'cache-control': 'private, no-store',
+    'content-security-policy': [
+      "default-src 'none'",
+      "style-src 'unsafe-inline'",
+      "script-src 'unsafe-inline'",
+      "img-src 'self'",
+      "connect-src 'self'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'none'",
+    ].join('; '),
+  });
+  res.end(body);
+}
+
+/** The page a client sees when their link no longer works. */
+function expiredPage(): string {
+  return portalMessage(
+    'This link has expired',
+    'Portal links are given a lifetime and can be withdrawn at any time, so this '
+    + 'is expected rather than a fault. Ask the studio for a new one and it will '
+    + 'open the same portal.',
+  );
+}
+
+/** A designer landing on /portal with their own studio session. */
+function studioAtPortalPage(): string {
+  return portalMessage(
+    'This is the client side',
+    'Your session is a studio session, so there is no single client portal to '
+    + 'show you. Open a client in the Studio and use their portal link to see '
+    + 'exactly what they see.',
+  );
+}
+
+function portalMessage(title: string, body: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<meta name="robots" content="noindex">
+<style>${STYLE}</style>
+</head>
+<body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p></main></body>
+</html>
+`;
+}
+
 function sendText(res: ServerResponse, status: number, body: string): void {
   res.writeHead(status, {
     'content-type': 'text/markdown; charset=utf-8',
@@ -1391,6 +1741,21 @@ function sendText(res: ServerResponse, status: number, body: string): void {
     'x-content-type-options': 'nosniff',
   });
   res.end(body);
+}
+
+/**
+ * A new record id.
+ *
+ * The timestamp is there so ids sort roughly by age, which is genuinely useful
+ * when reading a table by hand. The random tail is there because the timestamp
+ * alone is not unique: `Date.now()` has millisecond resolution, and two records
+ * created in the same millisecond — a bulk import, a script, or simply a fast
+ * server — collided into one row. That is not hypothetical; it is how this was
+ * found, when two onboardings issued back to back resolved to the same record
+ * and both clients' invites opened the first client's form.
+ */
+export function newId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
 }
 
 /** Bounded so a malformed or hostile request cannot exhaust memory. */

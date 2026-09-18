@@ -226,6 +226,18 @@ export class ScopedStore {
     return can(this.principal, 'write', this.resource(kind, clientId)).allowed;
   }
 
+  /**
+   * Whether this session may hand someone else a way in.
+   *
+   * Its own action rather than a `write`, because issuing a portal link is not
+   * editing the client: an editor who could mint links could grant a stranger
+   * everything an owner can see. The policy puts it at `owner`, and a portal
+   * session never has it whatever its role within the client.
+   */
+  canManageAccess(clientId: string): boolean {
+    return can(this.principal, 'manage-access', this.resource('portal', clientId)).allowed;
+  }
+
   /** Whether a client id is inside this session's scope at all. */
   inScope(clientId: string): boolean {
     return scopeAllows(scopeOf(this.principal), clientId);

@@ -17,6 +17,7 @@ import {
   Client, Contact, Project, Session, StudioUser,
   type Client as ClientType, type Contact as ContactType, type Project as ProjectType,
   type Session as SessionType, type StudioUser as StudioUserType,
+  type PortalKey,
 } from './entities.js';
 
 /**
@@ -142,6 +143,20 @@ CREATE TABLE IF NOT EXISTS onboarding_invites (
 );
 
 CREATE INDEX IF NOT EXISTS onboardings_by_client ON onboardings (client_id);
+
+CREATE TABLE IF NOT EXISTS portal_keys (
+  digest TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  role TEXT NOT NULL,
+  collections TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT,
+  uses INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS portal_keys_by_client ON portal_keys (client_id);
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -305,6 +320,12 @@ export class RunStore {
     }
     if (!columns('runs').includes('client_id')) {
       this.db.exec("ALTER TABLE runs ADD COLUMN client_id TEXT NOT NULL DEFAULT ''");
+    }
+    if (!columns('sessions').includes('collections')) {
+      // A portal key can grant specific collections, and the session it mints
+      // has to carry them: reading them from anywhere else at request time
+      // would be a second source for the one fact isolation depends on.
+      this.db.exec('ALTER TABLE sessions ADD COLUMN collections TEXT');
     }
     this.attachOrphanedRuns();
   }
@@ -618,6 +639,105 @@ export class RunStore {
     this.db.prepare('DELETE FROM onboarding_invites WHERE onboarding_id = ?').run(onboardingId);
   }
 
+  /* ------------------------------------------------------------- portal keys */
+
+  /**
+   * A portal key: the client's way in.
+   *
+   * Deliberately not a password. A client receives brand files a handful of
+   * times a year, and an account they must create, remember and reset is a
+   * barrier in front of work they have already paid for. The key is a long
+   * random string in a link, stored as a digest exactly as sessions are, and
+   * the thing it buys is that a client never fails to open their own portal.
+   *
+   * What it costs, stated rather than glossed: **anyone holding the link is
+   * that client.** The link is a bearer credential in an inbox. Three things
+   * bound that, and none of them is optional:
+   *
+   * - It **expires**, and the studio chooses when.
+   * - It is **revocable** at any moment, and revoking is one row.
+   * - Every use is **recorded** — count and last-used — so a designer can see
+   *   a link being used long after the job ended, rather than guessing.
+   *
+   * The key itself grants nothing directly: presenting it mints an ordinary
+   * portal session with the role and collections recorded here. There is no
+   * second authorization path, so everything `ScopedStore` enforces is enforced
+   * for a client who arrived this way.
+   */
+  savePortalKey(key: {
+    digest: string; clientId: string; label: string;
+    role: 'limited' | 'viewer' | 'editor' | 'brand_manager' | 'owner';
+    collections?: readonly string[];
+    createdAt: string; expiresAt: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO portal_keys
+        (digest, client_id, label, role, collections, created_at, expires_at, uses)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+      ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at
+    `).run(
+      key.digest, key.clientId, key.label, key.role,
+      key.collections && key.collections.length > 0 ? JSON.stringify(key.collections) : null,
+      key.createdAt, key.expiresAt,
+    );
+  }
+
+  /**
+   * Redeem a key, or nothing.
+   *
+   * Recording the use is part of redeeming it rather than a separate call a
+   * route could forget: the audit trail is the main thing bounding a bearer
+   * credential, so it cannot be optional at the call site.
+   */
+  redeemPortalKey(digest: string, now = new Date()): PortalKey | undefined {
+    const key = this.getPortalKey(digest, now);
+    if (!key) return undefined;
+    this.db.prepare(
+      'UPDATE portal_keys SET uses = uses + 1, last_used_at = ? WHERE digest = ?',
+    ).run(now.toISOString(), digest);
+    return { ...key, uses: key.uses + 1, lastUsedAt: now.toISOString() };
+  }
+
+  /** Read a key without redeeming it. Expired keys are deleted, not returned. */
+  getPortalKey(digest: string, now = new Date()): PortalKey | undefined {
+    const row = this.db.prepare('SELECT * FROM portal_keys WHERE digest = ?')
+      .get(digest) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    if (new Date(String(row['expires_at'])).getTime() <= now.getTime()) {
+      this.db.prepare('DELETE FROM portal_keys WHERE digest = ?').run(digest);
+      return undefined;
+    }
+    return hydratePortalKey(row);
+  }
+
+  /**
+   * The keys issued for a client.
+   *
+   * Expired keys are dropped on the way out rather than listed as dead rows: a
+   * designer looking at this list is asking "who can get in right now".
+   */
+  listPortalKeys(clientId: string, now = new Date()): PortalKey[] {
+    return (this.db.prepare(
+      'SELECT * FROM portal_keys WHERE client_id = ? ORDER BY created_at DESC',
+    ).all(clientId) as Record<string, unknown>[])
+      .map(hydratePortalKey)
+      .filter((key) => new Date(key.expiresAt).getTime() > now.getTime());
+  }
+
+  /**
+   * Revoke a key, and end what it already opened.
+   *
+   * Deleting the key alone stops new entries and leaves every browser already
+   * inside untouched until its session expires — which is not what "withdraw"
+   * means to the person clicking it, and the screen that offers it promises
+   * exactly that. The sessions a key minted are identifiable because their
+   * `userId` is derived from its digest, so they go with it.
+   */
+  revokePortalKey(digest: string): void {
+    this.db.prepare('DELETE FROM portal_keys WHERE digest = ?').run(digest);
+    this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(portalUserId(digest));
+  }
+
   /* ------------------------------------------------------- users and sessions */
 
   saveUser(user: StudioUserType): void {
@@ -650,11 +770,15 @@ export class RunStore {
   saveSession(session: SessionType): void {
     Session.parse(session);
     this.db.prepare(`
-      INSERT INTO sessions (digest, user_id, kind, client_id, role, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sessions
+        (digest, user_id, kind, client_id, role, collections, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at
     `).run(session.digest, session.userId, session.kind, session.clientId ?? null,
-      session.role, session.createdAt, session.expiresAt);
+      session.role,
+      session.collections && session.collections.length > 0
+        ? JSON.stringify(session.collections) : null,
+      session.createdAt, session.expiresAt);
   }
 
   /** A session is returned only while it is still valid; expiry is not the caller's to judge. */
@@ -665,6 +789,8 @@ export class RunStore {
     const session = Session.parse({
       digest: row['digest'], userId: row['user_id'], kind: row['kind'],
       ...(row['client_id'] ? { clientId: row['client_id'] } : {}),
+      ...(row['collections']
+        ? { collections: JSON.parse(String(row['collections'])) as string[] } : {}),
       role: row['role'], createdAt: row['created_at'], expiresAt: row['expires_at'],
     });
     if (new Date(session.expiresAt).getTime() <= now.getTime()) {
@@ -957,6 +1083,32 @@ function hydrateOnboarding(row: Record<string, unknown>): OnboardingType {
     ...(row['submitted_at'] ? { submittedAt: row['submitted_at'] } : {}),
     ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
   });
+}
+
+/**
+ * The user id a portal key's sessions carry.
+ *
+ * Derived rather than stored, and in one place rather than two: minting and
+ * revoking have to agree on it, and a revocation that quietly matched nothing
+ * would look exactly like a revocation that worked.
+ */
+export function portalUserId(digest: string): string {
+  return `portal-${digest.slice(0, 12)}`;
+}
+
+function hydratePortalKey(row: Record<string, unknown>): PortalKey {
+  const collections = row['collections'];
+  return {
+    digest: String(row['digest']),
+    clientId: String(row['client_id']),
+    label: String(row['label']),
+    role: String(row['role']) as PortalKey['role'],
+    ...(collections ? { collections: JSON.parse(String(collections)) as string[] } : {}),
+    createdAt: String(row['created_at']),
+    expiresAt: String(row['expires_at']),
+    ...(row['last_used_at'] ? { lastUsedAt: String(row['last_used_at']) } : {}),
+    uses: Number(row['uses'] ?? 0),
+  };
 }
 
 function hydrateAsset(row: Record<string, unknown>): AssetType {

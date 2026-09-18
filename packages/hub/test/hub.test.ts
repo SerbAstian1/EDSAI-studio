@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import type { Conflict, DepartmentOutput, Issue, Run } from '@edsai/engine';
-import { buildModel, generateHub, isStale, HubRefused, renderHub, HUB_BUDGET_BYTES } from '../src/index.js';
+import {
+  buildModel, generateHub, isStale, HubRefused, renderHub, HUB_BUDGET_BYTES,
+  collections, renderPortal, readableSize,
+  type PortalFile, type PortalModel,
+} from '../src/index.js';
 import type { HubBundle } from '../src/model.js';
 
 const rubric = buildRubric();
@@ -374,5 +378,114 @@ describe('a brand that has been edited', () => {
     expect(html).not.toContain('r-hub-1"');
     expect(html).not.toMatch(/"origin"\s*:/);
     expect(html).not.toContain('Darkened so it clears');
+  });
+});
+
+describe('the client portal', () => {
+  const file = (filename: string, collection?: string): PortalFile => ({
+    id: `a-${filename}`, filename, kind: 'logo', bytes: 2048,
+    ...(collection ? { collection } : {}),
+  });
+
+  const portal = (over: Partial<PortalModel> = {}): PortalModel => ({
+    clientName: 'Morrow', files: [], brandValues: [],
+    generatedAt: '2026-09-18T00:00:00.000Z', ...over,
+  });
+
+  it('sorts collections alphabetically and leaves the unfiled pile last', () => {
+    const groups = collections([
+      file('loose.png'), file('z.png', 'Zines'), file('a.png', 'Artwork'),
+    ]);
+    expect(groups.map(([name]) => name)).toEqual(['Artwork', 'Zines', '']);
+  });
+
+  it('sorts files by name, not by upload order', () => {
+    const groups = collections([file('b.png', 'X'), file('a.png', 'X')]);
+    expect(groups[0]?.[1].map((f) => f.filename)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('does not label a lone group, which would read as "Files → Files"', () => {
+    const html = renderPortal(portal({ files: [file('logo.png')] }));
+    expect(html).toContain('logo.png');
+    expect(html).not.toContain('<h3>');
+  });
+
+  it('names the unfiled pile only when there is something to tell it from', () => {
+    const html = renderPortal(portal({
+      files: [file('logo.png', 'Logos'), file('loose.png')],
+    }));
+    expect(html).toContain('<h3>Logos</h3>');
+    expect(html).toContain('<h3>Everything else</h3>');
+  });
+
+  it('gives every file a download link built from its id', () => {
+    const html = renderPortal(portal({ files: [file('logo.png')] }));
+    expect(html).toContain('href="/api/assets/a-logo.png/download"');
+  });
+
+  it('renders a brand value with what it measures, and nothing else', () => {
+    const html = renderPortal(portal({
+      brandValues: [{
+        name: 'ink', kind: 'color', value: '#1A1A1A', role: 'Body text',
+        note: '17.4:1 against paper — clears the 4.5:1 it needs.', passes: true,
+      }],
+    }));
+    expect(html).toContain('#1A1A1A');
+    expect(html).toContain('17.4:1 against paper');
+    expect(html).toContain('is-pass');
+  });
+
+  it('marks a failing value as failing rather than quietly showing it', () => {
+    const html = renderPortal(portal({
+      brandValues: [{
+        name: 'accent', kind: 'color', value: '#EB5E28', role: 'Calls to action',
+        note: '3.41:1 against paper — under the 4.5:1 it needs.', passes: false,
+      }],
+    }));
+    expect(html).toContain('is-fail');
+  });
+
+  it('says so plainly when a client has nothing yet', () => {
+    const html = renderPortal(portal());
+    expect(html).toContain('Nothing has been shared with you yet');
+  });
+
+  it('escapes a filename rather than rendering it', () => {
+    const html = renderPortal(portal({ files: [file('<img src=x onerror=alert(1)>.png')] }));
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('shows no swatch at all for a value that is not a colour it can paint', () => {
+    // A transparent chip would show the client a white square beside a name and
+    // let them believe that is the colour. The value itself is still escaped,
+    // so this is about being honest rather than about injection.
+    const html = renderPortal(portal({
+      brandValues: [{ name: 'x', kind: 'color', value: 'red;background:url(evil)' }],
+    }));
+    expect(html).not.toContain('<div class="chip"');
+    expect(html).toContain('not a colour this page can show');
+    expect(html).not.toContain('style="background:red;background:url(evil)"');
+  });
+
+  it('still paints a value that really is a colour', () => {
+    const html = renderPortal(portal({
+      brandValues: [{ name: 'ink', kind: 'color', value: '#1A1A1A' }],
+    }));
+    expect(html).toContain('style="background:#1A1A1A"');
+    expect(html).not.toContain('not a colour this page can show');
+  });
+
+  it('names the collections a limited link opens, so the gap is explained', () => {
+    const html = renderPortal(portal({
+      files: [file('logo.png', 'Logos')], limitedTo: ['Logos'],
+    }));
+    expect(html).toContain('This link opens Logos.');
+  });
+
+  it('reads a size the way a person would', () => {
+    expect(readableSize(512)).toBe('512 B');
+    expect(readableSize(2048)).toBe('2 KB');
+    expect(readableSize(3 * 1024 * 1024)).toBe('3.0 MB');
   });
 });

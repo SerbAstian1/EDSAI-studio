@@ -286,6 +286,18 @@ async function upload(
   return (body as { asset: Asset }).asset;
 }
 
+export interface PortalKey {
+  id: string;
+  clientId: string;
+  label: string;
+  role: 'limited' | 'viewer' | 'editor' | 'brand_manager' | 'owner';
+  collections?: string[];
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt?: string;
+  uses: number;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
@@ -341,6 +353,19 @@ export const api = {
     call<Project>(`/api/clients/${clientId}/projects`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+
+  portalKeys: (clientId: string) =>
+    call<{ keys: PortalKey[] }>(`/api/clients/${clientId}/portal-keys`).then((r) => r.keys),
+  /** The token comes back once and is never retrievable again. */
+  issuePortalKey: (clientId: string, input: {
+    label: string; role?: string; collections?: string[]; days?: number;
+  }) => call<{ key: PortalKey; link: { token: string; path: string } }>(
+    `/api/clients/${clientId}/portal-keys`,
+    { method: 'POST', body: JSON.stringify(input) },
+  ),
+  revokePortalKey: (clientId: string, keyId: string) =>
+    call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
+      { method: 'DELETE' }),
 
   allAssets: () => call<{ assets: Asset[] }>('/api/assets').then((r) => r.assets),
   assets: (clientId: string) =>

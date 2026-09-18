@@ -20,7 +20,7 @@ import type { HubModel, RenderedTarget } from './model.js';
  * button's own fill.
  */
 
-const escapeHtml = (text: string): string => text
+export const escapeHtml = (text: string): string => text
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
@@ -28,7 +28,7 @@ const escapeHtml = (text: string): string => text
 
 /** A colour value is written into a style attribute, so it is allow-listed. */
 const SAFE_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/]+\))$/i;
-const safeColor = (value: string): string => (SAFE_COLOR.test(value.trim()) ? value.trim() : 'transparent');
+export const safeColor = (value: string): string => (SAFE_COLOR.test(value.trim()) ? value.trim() : 'transparent');
 
 /**
  * The provenance component — the one that is the product.
@@ -60,14 +60,14 @@ function renderTarget(target: RenderedTarget): string {
 </div>`;
 }
 
-function section(id: string, title: string, body: string): string {
+export function section(id: string, title: string, body: string): string {
   return body.trim() === '' ? '' : `<section id="${id}">
   <h2>${escapeHtml(title)}</h2>
   ${body}
 </section>`;
 }
 
-const STYLE = `:root{--ink:#16181d;--muted:#666c78;--line:#e3e5ea;--bg:#fff;--pass:#0f6b3f;--fail:#9a2617;--stated:#7a5a10;--control-line:#828996}
+export const STYLE = `:root{--ink:#16181d;--muted:#666c78;--line:#e3e5ea;--bg:#fff;--pass:#0f6b3f;--fail:#9a2617;--stated:#7a5a10;--control-line:#828996}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:56rem;margin:0 auto;padding:2rem 1rem 6rem}
@@ -80,7 +80,10 @@ p{margin:0 0 .8rem}
 .meta{color:var(--muted);font-size:.85rem}
 .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:1rem}
 .swatch{border:1px solid var(--line);border-radius:.5rem;overflow:hidden}
-.chip{height:5rem;border-bottom:1px solid var(--line)}
+/* The inset ring is not decoration: a white swatch on a white page is
+   otherwise indistinguishable from an empty box, and paper is exactly the
+   token every brand has. */
+.chip{height:5rem;border-bottom:1px solid var(--line);box-shadow:inset 0 0 0 1px var(--line)}
 .swatch-body{padding:.7rem .8rem}
 .name{font-weight:600}
 .role{color:var(--muted);font-size:.85rem}
@@ -105,7 +108,7 @@ footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;color:v
 button.copy{background:#1a1d24;color:inherit}.risk{background:#1c1913}
 button.copy:focus-visible{outline-color:#e9ebef}}`;
 
-const SCRIPT = `document.addEventListener('click',function(e){
+export const SCRIPT = `document.addEventListener('click',function(e){
 var b=e.target.closest('button.copy');if(!b)return;
 var v=b.getAttribute('data-value');var original=b.textContent;
 function done(ok){b.textContent=ok?'copied':v;setTimeout(function(){b.textContent=original;},1200);}

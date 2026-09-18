@@ -433,6 +433,20 @@ tbody tr:hover { background: var(--surface); }
 }
 .link:hover { color: var(--text-primary); }
 
+/* A radio and its explanation. `.row` cannot do this: the explanation is a
+   block, so it takes the full line and pushes the control onto its own row —
+   which reads as a control belonging to nothing. */
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: calc(var(--step) * 2);
+  align-items: start;
+  padding: calc(var(--step) * 2) 0;
+  cursor: pointer;
+}
+.choice input { margin-top: 4px; }
+.choice .why { color: var(--text-muted); display: block; font-size: 14px; }
+
 /* — the client-facing discovery flow ————————————————————————————— */
 
 .onboard {

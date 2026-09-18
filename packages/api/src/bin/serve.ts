@@ -9,6 +9,10 @@ const server = new ApiServer({
   store: new RunStore(db),
   ...(process.env['EDSAI_SCOPE'] ? { scopeId: process.env['EDSAI_SCOPE'] } : {}),
   origins: (process.env['EDSAI_ORIGINS'] ?? '').split(',').filter(Boolean),
+  // Opt-in and loud: a `Secure` cookie is never sent over plain http, so a
+  // local session silently does not work without this. The default stays the
+  // safe one, and nothing turns it on by accident.
+  ...(process.env['EDSAI_INSECURE_COOKIES'] === '1' ? { insecureCookies: true } : {}),
 });
 
 const actual = await server.listen(port);

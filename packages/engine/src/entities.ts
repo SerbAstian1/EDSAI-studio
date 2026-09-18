@@ -113,8 +113,35 @@ export const Session = z.object({
   kind: z.enum(['studio', 'portal']),
   /** Set for a portal session, fixed at sign-in and never widened. */
   clientId: z.string().min(1).optional(),
+  /** Set for a `limited` portal session: the collections its key granted. */
+  collections: z.array(z.string()).optional(),
   role: z.enum(['limited', 'viewer', 'editor', 'brand_manager', 'owner']),
   createdAt: z.string(),
   expiresAt: z.string(),
 });
 export type Session = z.infer<typeof Session>;
+
+/**
+ * A portal key, as a record.
+ *
+ * The token itself never appears here: only its SHA-256, exactly as sessions
+ * store theirs. `uses` and `lastUsedAt` are what make a bearer credential
+ * accountable, so they are part of the record rather than a log elsewhere.
+ */
+export const PortalKey = z.object({
+  digest: z.string().length(64),
+  clientId: z.string().min(1),
+  /** Who this link was given to, in the designer's words. "Ada at Morrow". */
+  label: z.string().min(1),
+  role: z.enum(['limited', 'viewer', 'editor', 'brand_manager', 'owner']),
+  /** Set only for a `limited` key: which collections it opens. */
+  collections: z.array(z.string()).optional(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  lastUsedAt: z.string().optional(),
+  uses: z.number().int().nonnegative(),
+});
+export type PortalKey = z.infer<typeof PortalKey>;
+
+/** How long a portal link lasts unless the studio says otherwise. */
+export const PORTAL_KEY_DAYS = 90;

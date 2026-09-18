@@ -29,6 +29,9 @@ importers:
       '@edsai/export':
         specifier: workspace:*
         version: link:../export
+      '@edsai/hub':
+        specifier: workspace:*
+        version: link:../hub
       '@edsai/instruments':
         specifier: workspace:*
         version: link:../instruments

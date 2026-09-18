@@ -556,6 +556,84 @@ generalisable form: **a condition that is meaningful for one input shape and
 merely true for all the others.** It is invisible in review precisely because
 the line is correct where it was written.
 
+## 4o. Three bugs a browser found that 900 tests did not
+
+The portal was built with tests passing at every step, then opened in a real
+browser. It was wrong in three ways, and the first was serious.
+
+**The portal showed the unapproved draft and hid both approved files.** The
+cause was not the approval logic. An asset's *record id* was derived from the
+SHA-256 of its bytes — `asset-<digest>-<clientId>` — so three uploads of the
+same image became one row, each overwriting the last. The survivor was the
+draft, wearing the approval granted to the file it had replaced. Content
+addressing is right for the **bytes** and wrong for the **record**: dedupe on
+disk, distinct identity in the database. Two files with the same content and
+different names is not an edge case; it is a designer uploading `logo.png` and
+`logo-final.png`.
+
+Nothing in the suite caught it because every asset test uploaded distinct
+bytes. The one test that uploaded the same bytes twice asserted the digests
+matched — which they did, and always would.
+
+**A colour the style allow-list rejected was painted `transparent`,** which on a
+white page is a white square. The client would read that as the colour. The page
+now renders no chip at all and says the value cannot be shown. The rule this
+restores is the system's own: refuse rather than degrade, and never assert what
+you cannot show.
+
+**Two cosmetic-but-real defects**: the unfiled group was labelled "Files" inside
+a section called "Files", and a white swatch was invisible against a white page
+(fixed with an inset ring, which the hub needed too — `paper` is a token every
+brand has).
+
+The pattern is not the §4g family. These are **assumptions no unit test can
+contradict, because the test asserts the same thing the code does.** The digest
+id looked correct in isolation and had a test that agreed with it. What
+disagreed was three files in a browser.
+
+The working rule this argues for: a surface a client sees gets opened, with
+realistic data, before it is called done. That is now how this one was built,
+and it is the only reason these were found before a client found them.
+
+## 4p. Portal access: a bearer link, and what it costs
+
+A client needs a way in. Passwords were rejected: a client receives brand files
+a handful of times a year, and an account to create, remember and reset is a
+barrier in front of work they have already paid for. So the credential is a
+link.
+
+The cost is real and is stated on the screen that issues it rather than in a
+comment: **anyone holding the link is that client.** Three things bound it, and
+all three are visible to the designer — an expiry, one-click revocation, and a
+count of every use with a timestamp. The count is the part that earns its place:
+a link opened forty times two months after the job ended is something a designer
+can act on.
+
+Three properties the implementation holds to:
+
+- **The token is shown once.** Only its SHA-256 is stored, exactly as sessions
+  are. A lost link is reissued, not looked up — which is an action the client
+  can see.
+- **A link cannot mint a link.** `owner` is not an issuable role, and the policy
+  refuses `manage-access` to any portal principal regardless. Two independent
+  reasons, because a bearer credential that reproduces itself is the failure
+  that has no recovery.
+- **The link is not a second authorization path.** Redeeming it mints an
+  ordinary portal session; everything `ScopedStore` enforces is enforced for a
+  client who arrived this way. The token leaves the address bar immediately via
+  a 303, so it is not left in history, bookmarks or any `Referer`.
+
+Revocation ends what the link already opened, not only new entries. Writing
+the paragraph above is what surfaced it: deleting the key alone would leave
+every browser already inside working until its session lapsed, which is not
+what "withdraw" means to the person clicking it. The sessions a key minted are
+identifiable because their user id is derived from its digest, so they go with
+it — and the test was confirmed to fail without that line.
+
+What is **not** built: no email is sent, so the designer copies the link and
+sends it themselves, and there is no per-file audit — the count is per link,
+not per download.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

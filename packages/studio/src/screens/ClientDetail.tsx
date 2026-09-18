@@ -5,6 +5,7 @@ import { RunTable } from '../components/RunTable.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
+import PortalAccess from './PortalAccess.js';
 import type { Run } from '../api.js';
 
 /**
@@ -138,6 +139,8 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
       <Brand clientId={clientId} />
 
       <Assets clientId={clientId} />
+
+      <PortalAccess clientId={clientId} />
 
       <h3>Runs</h3>
       {runs.length === 0

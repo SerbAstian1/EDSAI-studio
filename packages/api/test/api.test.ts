@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import { RunStore } from '@edsai/engine';
-import { ApiServer } from '../src/server.js';
+import { digestToken } from '@edsai/auth';
+import { ApiServer, newId } from '../src/server.js';
 
 /**
  * Exercised over real HTTP against a listening server rather than by calling
@@ -1300,6 +1301,46 @@ describe('assets', () => {
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe('precise contents');
   });
 
+  it('keeps two records for the same bytes under different names', async () => {
+    // Found in a browser, not here: three uploads of one image collapsed into
+    // a single row, and the portal showed the last one — an unapproved draft —
+    // under the approval the studio had granted the file it replaced.
+    const clientId = await assetClient();
+    const same = Buffer.from('one image, two names');
+    const first = await upload(clientId, { bytes: same, filename: 'logo.png' });
+    const second = await upload(clientId, { bytes: same, filename: 'draft.png' });
+
+    const one = first.body['asset'] as unknown as { id: string; digest: string };
+    const two = second.body['asset'] as unknown as { id: string; digest: string };
+    expect(one.id).not.toBe(two.id);
+    // Storage still dedupes: two records, one file.
+    expect(one.digest).toBe(two.digest);
+
+    const listed = await json(`/api/clients/${clientId}/assets`);
+    const names = (listed.body['assets'] as unknown as { filename: string }[])
+      .map((a) => a.filename).sort();
+    expect(names).toEqual(['draft.png', 'logo.png']);
+  });
+
+  it('approving one record leaves the other alone', async () => {
+    const clientId = await assetClient();
+    const same = Buffer.from('shared bytes');
+    const live = await upload(clientId, { bytes: same, filename: 'released.png' });
+    const draft = await upload(clientId, { bytes: same, filename: 'held-back.png' });
+    const id = (r: typeof live) => (r.body['asset'] as unknown as { id: string }).id;
+
+    await json(`/api/assets/${id(live)}`, {
+      method: 'PATCH', body: JSON.stringify({ approved: true }),
+    });
+
+    const listed = await json(`/api/clients/${clientId}/assets`);
+    const byName = Object.fromEntries(
+      (listed.body['assets'] as unknown as { filename: string; approved: boolean }[])
+        .map((a) => [a.filename, a.approved]),
+    );
+    expect(byName).toEqual({ 'released.png': true, 'held-back.png': false });
+  });
+
   it('stores one copy when the same file is uploaded twice', async () => {
     const clientId = await assetClient();
     const first = await upload(clientId, { bytes: Buffer.from('identical') });
@@ -1375,5 +1416,430 @@ describe('assets', () => {
     const id = (body['asset'] as unknown as { id: string }).id;
     const res = await fetch(`${base}/api/assets/${id}/download`);
     expect(res.status).toBe(401);
+  });
+});
+
+describe('record ids', () => {
+  it('are distinct within one millisecond', () => {
+    // The whole id used to be `Date.now().toString(36)`. A thousand calls span
+    // a millisecond or two, so under that scheme this loop produced about two
+    // distinct ids — and two onboardings issued back to back shared a row,
+    // which meant both clients' invites opened the first client's form.
+    //
+    // Asserted here rather than through two HTTP requests on purpose: whether
+    // two requests land in the same millisecond is the machine's mood, and a
+    // regression test that depends on it is a test that stops noticing.
+    const ids = new Set(Array.from({ length: 1000 }, () => newId('onb')));
+    expect(ids.size).toBe(1000);
+  });
+
+  it('still sort roughly by age, which is the point of the timestamp', () => {
+    const first = newId('onb');
+    const later = newId('onb');
+    expect(first <= later || first.slice(0, 12) === later.slice(0, 12)).toBe(true);
+  });
+});
+
+describe('portal keys', () => {
+  const client = async (name = 'Key Co') => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const issue = async (clientId: string, input: Record<string, unknown> = {}) =>
+    json(`/api/clients/${clientId}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada at Morrow', ...input }),
+    });
+
+  /** Redeem a link and return the portal session cookie it mints. */
+  const enter = async (token: string): Promise<string> => {
+    const res = await fetch(`${base}/api/portal/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    expect(res.status).toBe(200);
+    return (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  };
+
+  const tokenOf = (body: Record<string, never>): string =>
+    (body['link'] as unknown as { token: string }).token;
+
+  it('shows the link exactly once and never again', async () => {
+    const id = await client();
+    const { status, body } = await issue(id);
+    expect(status).toBe(201);
+    expect(tokenOf(body)).toMatch(/^[A-Za-z0-9_-]{20,}$/);
+
+    const listed = await json(`/api/clients/${id}/portal-keys`);
+    const keys = listed.body['keys'] as unknown as Record<string, unknown>[];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatchObject({ label: 'Ada at Morrow', role: 'viewer', uses: 0 });
+    // The token is not recoverable, and neither is the digest it is stored as.
+    expect(JSON.stringify(keys)).not.toContain(tokenOf(body));
+    expect(keys[0]).not.toHaveProperty('digest');
+  });
+
+  it('mints a portal session bound to the client that issued it', async () => {
+    const id = await client();
+    const { body } = await issue(id);
+    const portalCookie = await enter(tokenOf(body));
+
+    const res = await fetch(`${base}/api/session`, { headers: { cookie: portalCookie } });
+    expect((await res.json() as { principal: { kind: string; clientId: string } }).principal)
+      .toMatchObject({ kind: 'portal', clientId: id });
+  });
+
+  it('records every use, because that is what bounds a link in an inbox', async () => {
+    const id = await client();
+    const { body } = await issue(id);
+    await enter(tokenOf(body));
+    await enter(tokenOf(body));
+
+    const listed = await json(`/api/clients/${id}/portal-keys`);
+    const keys = listed.body['keys'] as unknown as { uses: number; lastUsedAt?: string }[];
+    expect(keys[0]?.uses).toBe(2);
+    expect(keys[0]?.lastUsedAt).toBeTruthy();
+  });
+
+  it('stops working the moment it is revoked', async () => {
+    const id = await client();
+    const { body } = await issue(id);
+    const token = tokenOf(body);
+    await enter(token);
+
+    const listed = await json(`/api/clients/${id}/portal-keys`);
+    const keyId = (listed.body['keys'] as unknown as { id: string }[])[0]?.id;
+    const revoked = await json(`/api/clients/${id}/portal-keys/${keyId}`, { method: 'DELETE' });
+    expect(revoked.status).toBe(200);
+
+    const res = await fetch(`${base}/api/portal/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('ends the session a revoked link had already opened', async () => {
+    // "Withdraw" has to mean now. Deleting the key alone stops new entries and
+    // leaves every browser already inside working until its session expires,
+    // which is not what the studio was promised when they clicked it.
+    const id = await client();
+    const { body } = await issue(id);
+    const portalCookie = await enter(tokenOf(body));
+
+    const before = await fetch(`${base}/api/session`, { headers: { cookie: portalCookie } });
+    expect(before.status).toBe(200);
+
+    const listed = await json(`/api/clients/${id}/portal-keys`);
+    const keyId = (listed.body['keys'] as unknown as { id: string }[])[0]?.id;
+    await json(`/api/clients/${id}/portal-keys/${keyId}`, { method: 'DELETE' });
+
+    const after = await fetch(`${base}/api/session`, { headers: { cookie: portalCookie } });
+    expect(after.status).toBe(401);
+  });
+
+  it('leaves another link’s session alone when one is revoked', async () => {
+    const id = await client();
+    const doomed = await issue(id, { label: 'Leaving' });
+    const kept = await issue(id, { label: 'Staying' });
+    const keptCookie = await enter(tokenOf(kept.body));
+    await enter(tokenOf(doomed.body));
+
+    const listed = await json(`/api/clients/${id}/portal-keys`);
+    const keys = listed.body['keys'] as unknown as { id: string; label: string }[];
+    const target = keys.find((k) => k.label === 'Leaving');
+    await json(`/api/clients/${id}/portal-keys/${target?.id}`, { method: 'DELETE' });
+
+    const res = await fetch(`${base}/api/session`, { headers: { cookie: keptCookie } });
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a link that expired, without saying which it was', async () => {
+    const id = await client();
+    const { body } = await issue(id, { days: 1 });
+    // Re-save the same key with an expiry in the past. Waiting a day is not a
+    // test, and the store's upsert is the honest way to move it.
+    store.savePortalKey({
+      digest: digestToken(tokenOf(body)),
+      clientId: id, label: 'Ada at Morrow', role: 'viewer',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    const res = await fetch(`${base}/api/portal/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: tokenOf(body) }),
+    });
+    expect(res.status).toBe(401);
+    const message = (await res.json() as { message: string }).message;
+    expect(message).toMatch(/expired or been revoked/);
+  });
+
+  it('refuses a nonsense token the same way as a revoked one', async () => {
+    const res = await fetch(`${base}/api/portal/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'not-a-real-token' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('will not issue a limited link that opens nothing', async () => {
+    const id = await client();
+    const { status } = await issue(id, { role: 'limited', collections: [] });
+    expect(status).toBe(400);
+  });
+
+  it('carries the granted collections onto the session, and only those', async () => {
+    const id = await client();
+    const { body } = await issue(id, { role: 'limited', collections: ['logos'] });
+    const portalCookie = await enter(tokenOf(body));
+
+    const res = await fetch(`${base}/api/session`, { headers: { cookie: portalCookie } });
+    const principal = (await res.json() as { principal: Record<string, unknown> }).principal;
+    expect(principal).toMatchObject({ role: 'limited', collections: ['logos'] });
+  });
+
+  it('never issues a link that can issue links', async () => {
+    const id = await client();
+    // `owner` is not offered; asking for it lands on the default rather than
+    // minting a credential that reproduces itself.
+    const { body } = await issue(id, { role: 'owner' });
+    expect((body['key'] as unknown as { role: string }).role).toBe('viewer');
+  });
+
+  it('refuses a portal session trying to issue its own link', async () => {
+    const id = await client();
+    const { body } = await issue(id);
+    const portalCookie = await enter(tokenOf(body));
+
+    const res = await fetch(`${base}/api/clients/${id}/portal-keys`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: portalCookie },
+      body: JSON.stringify({ label: 'Myself, wider' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('will not let one client revoke another client’s link', async () => {
+    const mine = await client('Mine');
+    const theirs = await client('Theirs');
+    const { body } = await issue(theirs);
+    const listed = await json(`/api/clients/${theirs}/portal-keys`);
+    const keyId = (listed.body['keys'] as unknown as { id: string }[])[0]?.id;
+
+    const res = await json(`/api/clients/${mine}/portal-keys/${keyId}`, { method: 'DELETE' });
+    expect(res.status).toBe(404);
+
+    // And the link still works.
+    await enter(tokenOf(body));
+  });
+});
+
+describe('the portal', () => {
+  /** A client with one approved file, one draft, and a brand colour. */
+  const furnished = async () => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Morrow' }),
+    });
+    const clientId = body['id'] as unknown as string;
+
+    const put = async (filename: string, approved: boolean, collection?: string) => {
+      const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'image/png', 'x-filename': filename, cookie,
+          ...(collection ? { 'x-collection': collection } : {}),
+        },
+        body: Buffer.from(`bytes of ${filename}`),
+      });
+      const asset = (await res.json() as { asset: { id: string } }).asset;
+      if (approved) {
+        await json(`/api/assets/${asset.id}`, {
+          method: 'PATCH', body: JSON.stringify({ approved: true }),
+        });
+      }
+      return asset.id;
+    };
+
+    const live = await put('morrow-logo.png', true, 'Logos');
+    const draft = await put('draft-wordmark.png', false, 'Logos');
+    const photo = await put('shoot.png', true, 'Photography');
+
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'paper', kind: 'color', value: '#FFFFFF', role: 'Page' }),
+    });
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ink', kind: 'color', value: '#1A1A1A', role: 'Body text' }),
+    });
+
+    return { clientId, live, draft, photo };
+  };
+
+  const link = async (clientId: string, input: Record<string, unknown> = {}) => {
+    const { body } = await json(`/api/clients/${clientId}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', ...input }),
+    });
+    return (body['link'] as unknown as { token: string }).token;
+  };
+
+  /** Follow a portal link exactly as a browser would, and keep the cookie. */
+  const open = async (token: string) => {
+    const entered = await fetch(`${base}/portal/enter/${token}`, { redirect: 'manual' });
+    expect(entered.status).toBe(303);
+    expect(entered.headers.get('location')).toBe('/portal');
+    const portalCookie = (entered.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+    const page = await fetch(`${base}/portal`, { headers: { cookie: portalCookie } });
+    return { status: page.status, html: await page.text(), cookie: portalCookie };
+  };
+
+  it('shows a client their approved files and not their drafts', async () => {
+    const { clientId } = await furnished();
+    const { status, html } = await open(await link(clientId));
+    expect(status).toBe(200);
+    expect(html).toContain('morrow-logo.png');
+    expect(html).toContain('shoot.png');
+    expect(html).not.toContain('draft-wordmark.png');
+  });
+
+  it('gives every file a working download, from the portal itself', async () => {
+    const { clientId, live } = await furnished();
+    const { html, cookie: portalCookie } = await open(await link(clientId));
+    expect(html).toContain(`/api/assets/${live}/download`);
+
+    // The link on the page, followed with the session the page was served to.
+    const file = await fetch(`${base}/api/assets/${live}/download`,
+      { headers: { cookie: portalCookie } });
+    expect(file.status).toBe(200);
+    expect(await file.text()).toBe('bytes of morrow-logo.png');
+  });
+
+  it('carries the brand, measured, without the studio’s working notes', async () => {
+    const { clientId } = await furnished();
+
+    // Change a value the way a designer would, with a recorded reason. The
+    // reason is the studio's record of a decision, not the client's reference.
+    const REASON = 'Lightened for the new packaging stock.';
+    await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#333333', reason: REASON }),
+    });
+
+    const { html } = await open(await link(clientId));
+    expect(html).toContain('#333333');
+    expect(html).toContain('Body text');
+    // Asserted against the exact text that exists rather than a bare word like
+    // "origin", which the page's own copy script contains inside `var original`
+    // — an assertion that passes for the wrong reason is worse than none.
+    expect(html).not.toContain(REASON);
+    expect(html).not.toContain('sourceRunId');
+  });
+
+  it('opens on day one, before any run has finished', async () => {
+    // The hub refuses anything the gate has not cleared. The portal cannot:
+    // there are files to send long before a brand system is FINAL.
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Brand New' }),
+    });
+    const clientId = body['id'] as unknown as string;
+    const { status, html } = await open(await link(clientId));
+    expect(status).toBe(200);
+    expect(html).toContain('Brand New');
+    expect(html).toContain('Nothing has been shared with you yet');
+  });
+
+  it('holds a limited link to its own collections', async () => {
+    const { clientId } = await furnished();
+    const { html } = await open(await link(clientId, {
+      role: 'limited', collections: ['Logos'],
+    }));
+    expect(html).toContain('morrow-logo.png');
+    expect(html).not.toContain('shoot.png');
+    // And it can still name whose portal it is.
+    expect(html).toContain('Morrow');
+  });
+
+  it('shows one client nothing of another’s, even mid-session', async () => {
+    const mine = await furnished();
+    const theirs = await furnished();
+    const { cookie: portalCookie } = await open(await link(mine.clientId));
+
+    const res = await fetch(`${base}/api/assets/${theirs.live}/download`,
+      { headers: { cookie: portalCookie } });
+    expect(res.status).toBe(404);
+  });
+
+  it('tells a lapsed visitor what happened instead of returning JSON', async () => {
+    const res = await fetch(`${base}/portal`);
+    expect(res.status).toBe(401);
+    expect(res.headers.get('content-type')).toMatch(/text\/html/);
+    expect(await res.text()).toContain('This link has expired');
+  });
+
+  it('never leaves the token in the address bar', async () => {
+    const { clientId } = await furnished();
+    const token = await link(clientId);
+    const entered = await fetch(`${base}/portal/enter/${token}`, { redirect: 'manual' });
+    // The redirect target carries no token, and the page that follows sends no
+    // referrer anywhere.
+    expect(entered.headers.get('location')).not.toContain(token);
+
+    const page = await fetch(`${base}/portal`, {
+      headers: { cookie: (entered.headers.get('set-cookie') ?? '').split(';')[0] ?? '' },
+    });
+    expect(page.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+
+  it('refuses to be framed and to load anything third-party', async () => {
+    const { clientId } = await furnished();
+    const { cookie: portalCookie } = await open(await link(clientId));
+    const page = await fetch(`${base}/portal`, { headers: { cookie: portalCookie } });
+    const csp = page.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("default-src 'none'");
+    expect(page.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('escapes a hostile filename rather than rendering it', async () => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Hostile' }),
+    });
+    const clientId = body['id'] as unknown as string;
+    const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'image/png', cookie,
+        'x-filename': encodeURIComponent('<img src=x onerror=alert(1)>.png'),
+      },
+      body: Buffer.from('png'),
+    });
+    const asset = (await res.json() as { asset: { id: string } }).asset;
+    await json(`/api/assets/${asset.id}`, {
+      method: 'PATCH', body: JSON.stringify({ approved: true }),
+    });
+
+    const { html } = await open(await link(clientId));
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('answers the browser’s automatic favicon request silently', async () => {
+    // Found in a browser: a JSON 404 put a red line in the console of a page
+    // whose whole claim is that it is the client's copy of record.
+    const res = await fetch(`${base}/favicon.ico`);
+    expect(res.status).toBe(204);
+  });
+
+  it('sends a designer to the studio rather than an arbitrary client', async () => {
+    const res = await fetch(`${base}/portal`, { headers: { cookie } });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('This is the client side');
   });
 });

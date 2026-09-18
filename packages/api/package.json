@@ -24,6 +24,7 @@
     "@edsai/export": "workspace:*",
     "@edsai/rubric": "workspace:*",
     "@edsai/instruments": "workspace:*",
-    "@edsai/auth": "workspace:*"
+    "@edsai/auth": "workspace:*",
+    "@edsai/hub": "workspace:*"
   }
 }
