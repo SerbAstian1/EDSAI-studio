@@ -104,6 +104,48 @@ export interface StoredViolation {
   detail: string;
 }
 
+/**
+ * The structural invariant every stored output has to satisfy.
+ *
+ * `verifyTargets` decides whether a claimed measurement is real: it needs the
+ * turn's tool outputs, it compares the claimed numbers against what the
+ * instrument produced, and it downgrades anything it cannot verify. That is the
+ * rule, and it lives in `verify.ts` alone.
+ *
+ * This is a different and much weaker statement: a record that says
+ * `source: 'instrument'` must at least name an instrument the same output says
+ * was called. It cannot re-do the verification — the tool outputs are gone by
+ * the time anything is persisted — but it does make the contradiction
+ * unstorable, so a write path added later cannot put a self-contradicting
+ * record in front of a client by skipping `accept()`.
+ *
+ * It lives here because `saveOutput` is the one place every write passes
+ * through. The alternative was a second copy of the real check in whatever
+ * reads the record last, which is where this started and is worse: that copy
+ * drifts, and a rule enforced in two places is a rule enforced in neither.
+ */
+function assertProvenanceIsRecordable(output: OutputType): void {
+  const called = new Set(output.instrumentCalls);
+  for (const target of output.targets) {
+    if (target.source !== 'instrument') continue;
+
+    if (!target.instrument) {
+      throw new Error(
+        `Refusing to store ${output.departmentId}/"${target.metric}": it reports a measured ` +
+        'actual with no instrument named. Submit through `accept`, which verifies the claim ' +
+        'or downgrades it.',
+      );
+    }
+    if (!called.has(target.instrument)) {
+      throw new Error(
+        `Refusing to store ${output.departmentId}/"${target.metric}": it credits ` +
+        `${target.instrument}, which this output does not list as called. Called: ` +
+        `${[...called].join(', ') || 'nothing'}.`,
+      );
+    }
+  }
+}
+
 export class RunStore {
   private readonly db: DatabaseSync;
 
@@ -183,6 +225,7 @@ export class RunStore {
 
   saveOutput(output: OutputType): void {
     DepartmentOutput.parse(output);
+    assertProvenanceIsRecordable(output);
     this.db.prepare(`
       INSERT INTO outputs (run_id, department_id, body, scores, targets, compositions,
                            decisions, instrument_calls, tokens, completed_at)

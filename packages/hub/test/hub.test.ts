@@ -95,33 +95,10 @@ describe('the gate', () => {
 });
 
 describe('provenance', () => {
-  it('refuses a measurement crediting an instrument the department never called', () => {
-    const forged = output({
-      ...designSystem,
-      departmentId: 5,
-      instrumentCalls: [],
-    });
-    try {
-      buildModel(bundle({ outputs: [strategy, forged, poster] }));
-      throw new Error('should have refused');
-    } catch (error) {
-      expect((error as HubRefused).reason).toBe('uncalled-instrument');
-      expect((error as Error).message).toContain('never called');
-    }
-  });
-
-  it('refuses a measured actual with no instrument named', () => {
-    const { instrument: _dropped, ...unattributed } = measuredContrast;
-    const broken = output({
-      ...designSystem, departmentId: 5, targets: [{ ...unattributed }],
-    });
-    try {
-      buildModel(bundle({ outputs: [strategy, broken, poster] }));
-      throw new Error('should have refused');
-    } catch (error) {
-      expect((error as HubRefused).reason).toBe('unattributed-measurement');
-    }
-  });
+  // The two provenance tests that were here moved to the engine, in
+  // `store.test.ts`. The hub no longer re-checks that a target credits an
+  // instrument its department called: `accept` verifies it and `saveOutput`
+  // refuses to store the contradiction, so a second copy here could only drift.
 
   it('refuses a colour with no contrast measurement from this run', () => {
     const unmeasured = output({

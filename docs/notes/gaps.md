@@ -351,14 +351,31 @@ metric string to find the match — a guess wearing a join's clothes, and the
 fabrication this system exists to prevent, one layer down. Both default to `[]`
 and `RunStore` migrates an existing database, so no recorded run is invalidated.
 
-**One rule is now enforced twice, on purpose.** The engine's verifier refuses a
-target crediting an instrument the department never called; the hub refuses the
-same thing again. Everywhere else in this repository a rule enforced in two
-places is a rule enforced in neither, and the API document says so explicitly.
-The exception is argued rather than assumed: the verifier protects the run
-record, and the hub protects the artefact that leaves the building and is read
-by people with no way to check it. If that argument is wrong, the hub's copy is
-the one to delete.
+**One rule was enforced twice, and is not any more.** The hub shipped with its
+own copy of the engine's provenance check, argued for on the grounds that the
+verifier protects the run record while the hub protects the artefact that leaves
+the building. Flagged at the time as the one deliberate exception, and then
+removed on review.
+
+The argument did not survive reading the code. `accept()` is the only path that
+writes a department output, it runs `verifyTargets` on every submission, and a
+claim it cannot verify is downgraded to `stated-target` before anything is
+stored — so the condition the hub checked for could not reach the hub. It was
+not a safety net, it was a second hand-written implementation of a rule the hub
+did not own, positioned to drift and to fail silently when it did.
+
+The real gap deletion opened — a write path added later skipping `accept()` — is
+closed at `RunStore.saveOutput`, the single point every write passes through,
+with a *structural* invariant rather than a copy of the check: a stored record
+may not say `source: 'instrument'` while naming an instrument the same record
+says was not called. `verifyTargets` still owns the question of whether a
+measurement is real, which needs the turn's tool outputs and cannot be asked at
+persistence time. Two rules, one implementation each.
+
+Worth keeping in view: the exception was argued carefully, written down, and
+still wrong. Being able to state a good reason for a duplicate rule is not
+evidence that the duplicate is load-bearing — here the reason was fluent and the
+code underneath it made the check dead on arrival.
 
 **A finding the hub made about itself.** Audited with the contrast instrument it
 renders, the copy button's border reused the decorative hairline token at

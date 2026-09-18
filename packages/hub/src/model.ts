@@ -13,8 +13,16 @@ import type { Rubric } from '@edsai/rubric';
  * asked for in a style guide.
  */
 
+/**
+ * Why the hub would not render.
+ *
+ * Both reasons are the hub's own. It does not re-check provenance: that rule
+ * belongs to the engine, which enforces it before a run record exists.
+ */
+export type HubRefusal = 'not-final' | 'unmeasured-colour';
+
 export class HubRefused extends Error {
-  constructor(readonly reason: string, detail: string) {
+  constructor(readonly reason: HubRefusal, detail: string) {
     super(detail);
     this.name = 'HubRefused';
   }
@@ -115,32 +123,17 @@ export function buildModel(bundle: HubBundle, now = new Date()): HubModel {
     departmentName: departmentName(output.departmentId),
   })));
 
-  // A target claiming an instrument the department never called is the exact
-  // fabrication the engine's verifier exists to catch. The hub refuses to
-  // render one rather than trusting that it was caught upstream — the hub is
-  // the artefact that leaves the building.
-  for (const output of ordered) {
-    const called = new Set(output.instrumentCalls);
-    for (const target of output.targets) {
-      if (target.source !== 'instrument') continue;
-      if (!target.instrument) {
-        throw new HubRefused(
-          'unattributed-measurement',
-          `"${target.metric}" in ${departmentName(output.departmentId)} reports a measured ` +
-          'actual with no instrument named. A measurement with no instrument behind it is an ' +
-          'assertion.',
-        );
-      }
-      if (!called.has(target.instrument)) {
-        throw new HubRefused(
-          'uncalled-instrument',
-          `"${target.metric}" credits ${target.instrument}, which ` +
-          `${departmentName(output.departmentId)} never called. Called: ` +
-          `${[...called].join(', ') || 'nothing'}.`,
-        );
-      }
-    }
-  }
+  // The run record's provenance is the engine's to guarantee, not the hub's.
+  // `accept()` is the only path that writes a department output, it runs
+  // `verifyTargets` on every submission, and an instrument claim it cannot
+  // verify is downgraded to `stated-target` before anything is saved.
+  // `RunStore.saveOutput` holds the structural invariant underneath that.
+  //
+  // This file used to re-derive that check, with a second hand-written
+  // implementation, on the argument that the hub is the artefact that leaves
+  // the building. The argument was wrong in the way it usually is: the copy
+  // would have drifted from the original the first time the rule changed, and
+  // a rule enforced in two places is a rule enforced in neither.
 
   const tokensWithMeasurements = (kind: BrandToken['kind'] | BrandToken['kind'][]) => {
     const kinds = Array.isArray(kind) ? kind : [kind];

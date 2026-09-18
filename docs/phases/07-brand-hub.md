@@ -112,20 +112,40 @@ measured cannot be silently paired with a ratio that belongs to something else.
 ## It refuses rather than degrades
 
 A hub is what a client works from every day, so a partial one is worse than
-none. `buildModel` throws `HubRefused` with a stated reason in four cases:
+none. `buildModel` throws `HubRefused` with a stated reason in two cases:
 
 | Reason | When |
 |---|---|
 | `not-final` | the gate does not hold FINAL — an open Blocker or Major, or an unresolved conflict |
-| `unattributed-measurement` | a target reports a measured actual with no instrument named |
-| `uncalled-instrument` | a target credits an instrument the department never called |
 | `unmeasured-colour` | a colour token carries no contrast measurement from this run |
 
-The third is deliberately a second enforcement of the engine's own provenance
-rule, and it is the one place in this repository where a rule is checked twice
-on purpose. The engine's verifier protects the run record; this protects the
-artefact that leaves the building. Everywhere else, a rule enforced in two
-places is a rule enforced in neither.
+Both are the hub's own. The first calls `evaluateGate`, the engine's function,
+rather than reimplementing the gate; the second is a rule nothing else in the
+system has, because nothing else renders a swatch.
+
+### The check that used to be here, and why it is not
+
+An earlier version also refused a target that named no instrument, or credited
+one its department never called. That was a second enforcement of the engine's
+provenance rule, argued for on the grounds that the verifier protects the run
+record while the hub protects the artefact that leaves the building.
+
+The argument was wrong in the ordinary way. `accept()` is the only path that
+writes a department output, it runs `verifyTargets` on every submission, and a
+claim it cannot verify is downgraded to `stated-target` **before** anything is
+stored — so the condition the hub was checking for could not reach it. What the
+hub had was not a safety net but a second, hand-written implementation of a rule
+it did not own, positioned to drift from the original the first time the rule
+changed and to fail silently when it did.
+
+Deleting it left one real gap: a write path added later could skip `accept()`.
+That is closed where it belongs, at `RunStore.saveOutput` — the single point
+every write passes through — with a structural invariant rather than a copy of
+the check. `verifyTargets` decides whether a measurement is *real*, which needs
+the turn's tool outputs. The store only refuses to persist a record that
+contradicts itself: `source: 'instrument'` naming an instrument the same record
+says was not called. Those are two different rules with one implementation each,
+which is the thing the repository was already claiming and now does.
 
 ## One self-contained file
 
@@ -158,7 +178,7 @@ under them without anyone deciding is worse than one that is briefly behind.
 | Criterion | Result |
 |---|---|
 | A FINAL run emits a hub with no hand-authored content | **met** — every field is a projection of the run; there is no authoring surface |
-| Every colour renders a ratio from the contrast instrument in that run | **met** — enforced by refusal, tested four ways including a stated target offered in place of a measurement |
+| Every colour renders a ratio from the contrast instrument in that run | **met** — enforced by refusal, including a stated target offered in place of a measurement |
 | A failing pairing renders as a failure, not omitted | **met** — `is-fail` styling, and the complete target list renders every row |
 | Meets its own budget | **met** — 2.8 KB gz against 40 KB |
 | Regeneration matches the current run, staleness stated | **met** — digest in the footer, `check` subcommand, time excluded from the digest |
