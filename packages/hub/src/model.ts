@@ -3,6 +3,7 @@ import {
   type BrandToken, type Conflict, type DepartmentOutput, type Issue, type Run, type Target,
 } from '@edsai/engine';
 import type { Rubric } from '@edsai/rubric';
+import type { ClientFacingValue } from '@edsai/engine';
 
 /**
  * The hub's view of a run.
@@ -34,6 +35,16 @@ export interface HubBundle {
   outputs: readonly DepartmentOutput[];
   issues: readonly Issue[];
   conflicts: readonly Conflict[];
+  /**
+   * The living brand, where one exists.
+   *
+   * When present these supersede the run's own tokens: the run records what the
+   * pipeline computed on a given day, the brand is what the client works from
+   * today. Each value carries its own current measurement, recomputed on every
+   * edit, so a colour a designer typed by hand still publishes as measured —
+   * which is what lets this page keep its claim while remaining editable.
+   */
+  brandValues?: readonly ClientFacingValue[];
 }
 
 /** Instruments whose output is a contrast measurement. */
@@ -54,6 +65,10 @@ export interface ColourEntry {
 }
 
 export interface HubModel {
+  /** The brand's own values, where a brand exists. */
+  brandValues: ClientFacingValue[];
+  /** How many of them do not currently clear their target. */
+  failingBrandColours: number;
   projectId: string;
   runId: string;
   determination: string;
@@ -146,10 +161,20 @@ export function buildModel(bundle: HubBundle, now = new Date()): HubModel {
   };
 
   const colours: ColourEntry[] = tokensWithMeasurements('color');
+  const brandValues = [...(bundle.brandValues ?? [])];
 
-  // "Done when" #2: every colour pairing in the hub renders a ratio produced by
-  // the contrast instrument in that run.
+  // "Done when" #2: every colour in the hub states what it measures against.
+  //
+  // A brand value satisfies this on its own — it carries a measurement taken at
+  // save time by the same instrument, which is the whole point of re-measuring
+  // an edit. A run token has to prove it the older way, through a target the
+  // department produced.
+  const measuredByBrand = new Set(
+    brandValues.filter((value) => value.note !== undefined).map((value) => value.name),
+  );
+
   for (const entry of colours) {
+    if (measuredByBrand.has(entry.token.name)) continue;
     const measured = entry.measurements.filter((m) =>
       m.source === 'instrument' && m.instrument && CONTRAST_INSTRUMENTS.has(m.instrument));
     if (measured.length === 0) {
@@ -161,6 +186,11 @@ export function buildModel(bundle: HubBundle, now = new Date()): HubModel {
       );
     }
   }
+
+  // A colour that failed its target still renders, with what it fails by. The
+  // acceptance criteria are explicit that omitting it is not an option: a client
+  // who is never told is a client who uses it anyway.
+  const failingBrandColours = brandValues.filter((value) => value.passes === false);
 
   return {
     projectId: run.projectId,
@@ -175,6 +205,8 @@ export function buildModel(bundle: HubBundle, now = new Date()): HubModel {
         departmentName: departmentName(output.departmentId), body: output.body,
       })),
     colours,
+    brandValues,
+    failingBrandColours: failingBrandColours.length,
     type: tokensWithMeasurements(['font', 'size']),
     otherTokens: tokensWithMeasurements(['space', 'radius', 'asset', 'text']),
     layout: ordered.flatMap((output) => output.compositions.map((composition) => ({

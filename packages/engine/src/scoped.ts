@@ -5,6 +5,7 @@ import {
 import type { RunStore } from './store.js';
 import type { Client, Contact, Project } from './entities.js';
 import type { Onboarding } from './onboarding.js';
+import type { BrandValue } from './brand.js';
 import type { Run } from './types.js';
 
 /**
@@ -125,6 +126,18 @@ export class ScopedStore {
     const run = this.store.getRun(id);
     if (!run || !this.mayRead('run', run.clientId)) return undefined;
     return run;
+  }
+
+  /* ----------------------------------------------------------- brand values */
+
+  listBrandValues(clientId: string): BrandValue[] {
+    if (!this.mayRead('brand', clientId)) return [];
+    return this.store.listBrandValues(clientId);
+  }
+
+  saveBrandValue(value: BrandValue): void {
+    this.mustWrite('brand', value.clientId);
+    this.store.saveBrandValue(value);
   }
 
   /* ------------------------------------------------------------- onboarding */

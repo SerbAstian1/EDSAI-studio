@@ -62,7 +62,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 785 tests
+pnpm test          # 825 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```

@@ -314,3 +314,65 @@ describe('the hub\'s own accessibility', () => {
     expect(html).toContain('width=device-width');
   });
 });
+
+describe('a brand that has been edited', () => {
+  const brandValues = [
+    { name: 'ink', kind: 'color' as const, value: '#101010', role: 'body text',
+      note: '19.1:1 against paper — clears the 4.5:1 it needs.', passes: true },
+    { name: 'paper', kind: 'color' as const, value: '#FFFFFF', role: 'primary surface',
+      note: '1:1 against paper — under the 3:1 it needs.', passes: false },
+  ];
+
+  it('publishes an edited colour as measured, because it was re-measured on save', () => {
+    const model = buildModel(bundle({ brandValues }), NOW);
+    expect(model.brandValues).toHaveLength(2);
+    const html = renderHub(model);
+    expect(html).toContain('#101010');
+    expect(html).toContain('clears the 4.5:1 it needs');
+  });
+
+  it('accepts a colour the run never measured, when the brand measured it instead', () => {
+    const unmeasuredToken = output({
+      ...designSystem, departmentId: 5, targets: [], instrumentCalls: [],
+    });
+    expect(() => buildModel(bundle({
+      outputs: [strategy, unmeasuredToken, poster],
+      brandValues: [{ name: 'ink', kind: 'color', value: '#101010',
+        note: '19.1:1 against paper — clears the 4.5:1 it needs.', passes: true }],
+    }), NOW)).not.toThrow();
+  });
+
+  it('still refuses a colour nothing measured at all', () => {
+    // Strip the brand's measurement and the original requirement applies again —
+    // the exemption is for a value that *was* measured, not for having a brand.
+    const unmeasuredToken = output({
+      ...designSystem, departmentId: 5, targets: [], instrumentCalls: [],
+    });
+    expect(() => buildModel(bundle({
+      outputs: [strategy, unmeasuredToken, poster],
+      brandValues: [{ name: 'ink', kind: 'color', value: '#101010' }],
+    }), NOW)).toThrow(/carries no contrast measurement/);
+  });
+
+  it('shows a failing brand colour rather than omitting it', () => {
+    const model = buildModel(bundle({ brandValues }), NOW);
+    expect(model.failingBrandColours).toBe(1);
+    expect(renderHub(model)).toContain('under the 3:1 it needs');
+  });
+
+  it('never shows the client how the value got there', () => {
+    // Asserting the absence of the word "origin" would be meaningless — it is a
+    // substring of `original`, a variable in the inlined copy script, so the
+    // check passed for a reason that had nothing to do with the claim. These
+    // assert the things that would actually leak.
+    const withProvenance = [
+      { name: 'ink', kind: 'color' as const, value: '#101010', role: 'body text',
+        note: '19.1:1 against paper — clears the 4.5:1 it needs.', passes: true },
+    ];
+    const html = renderHub(buildModel(bundle({ brandValues: withProvenance }), NOW));
+    expect(html).not.toContain('Changed by hand');
+    expect(html).not.toContain('r-hub-1"');
+    expect(html).not.toMatch(/"origin"\s*:/);
+    expect(html).not.toContain('Darkened so it clears');
+  });
+});

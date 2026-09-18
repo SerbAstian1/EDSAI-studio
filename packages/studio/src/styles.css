@@ -456,3 +456,15 @@ button.choice.chosen {
   .onboard .editorial { font-size: 23px; }
   .onboard-card { padding: calc(var(--step) * 5); }
 }
+
+/* — brand values ———————————————————————————————————————————————— */
+
+.swatch-chip {
+  height: 4.5rem;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.swatch input { margin-top: calc(var(--step) * 2); }
+.measured { font-size: 12.5px; margin: calc(var(--step) * 2) 0 0; line-height: 1.4; }
+.measured.ok { color: var(--success); }
+.measured.err { color: var(--error); }

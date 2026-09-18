@@ -120,6 +120,26 @@ export function renderHub(model: HubModel): string {
       entry.body.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p.trim())}</p>`).join(''))
     .join('');
 
+  // A brand value renders on its own terms: the colour, what it is for, and one
+  // plain sentence about what it measures. No origin, no reason, no run id —
+  // whether a value was computed or typed is the studio's business, and putting
+  // it on the client's reference would turn their page into our changelog.
+  const brandColours = model.brandValues
+    .filter((value) => value.kind === 'color')
+    .map((value) => `<div class="swatch">
+  <div class="chip" style="background:${safeColor(value.value)}"></div>
+  <div class="swatch-body">
+    <div class="name">${escapeHtml(value.name)}</div>
+    ${value.role ? `<div class="role">${escapeHtml(value.role)}</div>` : ''}
+    <button class="copy" type="button" data-value="${escapeHtml(value.value)}">${escapeHtml(value.value)}</button>
+    ${value.note
+      ? `<div class="target ${value.passes === false ? 'is-fail' : 'is-pass'}">
+           <div class="target-body"><span class="against">${escapeHtml(value.note)}</span></div>
+         </div>`
+      : ''}
+  </div>
+</div>`).join('');
+
   const colours = model.colours.map((entry) => `<div class="swatch">
   <div class="chip" style="background:${safeColor(entry.token.value)}"></div>
   <div class="swatch-body">
@@ -173,7 +193,9 @@ ${model.statedCount} stated target${model.statedCount === 1 ? '' : 's'}</p>
 <main>
 ${section('brief', 'The brief this was built against', `<p>${escapeHtml(model.brief)}</p>`)}
 ${section('strategy', 'Strategy', strategy)}
-${section('colour', 'Colour', `<div class="swatches">${colours}</div>`)}
+${section('colour', 'Colour', brandColours !== ''
+  ? `<div class="swatches">${brandColours}</div>`
+  : `<div class="swatches">${colours}</div>`)}
 ${section('type', 'Typography', typeBlocks)}
 ${section('layout', 'Layout', layout)}
 ${section('other', 'Other tokens', other ? `<ul>${other}</ul>` : '')}

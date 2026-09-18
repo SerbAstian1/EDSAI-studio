@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { RunTable } from '../components/RunTable.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
+import Brand from './Brand.js';
 import type { Run } from '../api.js';
 
 /**
@@ -130,6 +131,8 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
       </form>
 
       <OnboardingPanel clientId={clientId} />
+
+      <Brand clientId={clientId} />
 
       <h3>Runs</h3>
       {runs.length === 0

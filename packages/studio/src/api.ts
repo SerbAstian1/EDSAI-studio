@@ -218,6 +218,28 @@ export interface OnboardingSummary {
   };
 }
 
+export interface Measured {
+  ratio?: number;
+  required?: number;
+  passes?: boolean;
+  against?: string;
+  note?: string;
+}
+
+export interface BrandValue {
+  clientId: string;
+  name: string;
+  kind: 'color' | 'font' | 'size' | 'space' | 'radius' | 'text';
+  value: string;
+  role?: string;
+  against?: string;
+  origin: 'run' | 'studio';
+  sourceRunId?: string;
+  reason?: string;
+  updatedAt: string;
+  measured?: Measured;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
@@ -243,6 +265,23 @@ export const api = {
     call<Contact>(`/api/clients/${clientId}/contacts`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+  brand: (clientId: string) =>
+    call<{ values: BrandValue[] }>(`/api/clients/${clientId}/brand`).then((r) => r.values),
+  editBrandValue: (clientId: string, name: string,
+    input: { value: string; against?: string; reason?: string }) =>
+    call<{ value: BrandValue; measured: Measured; regressed: boolean }>(
+      `/api/clients/${clientId}/brand/${name}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    ),
+  addBrandValue: (clientId: string, input: { name: string; kind: string; value: string; role?: string }) =>
+    call<{ value: BrandValue }>(`/api/clients/${clientId}/brand`, {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+  seedBrand: (clientId: string, runId: string) =>
+    call<{ seeded: number; skipped: number }>(`/api/clients/${clientId}/brand/seed`, {
+      method: 'POST', body: JSON.stringify({ runId }),
+    }),
+
   onboardings: (clientId: string) =>
     call<{ onboardings: OnboardingSummary[] }>(`/api/clients/${clientId}/onboarding`)
       .then((r) => r.onboardings),

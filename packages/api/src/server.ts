@@ -11,6 +11,7 @@ import { RunEvents } from './events.js';
 import {
   ScopedStore, ensureLocalProject, slugify,
   QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject,
+  measure, applyEdit, seedFromRun, EditRefused,
   type Run, type Onboarding,
 } from '@edsai/engine';
 import {
@@ -445,6 +446,136 @@ export class ApiServer {
           severities: this.rubric.severities,
           drift: this.rubric.drift,
         }),
+      },
+
+      /* --------------------------------------------------------- brand system */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const values = scoped.listBrandValues(clientId);
+          send(res, 200, {
+            // The studio sees the working: origin, reason, and what each value
+            // measures right now.
+            values: values.map((value) => ({ ...value, measured: measure(value, values) })),
+          });
+        },
+      },
+
+      /**
+       * Seed the brand from a run.
+       *
+       * The run stays the immutable record of what the pipeline computed; the
+       * brand is the living copy. Seeding never overwrites an edited value,
+       * because a re-run quietly undoing an afternoon's work is worse than a
+       * value being out of date.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand\/seed$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const runId = (body as { runId?: string })?.runId;
+          const run = runId ? scoped.getRun(runId) : undefined;
+          if (!run || run.clientId !== clientId) {
+            send(res, 404, {
+              error: 'not_found',
+              message: 'No run by that id belongs to this client and this session.',
+            });
+            return;
+          }
+
+          const tokens = this.store.getOutputs(run.id, run.activatedDepartments)
+            .flatMap((output) => output.tokens);
+          const seeded = seedFromRun(clientId, run.id, tokens, scoped.listBrandValues(clientId));
+          for (const value of seeded) scoped.saveBrandValue(value);
+
+          send(res, 201, { seeded: seeded.length, skipped: tokens.length - seeded.length });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand\/(?<name>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const name = params['name'] ?? '';
+          const values = scoped.listBrandValues(clientId);
+          const existing = values.find((value) => value.name === name);
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: `No value called "${name}" in this brand.`,
+            });
+            return;
+          }
+
+          const input = body as { value?: string; against?: string; role?: string; reason?: string };
+          if (typeof input?.value !== 'string' || input.value.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A value needs a value.' });
+            return;
+          }
+
+          try {
+            const result = applyEdit(existing, {
+              value: input.value.trim(),
+              ...(input.against !== undefined ? { against: input.against } : {}),
+              ...(input.role !== undefined ? { role: input.role } : {}),
+              ...(input.reason !== undefined ? { reason: input.reason } : {}),
+            }, values);
+            scoped.saveBrandValue(result.value);
+            send(res, 200, {
+              value: result.value, measured: result.measured, regressed: result.regressed,
+            });
+          } catch (error) {
+            if (error instanceof EditRefused) {
+              // 422 rather than 400: the request is well formed, and the answer
+              // is "not without telling me why", which the client can act on.
+              send(res, error.reason === 'needs-reason' ? 422 : 400, {
+                error: error.reason, message: error.message,
+              });
+              return;
+            }
+            throw error;
+          }
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { name?: string; kind?: string; value?: string; role?: string };
+          if (!input?.name?.trim() || !input?.value?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A value needs a name and a value.' });
+            return;
+          }
+          const value = {
+            clientId,
+            name: slugify(input.name) || input.name.trim(),
+            kind: (input.kind ?? 'color') as 'color',
+            value: input.value.trim(),
+            ...(input.role?.trim() ? { role: input.role.trim() } : {}),
+            origin: 'studio' as const,
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveBrandValue(value);
+          send(res, 201, { value, measured: measure(value, [...scoped.listBrandValues(clientId)]) });
+        },
       },
 
       /* ---------------------------------------------------------- onboarding */

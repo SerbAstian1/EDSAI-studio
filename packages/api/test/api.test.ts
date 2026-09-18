@@ -964,3 +964,159 @@ describe('an onboarding closes when it is submitted', () => {
     expect(second.status).toBe(200);
   });
 });
+
+describe('the brand system', () => {
+  const brandClient = async () => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Brand Co' }),
+    });
+    const clientId = body['id'] as unknown as string;
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'paper', kind: 'color', value: '#FFFFFF', role: 'primary surface' }),
+    });
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ink', kind: 'color', value: '#16181C', role: 'body text' }),
+    });
+    return clientId;
+  };
+
+  it('measures a value the moment it is created', async () => {
+    const clientId = await brandClient();
+    const { body } = await json(`/api/clients/${clientId}/brand`);
+    const ink = (body['values'] as unknown as { name: string; measured: { ratio: number; passes: boolean } }[])
+      .find((v) => v.name === 'ink');
+    expect(ink?.measured.passes).toBe(true);
+    expect(ink?.measured.ratio).toBeGreaterThan(15);
+  });
+
+  it('saves an edit that still passes without asking anything', async () => {
+    const clientId = await brandClient();
+    const { status, body } = await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#222222' }),
+    });
+    expect(status).toBe(200);
+    expect(body['regressed']).toBe(false);
+    expect((body['measured'] as unknown as { passes: boolean }).passes).toBe(true);
+  });
+
+  it('re-measures on save, so an edited value still carries a real number', async () => {
+    const clientId = await brandClient();
+    const { body } = await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#767676' }),
+    });
+    const measured = body['measured'] as unknown as { ratio: number; against: string };
+    expect(measured.ratio).toBeCloseTo(4.54, 1);
+    expect(measured.against).toBe('paper');
+  });
+
+  it('asks why before letting an edit break something', async () => {
+    const clientId = await brandClient();
+    const { status, body } = await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#CCCCCC' }),
+    });
+    expect(status).toBe(422);
+    expect(body['error']).toBe('needs-reason');
+    expect(body['message']).toContain('a decision rather than an accident');
+  });
+
+  it('accepts the same edit once the reason is there', async () => {
+    const clientId = await brandClient();
+    const { status, body } = await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value: '#CCCCCC', reason: 'Placeholder until the client picks a grey.' }),
+    });
+    expect(status).toBe(200);
+    expect(body['regressed']).toBe(true);
+  });
+
+  it('leaves the value untouched when an edit is refused', async () => {
+    const clientId = await brandClient();
+    await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#CCCCCC' }),
+    });
+    const { body } = await json(`/api/clients/${clientId}/brand`);
+    const ink = (body['values'] as unknown as { name: string; value: string }[])
+      .find((v) => v.name === 'ink');
+    expect(ink?.value).toBe('#16181C');
+  });
+
+  it('refuses a value no renderer could use', async () => {
+    const clientId = await brandClient();
+    const { status } = await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: 'dark-ish' }),
+    });
+    expect(status).toBe(400);
+  });
+
+  it('404s a value that is not in the brand', async () => {
+    const clientId = await brandClient();
+    expect((await json(`/api/clients/${clientId}/brand/nonexistent`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#000000' }),
+    })).status).toBe(404);
+  });
+
+  it('seeds from a run and never overwrites an edit', async () => {
+    const clientId = await brandClient();
+    // A run under this client, carrying a token that collides with `ink`.
+    const { projectId } = seedProject(clientId, 'p-brand');
+    const run = await json('/api/runs', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, level: 1, brief: 'A brief for the brand.' }),
+    });
+    const runId = run.body['id'] as unknown as string;
+    store.saveOutput({
+      runId, departmentId: 1, body: 'Palette.', scores: [], targets: [],
+      tokens: [
+        { name: 'ink', kind: 'color', value: '#000000' },
+        { name: 'signal', kind: 'color', value: '#EB5E28', role: 'accent' },
+      ],
+      compositions: [], decisions: [], instrumentCalls: [],
+      completedAt: new Date().toISOString(),
+    });
+
+    await json(`/api/clients/${clientId}/brand/ink`, {
+      method: 'PATCH', body: JSON.stringify({ value: '#101010' }),
+    });
+
+    const { status, body } = await json(`/api/clients/${clientId}/brand/seed`, {
+      method: 'POST', body: JSON.stringify({ runId }),
+    });
+    expect(status).toBe(201);
+    expect(body['seeded']).toBe(1);
+
+    const after = await json(`/api/clients/${clientId}/brand`);
+    const values = after.body['values'] as unknown as { name: string; value: string }[];
+    expect(values.find((v) => v.name === 'ink')?.value).toBe('#101010');
+    expect(values.find((v) => v.name === 'signal')?.value).toBe('#EB5E28');
+  });
+
+  it('will not seed from another client’s run', async () => {
+    const a = await brandClient();
+    const { projectId } = seedProject('c-other', 'p-other');
+    const run = await json('/api/runs', {
+      method: 'POST', body: JSON.stringify({ projectId, level: 1, brief: 'Elsewhere.' }),
+    });
+    const { status } = await json(`/api/clients/${a}/brand/seed`, {
+      method: 'POST', body: JSON.stringify({ runId: run.body['id'] }),
+    });
+    expect(status).toBe(404);
+  });
+
+  it('keeps one client’s brand away from another session', async () => {
+    const clientId = await brandClient();
+    const saved = cookie;
+    const token = 'portal-brand-other';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'owner',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+    expect((await json(`/api/clients/${clientId}/brand`)).status).toBe(404);
+    cookie = saved;
+  });
+});

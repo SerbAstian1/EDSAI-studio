@@ -7,6 +7,7 @@ import {
   type Issue as IssueType, type Run as RunType,
 } from './types.js';
 import { slugify } from './entities.js';
+import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import {
   Onboarding, Answer,
   type Onboarding as OnboardingType, type Answer as AnswerType,
@@ -82,6 +83,20 @@ CREATE TABLE IF NOT EXISTS projects (
   notes TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS brand_values (
+  client_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  role TEXT,
+  against TEXT,
+  origin TEXT NOT NULL,
+  source_run_id TEXT,
+  reason TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (client_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS onboardings (
@@ -430,6 +445,41 @@ export class RunStore {
       : this.db.prepare('SELECT * FROM projects WHERE client_id = ? ORDER BY updated_at DESC')
         .all(clientId)) as Record<string, unknown>[];
     return rows.map(hydrateProject);
+  }
+
+  /* ------------------------------------------------------------ brand values */
+
+  saveBrandValue(value: BrandValueType): void {
+    BrandValue.parse(value);
+    this.db.prepare(`
+      INSERT INTO brand_values (client_id, name, kind, value, role, against, origin,
+                                source_run_id, reason, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(client_id, name) DO UPDATE SET
+        kind = excluded.kind, value = excluded.value, role = excluded.role,
+        against = excluded.against, origin = excluded.origin,
+        source_run_id = excluded.source_run_id, reason = excluded.reason,
+        updated_at = excluded.updated_at
+    `).run(value.clientId, value.name, value.kind, value.value, value.role ?? null,
+      value.against ?? null, value.origin, value.sourceRunId ?? null, value.reason ?? null,
+      value.updatedAt);
+  }
+
+  listBrandValues(clientId: string): BrandValueType[] {
+    return (this.db.prepare('SELECT * FROM brand_values WHERE client_id = ? ORDER BY kind, name')
+      .all(clientId) as Record<string, unknown>[]).map((row) => BrandValue.parse({
+      clientId: row['client_id'], name: row['name'], kind: row['kind'], value: row['value'],
+      ...(row['role'] ? { role: row['role'] } : {}),
+      ...(row['against'] ? { against: row['against'] } : {}),
+      origin: row['origin'],
+      ...(row['source_run_id'] ? { sourceRunId: row['source_run_id'] } : {}),
+      ...(row['reason'] ? { reason: row['reason'] } : {}),
+      updatedAt: row['updated_at'],
+    }));
+  }
+
+  getBrandValue(clientId: string, name: string): BrandValueType | undefined {
+    return this.listBrandValues(clientId).find((value) => value.name === name);
   }
 
   /* ------------------------------------------------------------- onboarding */

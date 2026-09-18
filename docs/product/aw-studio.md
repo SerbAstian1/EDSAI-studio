@@ -287,7 +287,7 @@ statement, because that is one of the three the flow deliberately leaves open.
 | Isolation | one client's invite opens only their onboarding; a portal session for another client 404s on accept |
 | Junk answers | an answer that fails catalog validation is refused and does not count toward progress, so 100% cannot be reached by sending nonsense |
 | Budget | 88.7 KB gz against 170 KB |
-| Suite | 785 tests |
+| Suite | 785 tests at the time |
 
 A fourth came out of probing the public endpoints afterwards rather than
 driving them: **a client could keep editing after submitting.** The status still
@@ -303,7 +303,67 @@ unanswered optional questions; the side and strength buttons shared a selector
 with no grouping, which is five undifferentiated buttons to a screen reader; and
 the thank-you line read "8 of the eight directions".
 
-## What Phases 4–10 still need
+## Phase 4 — the brand workspace (built)
+
+The design question was where a brand's values live. On the run record they stay
+provenance-checked but editing one swatch means re-running a department; as their
+own editable entity they are natural to edit, but the moment a human types a hex
+code the hub's claim weakens from "every value carries its measurement" to "some
+do".
+
+The answer taken, with ease of use as the deciding constraint:
+
+**Values are seeded from a run, then owned by the designer, and re-measured by
+the same instrument on every save.** The run stays the immutable record of what
+the pipeline computed; the brand is the living copy, and `sourceRunId` records
+where each value started. So an edited colour still publishes as measured — what
+changes is `origin`, not whether there is a number.
+
+**A reason is required only when an edit breaks something.** Demanding
+justification for every nudge produces a database full of "updated", which is
+worse than an empty field because it looks like an answer. The reason exists so a
+*failing* value is not mysterious to whoever meets it next. In practice: type a
+hex, watch the ratio move, done — the interface interrupts once, when the change
+takes a value below what it needs, and says by how much.
+
+**The client never sees the working.** `forClient` drops `origin`, `reason` and
+`sourceRunId`. Whether a value was computed or typed is the studio's business;
+putting "changed by hand, because…" on every swatch would turn the client's
+reference into our changelog. A failing colour still renders, with what it fails
+by, because a client who is never told uses it anyway.
+
+### Verified, not asserted
+
+| Check | Result |
+|---|---|
+| A passing edit | saves on the spot, nothing asked for — 17.77:1 → 12.63:1, driven in the browser |
+| A breaking edit | interrupts with "takes ink to 1.61:1, under the 4.5:1 it needs", and **leaves the stored value untouched** until a reason is given |
+| After the reason | saves, shows the new ratio, records "Changed by hand: …", and flags "1 below target" |
+| Seeding | never overwrites an edited value; refuses a run belonging to another client |
+| Isolation | a portal session for another client 404s on the whole brand |
+| Budget | 89 KB gz against 170 KB |
+| Suite | 825 tests |
+
+Three bugs came out of driving it, and the first two would have shipped:
+
+- **A surface was measured against itself**, giving 1:1 and flagging the brand's
+  own background as failing — a false alarm on the one colour that cannot be
+  wrong. A ground has no contrast of its own; its contrast is a property of what
+  sits on it.
+- **The page went blank after saving a reasoned change.** `needsReason` is this
+  component's state and `save.error` is the mutation's, and they do not update in
+  the same tick — so the retry render still had the block open while the error
+  had already been cleared, and reading `.message` off `null` took the whole page
+  down. Found by capturing exceptions over CDP, not by looking at the screen.
+- **"Edited" showed on values that were never edited**, because a hand-created
+  value is studio-origin with nothing earlier to differ from.
+
+A fourth was in the test rather than the product, and is the recurring one: a hub
+assertion checked that the rendered page did not contain the word "origin", which
+passed only because it was matching `original` — a variable name in the inlined
+copy script. It asserted nothing about the claim it was named for.
+
+## What Phases 5–10 still need
 
 `Asset` and `Brand` do not exist as entities yet, and asset storage is the
 larger of the two — the brief's library, versions and approval states all need a
