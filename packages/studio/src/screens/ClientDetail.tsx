@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { RunTable } from '../components/RunTable.js';
+import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import type { Run } from '../api.js';
 
 /**
@@ -127,6 +128,8 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
           Add project
         </button>
       </form>
+
+      <OnboardingPanel clientId={clientId} />
 
       <h3>Runs</h3>
       {runs.length === 0

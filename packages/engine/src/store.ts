@@ -8,6 +8,10 @@ import {
 } from './types.js';
 import { slugify } from './entities.js';
 import {
+  Onboarding, Answer,
+  type Onboarding as OnboardingType, type Answer as AnswerType,
+} from './onboarding.js';
+import {
   Client, Contact, Project, Session, StudioUser,
   type Client as ClientType, type Contact as ContactType, type Project as ProjectType,
   type Session as SessionType, type StudioUser as StudioUserType,
@@ -79,6 +83,33 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS onboardings (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  sent_at TEXT,
+  submitted_at TEXT,
+  project_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_answers (
+  onboarding_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  value TEXT NOT NULL,
+  answered_at TEXT NOT NULL,
+  PRIMARY KEY (onboarding_id, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_invites (
+  digest TEXT PRIMARY KEY,
+  onboarding_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS onboardings_by_client ON onboardings (client_id);
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -399,6 +430,86 @@ export class RunStore {
       : this.db.prepare('SELECT * FROM projects WHERE client_id = ? ORDER BY updated_at DESC')
         .all(clientId)) as Record<string, unknown>[];
     return rows.map(hydrateProject);
+  }
+
+  /* ------------------------------------------------------------- onboarding */
+
+  saveOnboarding(onboarding: OnboardingType): void {
+    Onboarding.parse(onboarding);
+    this.db.prepare(`
+      INSERT INTO onboardings (id, client_id, status, created_at, sent_at, submitted_at, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status = excluded.status, sent_at = excluded.sent_at,
+        submitted_at = excluded.submitted_at, project_id = excluded.project_id
+    `).run(onboarding.id, onboarding.clientId, onboarding.status, onboarding.createdAt,
+      onboarding.sentAt ?? null, onboarding.submittedAt ?? null, onboarding.projectId ?? null);
+  }
+
+  getOnboarding(id: string): OnboardingType | undefined {
+    const row = this.db.prepare('SELECT * FROM onboardings WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateOnboarding(row) : undefined;
+  }
+
+  listOnboardings(clientId: string): OnboardingType[] {
+    return (this.db.prepare('SELECT * FROM onboardings WHERE client_id = ? ORDER BY created_at DESC')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateOnboarding);
+  }
+
+  saveAnswer(answer: AnswerType): void {
+    Answer.parse(answer);
+    this.db.prepare(`
+      INSERT INTO onboarding_answers (onboarding_id, question_id, value, answered_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(onboarding_id, question_id) DO UPDATE SET
+        value = excluded.value, answered_at = excluded.answered_at
+    `).run(answer.onboardingId, answer.questionId, JSON.stringify(answer.value),
+      answer.answeredAt);
+  }
+
+  getAnswers(onboardingId: string): AnswerType[] {
+    return (this.db.prepare('SELECT * FROM onboarding_answers WHERE onboarding_id = ?')
+      .all(onboardingId) as Record<string, unknown>[]).map((row) => Answer.parse({
+      onboardingId: row['onboarding_id'],
+      questionId: row['question_id'],
+      value: JSON.parse(String(row['value'])),
+      answeredAt: row['answered_at'],
+    }));
+  }
+
+  /**
+   * An onboarding invite: a capability, not a session.
+   *
+   * It grants exactly one thing — reading and writing the answers of one
+   * onboarding — and nothing else. Deliberately not a portal principal with a
+   * role: a magic link that minted a session would hand a stranger every read
+   * that role allows, which is far more than filling in a form needs.
+   *
+   * Stored as a digest for the same reason sessions are.
+   */
+  saveInvite(invite: { digest: string; onboardingId: string; createdAt: string; expiresAt: string }): void {
+    this.db.prepare(`
+      INSERT INTO onboarding_invites (digest, onboarding_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at
+    `).run(invite.digest, invite.onboardingId, invite.createdAt, invite.expiresAt);
+  }
+
+  /** The onboarding an invite opens, or nothing once it has expired. */
+  getInvited(digest: string, now = new Date()): string | undefined {
+    const row = this.db.prepare('SELECT * FROM onboarding_invites WHERE digest = ?')
+      .get(digest) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    if (new Date(String(row['expires_at'])).getTime() <= now.getTime()) {
+      this.db.prepare('DELETE FROM onboarding_invites WHERE digest = ?').run(digest);
+      return undefined;
+    }
+    return String(row['onboarding_id']);
+  }
+
+  revokeInvites(onboardingId: string): void {
+    this.db.prepare('DELETE FROM onboarding_invites WHERE onboarding_id = ?').run(onboardingId);
   }
 
   /* ------------------------------------------------------- users and sessions */
@@ -729,5 +840,15 @@ function hydrateProject(row: Record<string, unknown>): ProjectType {
     ...(row['deadline'] ? { deadline: row['deadline'] } : {}),
     ...(row['notes'] ? { notes: row['notes'] } : {}),
     createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateOnboarding(row: Record<string, unknown>): OnboardingType {
+  return Onboarding.parse({
+    id: row['id'], clientId: row['client_id'], status: row['status'],
+    createdAt: row['created_at'],
+    ...(row['sent_at'] ? { sentAt: row['sent_at'] } : {}),
+    ...(row['submitted_at'] ? { submittedAt: row['submitted_at'] } : {}),
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
   });
 }

@@ -228,9 +228,74 @@ and runs.
 | The session cookie | `document.cookie` cannot see it, checked in the running page |
 | Account enumeration | a wrong password and an unknown account return the same status and the same message |
 | Budget | 88.3 KB gz against 170 KB |
-| Suite | 743 tests |
+| Suite | 743 tests at the time |
 
-## What Phases 3–10 still need
+## Phase 3 — onboarding (built)
+
+The brief's §11 describes a questionnaire builder with sections for company,
+business, audience, positioning and personality. `docs/discovery/flow.md`
+already specified something better and never built: a four-act flow built on one
+rule —
+
+> A good discovery question produces a **decision**, not a description.
+
+So Phase 3 builds that rather than a second questionnaire, with the brief's
+factual sections folded in as a short "facts" act. Three properties of the
+catalog are asserted as tests rather than left as intentions:
+
+- **No design vocabulary reaches a client.** A test greps every prompt and option
+  for "minimal", "modern", "clean", "premium" and the rest. Clients are fluent in
+  their own business, not ours; the translation is our job. The questions are
+  about shop windows, workbenches and what happens when someone asks the price.
+- **The midpoint is unreachable, not rejected.** The four ratio axes ask "pick a
+  side", then "slightly / clearly / overwhelmingly" → 60/40, 70/30, 85/15. A
+  slider with a centre would collect an unmade decision and fail the Direction
+  Lock gate afterwards, which is a worse experience than never offering it.
+- **Three axes are never asked.** Positioning, emotional tone and motion law are
+  drafted by the studio and confirmed by the client, because asking someone to
+  write a positioning statement produces category description. A completed client
+  flow therefore resolves **8 of 11** axes by design — which is exactly the
+  Direction Lock's own threshold, so finishing the form is where the studio's
+  work starts rather than a shortfall.
+
+### The invite is a capability, not a session
+
+The client-facing endpoints are the only place in this system an unauthenticated
+stranger writes to the database, so the grant is as narrow as it can be. The
+token opens exactly one onboarding's questions and answers. It mints **no
+principal**, so there is no role to escalate and no other client's data within
+reach of it even in principle — a magic link that created a portal session would
+hand a stranger every read that role allows, which is far more than filling in a
+form needs.
+
+Only the digest is stored, like a session token, so the link is shown once and a
+lost one is reissued rather than recovered. Answers are validated against the
+catalog rather than stored as sent, and the public read returns the client's
+**name and nothing else** — the form needs to say who it is for; nothing else
+about them belongs on a public endpoint. Accepting the answers revokes the link.
+
+§14 is honoured: accepting a submitted onboarding derives the project — name,
+kind, and a brief in the client's own words. It does not invent a positioning
+statement, because that is one of the three the flow deliberately leaves open.
+
+### Verified, not asserted
+
+| Check | Result |
+|---|---|
+| The full loop, in a browser | studio issues a link → cookies cleared → client answers all 16 questions with no account → submits → studio turns it into a project |
+| The ratio mechanic | all four axes confirmed to present two taps (side, then strength); no control anywhere in the flow offers a midpoint |
+| Isolation | one client's invite opens only their onboarding; a portal session for another client 404s on accept |
+| Junk answers | an answer that fails catalog validation is refused and does not count toward progress, so 100% cannot be reached by sending nonsense |
+| Budget | 88.7 KB gz against 170 KB |
+| Suite | 782 tests |
+
+Three bugs came out of driving it rather than reading it: a client who tapped
+**Back** had no way forward again, because the forward control only appeared for
+unanswered optional questions; the side and strength buttons shared a selector
+with no grouping, which is five undifferentiated buttons to a screen reader; and
+the thank-you line read "8 of the eight directions".
+
+## What Phases 4–10 still need
 
 `Asset` and `Brand` do not exist as entities yet, and asset storage is the
 larger of the two — the brief's library, versions and approval states all need a

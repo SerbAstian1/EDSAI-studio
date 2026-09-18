@@ -404,3 +404,55 @@ tbody tr:hover { background: var(--surface); }
 }
 .gate-card .editorial { font-size: 26px; margin: 0; }
 .field { display: grid; gap: calc(var(--step) * 1.5); }
+
+/* — the client-facing discovery flow ————————————————————————————— */
+
+.onboard {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: calc(var(--step) * 12) calc(var(--step) * 5) calc(var(--step) * 20);
+  display: grid;
+  gap: calc(var(--step) * 6);
+  min-height: 100vh;
+  align-content: start;
+}
+.onboard-head { display: grid; gap: calc(var(--step) * 2); }
+.onboard-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 8);
+  display: grid;
+  gap: calc(var(--step) * 4);
+}
+.onboard .editorial { font-size: 27px; }
+.onboard textarea { margin-bottom: calc(var(--step) * 3); }
+
+/* Choices are large because they are the whole interaction, and because a
+   client is likely to be answering these on a phone. */
+.choices { display: grid; gap: calc(var(--step) * 2); }
+button.choice {
+  text-align: left;
+  padding: calc(var(--step) * 4);
+  font-size: 15px;
+  line-height: 1.4;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+}
+button.choice:hover { border-color: var(--aw-orange); }
+button.choice.chosen {
+  border-color: var(--aw-orange);
+  box-shadow: inset 3px 0 0 var(--aw-orange);
+  background: var(--surface-elevated);
+}
+.scale { display: grid; gap: calc(var(--step) * 3); }
+.scale-end { margin: 0; color: var(--text-secondary); font-size: 15px; }
+.scale-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(var(--step) * 2); }
+.scale-row button.choice { text-align: center; font-family: var(--font-display); font-size: 17px; }
+
+@media (max-width: 620px) {
+  .onboard { padding: calc(var(--step) * 6) calc(var(--step) * 4) calc(var(--step) * 16); }
+  .onboard .editorial { font-size: 23px; }
+  .onboard-card { padding: calc(var(--step) * 5); }
+}

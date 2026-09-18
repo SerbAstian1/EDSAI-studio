@@ -703,3 +703,199 @@ describe('the first-run window', () => {
     await server2.close();
   });
 });
+
+describe('onboarding', () => {
+  const newClient = async (name = 'Disan Footwear') => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const invite = async (clientId: string) => {
+    const { body } = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    return {
+      token: (body['invite'] as unknown as { token: string }).token,
+      onboardingId: (body['onboarding'] as unknown as { id: string }).id,
+    };
+  };
+
+  /** Answer everything the catalog requires, through the public endpoint. */
+  const answerEverything = async (token: string) => {
+    const { body } = await json(`/api/onboard/${token}`);
+    const questions = body['questions'] as unknown as {
+      id: string; kind: string; required: boolean; take?: number;
+      options?: { id: string }[];
+    }[];
+    for (const q of questions.filter((x) => x.required)) {
+      const value = q.kind === 'text' ? 'An answer that means something.'
+        : q.kind === 'scale' ? 3
+          : q.kind === 'ratio' ? { side: 'a', strength: 'clearly' }
+            : q.kind === 'binary' ? q.options?.[0]?.id
+              : (q.options ?? []).slice(0, q.take || 1).map((o) => o.id);
+      await json(`/api/onboard/${token}`, {
+        method: 'POST', body: JSON.stringify({ questionId: q.id, value }),
+      });
+    }
+  };
+
+  it('issues an invite the studio sees exactly once', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    expect(status).toBe(201);
+    expect((body['invite'] as unknown as { path: string }).path).toMatch(/^\/onboard\/.+/);
+
+    // The token is not retrievable afterwards — only its digest was kept.
+    const list = await json(`/api/clients/${clientId}/onboarding`);
+    expect(JSON.stringify(list.body)).not.toContain(
+      (body['invite'] as unknown as { token: string }).token);
+  });
+
+  it('opens the form for the client without any session at all', async () => {
+    const clientId = await newClient();
+    const { token } = await invite(clientId);
+
+    const saved = cookie;
+    cookie = '';
+    const { status, body } = await json(`/api/onboard/${token}`);
+    expect(status).toBe(200);
+    expect(body['clientName']).toBe('Disan Footwear');
+    expect((body['questions'] as unknown as unknown[]).length).toBeGreaterThan(10);
+    cookie = saved;
+  });
+
+  it('exposes nothing about the client but their name', async () => {
+    const clientId = await newClient();
+    const { token } = await invite(clientId);
+    const saved = cookie;
+    cookie = '';
+    const { body } = await json(`/api/onboard/${token}`);
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(clientId);
+    expect(body['notes']).toBeUndefined();
+    cookie = saved;
+  });
+
+  it('refuses an invented token', async () => {
+    const saved = cookie;
+    cookie = '';
+    expect((await json('/api/onboard/not-a-real-token')).status).toBe(404);
+    cookie = saved;
+  });
+
+  it('refuses an answer that does not fit its question', async () => {
+    const { token } = await invite(await newClient());
+    const saved = cookie;
+    cookie = '';
+    const { status } = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'e2', value: 99 }),
+    });
+    expect(status).toBe(400);
+    cookie = saved;
+  });
+
+  it('refuses an answer to a question that does not exist', async () => {
+    const { token } = await invite(await newClient());
+    const { status } = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'drop-tables', value: 'x' }),
+    });
+    expect(status).toBe(400);
+  });
+
+  it('tracks progress as answers arrive', async () => {
+    const { token } = await invite(await newClient());
+    const first = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'We make boots.' }),
+    });
+    expect((first.body['progress'] as unknown as { answered: number }).answered).toBe(1);
+  });
+
+  it('refuses to submit while anything required is unanswered', async () => {
+    const { token } = await invite(await newClient());
+    const { status, body } = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ submit: true }),
+    });
+    expect(status).toBe(400);
+    expect(body['error']).toBe('incomplete');
+  });
+
+  it('submits once everything required is answered, and reaches eight axes', async () => {
+    const { token } = await invite(await newClient());
+    await answerEverything(token);
+    const { status, body } = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ submit: true }),
+    });
+    expect(status).toBe(200);
+    expect(body['status']).toBe('submitted');
+    expect((body['progress'] as unknown as { axesDecided: number }).axesDecided).toBe(8);
+  });
+
+  it('becomes a project the studio did not have to type', async () => {
+    const clientId = await newClient();
+    const { token, onboardingId } = await invite(clientId);
+    await answerEverything(token);
+    await json(`/api/onboard/${token}`, { method: 'POST', body: JSON.stringify({ submit: true }) });
+
+    const { status, body } = await json(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' });
+    expect(status).toBe(201);
+    const project = body['project'] as unknown as { clientId: string; notes: string };
+    expect(project.clientId).toBe(clientId);
+    expect(project.notes).toContain('An answer that means something');
+    expect(project.notes).toContain('leaves those three for the studio');
+  });
+
+  it('will not accept an onboarding that was never submitted', async () => {
+    const clientId = await newClient();
+    const { onboardingId } = await invite(clientId);
+    const { status, body } = await json(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' });
+    expect(status).toBe(409);
+    expect(body['error']).toBe('not_submitted');
+  });
+
+  it('kills the link once the answers are accepted', async () => {
+    const clientId = await newClient();
+    const { token, onboardingId } = await invite(clientId);
+    await answerEverything(token);
+    await json(`/api/onboard/${token}`, { method: 'POST', body: JSON.stringify({ submit: true }) });
+    await json(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' });
+
+    const saved = cookie;
+    cookie = '';
+    expect((await json(`/api/onboard/${token}`)).status).toBe(404);
+    cookie = saved;
+  });
+
+  it('keeps one client’s invite away from another client’s onboarding', async () => {
+    const a = await newClient('Client A');
+    const b = await newClient('Client B');
+    const inviteA = await invite(a);
+    const inviteB = await invite(b);
+
+    const saved = cookie;
+    cookie = '';
+    const openedA = await json(`/api/onboard/${inviteA.token}`);
+    const openedB = await json(`/api/onboard/${inviteB.token}`);
+    expect(openedA.body['clientName']).toBe('Client A');
+    expect(openedB.body['clientName']).toBe('Client B');
+    cookie = saved;
+  });
+
+  it('does not let a portal session for one client accept another’s onboarding', async () => {
+    const a = await newClient('Client A');
+    const { onboardingId } = await invite(a);
+
+    const saved = cookie;
+    const token = 'portal-other-client';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'owner',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+    expect((await json(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' })).status)
+      .toBe(404);
+    cookie = saved;
+  });
+});

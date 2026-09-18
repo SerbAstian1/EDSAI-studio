@@ -8,7 +8,11 @@ import {
   ClientSummaryRefused, clientSummary, handoffPack, internalDocument, type RunBundle,
 } from '@edsai/export';
 import { RunEvents } from './events.js';
-import { ScopedStore, ensureLocalProject, slugify, type Run } from '@edsai/engine';
+import {
+  ScopedStore, ensureLocalProject, slugify,
+  QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject,
+  type Run, type Onboarding,
+} from '@edsai/engine';
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
   readSessionCookie, serializeSession, serializeLogout, isCsrfSafe, verifyAgainstAccount,
@@ -45,6 +49,9 @@ export interface ApiOptions {
 
 /** How long a session lasts before it has to be renewed by signing in again. */
 const SESSION_HOURS = 12;
+
+/** How long a client has to fill the form in before the link stops working. */
+const ONBOARDING_INVITE_DAYS = 30;
 
 interface Handler {
   method: string;
@@ -251,6 +258,12 @@ export class ApiServer {
     };
   }
 
+  /** The onboarding an invite token opens, or nothing. */
+  private invited(token: string): Onboarding | undefined {
+    const onboardingId = this.store.getInvited(digestToken(token));
+    return onboardingId ? this.store.getOnboarding(onboardingId) : undefined;
+  }
+
   /* -------------------------------------------------------------- principals */
 
   /**
@@ -432,6 +445,212 @@ export class ApiServer {
           severities: this.rubric.severities,
           drift: this.rubric.drift,
         }),
+      },
+
+      /* ---------------------------------------------------------- onboarding */
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/onboarding$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const client = scoped.getClient(clientId);
+          if (!client) {
+            send(res, 404, {
+              error: 'not_found',
+              message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+
+          const onboarding = {
+            id: `onb-${Date.now().toString(36)}`,
+            clientId,
+            status: 'sent' as const,
+            createdAt: new Date().toISOString(),
+            sentAt: new Date().toISOString(),
+          };
+          scoped.saveOnboarding(onboarding);
+
+          // The invite is minted once and shown once. Only its digest is kept,
+          // so the studio cannot look it up later and neither can anyone who
+          // reaches the database — they would have to issue a new one, which is
+          // an action the client can see.
+          const { token, digest } = mintSessionToken();
+          const expires = new Date(Date.now() + ONBOARDING_INVITE_DAYS * 86_400_000);
+          this.store.saveInvite({
+            digest,
+            onboardingId: onboarding.id,
+            createdAt: new Date().toISOString(),
+            expiresAt: expires.toISOString(),
+          });
+
+          send(res, 201, {
+            onboarding,
+            invite: { token, path: `/onboard/${token}`, expiresAt: expires.toISOString() },
+          });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/onboarding$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, {
+            onboardings: scoped.listOnboardings(clientId).map((onboarding) => ({
+              ...onboarding,
+              progress: progressOf(this.store.getAnswers(onboarding.id)),
+            })),
+          });
+        },
+      },
+
+      /**
+       * Accept a submitted onboarding and become the project it describes.
+       *
+       * §14: the studio should not retype the answers. What is derived is the
+       * name, the kind and a brief in the client's own words — not a positioning
+       * statement, which the flow deliberately leaves for the studio to draft.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/onboarding\/(?<onboardingId>[\w-]+)\/accept$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const onboarding = scoped.getOnboarding(params['onboardingId'] ?? '');
+          if (!onboarding) {
+            send(res, 404, { error: 'not_found', message: 'No such onboarding for this session.' });
+            return;
+          }
+          if (onboarding.status !== 'submitted') {
+            send(res, 409, {
+              error: 'not_submitted',
+              message: `This onboarding is ${onboarding.status}. Only a submitted one becomes a project.`,
+            });
+            return;
+          }
+
+          const client = scoped.getClient(onboarding.clientId);
+          const answers = this.store.getAnswers(onboarding.id);
+          const derived = deriveProject(client?.name ?? 'the client', answers);
+          const now = new Date().toISOString();
+
+          const project = {
+            id: `project-${slugify(derived.name)}-${Date.now().toString(36).slice(-4)}`,
+            clientId: onboarding.clientId,
+            name: derived.name,
+            kind: derived.kind,
+            phase: 'discovery' as const,
+            notes: derived.notes,
+            createdAt: now,
+            updatedAt: now,
+          };
+          scoped.saveProject(project);
+          scoped.saveOnboarding({ ...onboarding, status: 'accepted', projectId: project.id });
+
+          // The link stops working the moment the answers are accepted.
+          this.store.revokeInvites(onboarding.id);
+          send(res, 201, { project });
+        },
+      },
+
+      /* ------------------------------------------------- the client-facing form */
+
+      /**
+       * The only endpoints an unauthenticated stranger may reach with a write.
+       *
+       * The token is a **capability, not a session**: it opens exactly one
+       * onboarding's questions and answers and nothing else. It mints no
+       * principal, so there is no role to escalate and no other client's data
+       * within reach of it even in principle.
+       *
+       * Answers are validated against the catalog rather than stored as sent.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/onboard\/(?<token>[\w-]+)$/, auth: 'public',
+        run: ({ res, params }) => {
+          const onboarding = this.invited(params['token'] ?? '');
+          if (!onboarding) {
+            send(res, 404, {
+              error: 'bad_invite',
+              message: 'This link is not valid. It may have expired, or the answers may already have been accepted.',
+            });
+            return;
+          }
+          const client = this.store.getClient(onboarding.clientId);
+          const answers = this.store.getAnswers(onboarding.id);
+          send(res, 200, {
+            // Deliberately only the client's name: the form needs to say who it
+            // is for, and nothing else about them belongs on a public endpoint.
+            clientName: client?.name ?? 'your brand',
+            status: onboarding.status,
+            questions: QUESTIONS,
+            strengths: RATIO_STRENGTHS,
+            answers: answers.map((a) => ({ questionId: a.questionId, value: a.value })),
+            progress: progressOf(answers),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/onboard\/(?<token>[\w-]+)$/, auth: 'public',
+        run: ({ res, params, body }) => {
+          const onboarding = this.invited(params['token'] ?? '');
+          if (!onboarding) {
+            send(res, 404, { error: 'bad_invite', message: 'This link is not valid.' });
+            return;
+          }
+          if (onboarding.status === 'accepted') {
+            send(res, 409, {
+              error: 'closed',
+              message: 'These answers have already been accepted by the studio.',
+            });
+            return;
+          }
+
+          const input = body as { questionId?: string; value?: unknown; submit?: boolean };
+
+          if (input?.submit === true) {
+            const answers = this.store.getAnswers(onboarding.id);
+            const progress = progressOf(answers);
+            if (progress.outstanding.length > 0) {
+              send(res, 400, {
+                error: 'incomplete',
+                message: `${progress.outstanding.length} question(s) still need an answer.`,
+                reasons: progress.outstanding,
+              });
+              return;
+            }
+            this.store.saveOnboarding({
+              ...onboarding, status: 'submitted', submittedAt: new Date().toISOString(),
+            });
+            send(res, 200, { status: 'submitted', progress });
+            return;
+          }
+
+          if (typeof input?.questionId !== 'string' || !answerIsValid(input.questionId, input.value)) {
+            send(res, 400, {
+              error: 'bad_answer',
+              message: 'That answer does not fit that question.',
+            });
+            return;
+          }
+
+          this.store.saveAnswer({
+            onboardingId: onboarding.id,
+            questionId: input.questionId,
+            value: input.value,
+            answeredAt: new Date().toISOString(),
+          });
+          if (onboarding.status === 'sent') {
+            this.store.saveOnboarding({ ...onboarding, status: 'in-progress' });
+          }
+          send(res, 200, { progress: progressOf(this.store.getAnswers(onboarding.id)) });
+        },
       },
 
       /* ------------------------------------------------------------- clients */

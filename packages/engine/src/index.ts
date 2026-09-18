@@ -8,3 +8,4 @@ export * from './harness.js';
 export * from './entities.js';
 export * from './bootstrap.js';
 export * from './scoped.js';
+export * from './onboarding.js';

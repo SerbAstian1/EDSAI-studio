@@ -4,6 +4,7 @@ import {
 } from '@edsai/auth';
 import type { RunStore } from './store.js';
 import type { Client, Contact, Project } from './entities.js';
+import type { Onboarding } from './onboarding.js';
 import type { Run } from './types.js';
 
 /**
@@ -124,6 +125,24 @@ export class ScopedStore {
     const run = this.store.getRun(id);
     if (!run || !this.mayRead('run', run.clientId)) return undefined;
     return run;
+  }
+
+  /* ------------------------------------------------------------- onboarding */
+
+  listOnboardings(clientId: string): Onboarding[] {
+    if (!this.mayRead('client', clientId)) return [];
+    return this.store.listOnboardings(clientId);
+  }
+
+  getOnboarding(id: string): Onboarding | undefined {
+    const onboarding = this.store.getOnboarding(id);
+    if (!onboarding || !this.mayRead('client', onboarding.clientId)) return undefined;
+    return onboarding;
+  }
+
+  saveOnboarding(onboarding: Onboarding): void {
+    this.mustWrite('client', onboarding.clientId, 'write');
+    this.store.saveOnboarding(onboarding);
   }
 
   /**

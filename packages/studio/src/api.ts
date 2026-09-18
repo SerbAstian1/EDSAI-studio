@@ -205,6 +205,19 @@ export interface Project {
   deadline?: string;
 }
 
+export interface OnboardingSummary {
+  id: string;
+  clientId: string;
+  status: 'draft' | 'sent' | 'in-progress' | 'submitted' | 'accepted';
+  createdAt: string;
+  submittedAt?: string;
+  projectId?: string;
+  progress?: {
+    answered: number; required: number; percent: number;
+    outstanding: string[]; axesDecided: number; axesDrafted: string[];
+  };
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
@@ -230,6 +243,15 @@ export const api = {
     call<Contact>(`/api/clients/${clientId}/contacts`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+  onboardings: (clientId: string) =>
+    call<{ onboardings: OnboardingSummary[] }>(`/api/clients/${clientId}/onboarding`)
+      .then((r) => r.onboardings),
+  startOnboarding: (clientId: string) =>
+    call<{ onboarding: OnboardingSummary; invite: { token: string; path: string; expiresAt: string } }>(
+      `/api/clients/${clientId}/onboarding`, { method: 'POST' }),
+  acceptOnboarding: (onboardingId: string) =>
+    call<{ project: Project }>(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' }),
+
   createProject: (clientId: string, input: { name: string; kind?: string }) =>
     call<Project>(`/api/clients/${clientId}/projects`, {
       method: 'POST', body: JSON.stringify(input),

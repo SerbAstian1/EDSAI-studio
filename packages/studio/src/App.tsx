@@ -27,6 +27,7 @@ const Scorecard = lazy(() => import('./screens/Scorecard.js'));
 const Review = lazy(() => import('./screens/Review.js'));
 const Finalize = lazy(() => import('./screens/Finalize.js'));
 const Runs = lazy(() => import('./screens/Runs.js'));
+const Onboard = lazy(() => import('./screens/Onboard.js'));
 const Clients = lazy(() => import('./screens/Clients.js'));
 const ClientDetail = lazy(() => import('./screens/ClientDetail.js'));
 const Brands = lazy(() => import('./screens/Brands.js'));
@@ -38,12 +39,14 @@ const Planned = lazy(() => import('./screens/Planned.js'));
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'activity' | 'settings' | 'planned'
-  | 'clients' | 'client';
+  | 'clients' | 'client' | 'onboard';
 
 export interface Route {
   screen: Screen;
   runId?: string;
   clientId?: string;
+  /** The onboarding invite token, for the client-facing flow. */
+  token?: string;
   /** The section id, when a planned section was opened. */
   sectionId?: string;
 }
@@ -68,6 +71,7 @@ export function parseRoute(hash: string): Route {
     }
     return { screen: 'run', runId: path[1] };
   }
+  if (path[0] === 'onboard' && path[1]) return { screen: 'onboard', token: path[1] };
   if (path[0] === 'clients' && path[1]) return { screen: 'client', clientId: path[1] };
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
@@ -203,6 +207,7 @@ const TITLES: Record<Screen, string> = {
   runs: 'Runs',
   clients: 'Clients',
   client: 'Client',
+  onboard: 'Discovery',
   intake: 'New run',
   run: 'Run',
   scorecard: 'Scorecard',
@@ -284,7 +289,26 @@ const client = new QueryClient({
 export default function App(): ReactElement {
   return (
     <QueryClientProvider client={client}>
-      <Gate><Shell /></Gate>
+      <Entry />
     </QueryClientProvider>
   );
+}
+
+/**
+ * The one route that is not the studio.
+ *
+ * A client filling in their discovery form has no account and should never meet
+ * a sign-in screen, so this sits outside the Gate entirely. The token in the URL
+ * is the only thing that opens it, and it opens nothing else.
+ */
+function Entry(): ReactElement {
+  const route = useRoute();
+  if (route.screen === 'onboard' && route.token) {
+    return (
+      <Suspense fallback={<p className="muted" style={{ padding: 32 }}>Opening…</p>}>
+        <Onboard token={route.token} />
+      </Suspense>
+    );
+  }
+  return <Gate><Shell /></Gate>;
 }
