@@ -634,6 +634,56 @@ What is **not** built: no email is sent, so the designer copies the link and
 sends it themselves, and there is no per-file audit — the count is per link,
 not per download.
 
+## 4q. The phone, and a preview that is not allowed to lie
+
+Two surfaces were measured at a 390px viewport rather than assumed to work.
+
+**The portal already did.** No horizontal scroll, nothing overflowing, no text
+under 13px. One finding: the copy-a-hex control was 31px tall, which is a
+finger problem rather than a narrow-screen one, so it is sized under
+`@media (pointer: coarse)` instead of a width breakpoint.
+
+**The Studio laid out at 504px on a 390px screen.** Not a missing viewport meta
+— that was there. A fixed sidebar column plus a content column that cannot
+shrink below its widest table has a floor, and the browser zoomed the whole
+page out to meet it. The fixes are all about letting things shrink: the shell
+collapses to one column under 860px, the sidebar becomes a band, and grid and
+flex children get `min-width: 0` so a long filename stops setting the width of
+the page.
+
+That left one real defect. A table whose last column is an action does not
+survive being made scrollable: **Approve — the one control that changes what a
+client can see — ended up off the right edge, inside a horizontal scroll nobody
+thinks to try.** Those tables now become one card per row on a phone, each cell
+labelled by the header it came from.
+
+**The preview build.** The Studio is published as a page that can be opened on
+a phone with no server. The rule it holds to: it **replays, it does not
+simulate.** `scripts/capture-preview.mjs` signs in to a real server, performs
+real reads, and writes down what came back; the preview serves those recordings
+and nothing else. A hand-written mock would be a second opinion about how the
+API behaves, and it would drift silently — staying plausible while the product
+broke. A recording can only be stale, and staleness is visible.
+
+Writes are refused rather than faked, with the reason shown the way any other
+refusal is shown. Accepting an upload and adding it to the list would teach the
+reader that something works when it has never been tried, which is the one
+thing a preview must not do.
+
+Two properties worth keeping:
+
+- The recording and the transport that serves it are reachable only from a
+  separate entry (`vite build --mode preview`), so they cannot enter the
+  shipping bundle by accident. Confirmed by grepping the shipping `dist` for
+  the captured data, not by reasoning about tree-shaking.
+- A banner states what the page is and when the data was captured. Someone
+  looking at this on a phone has no other way to tell a recording from a live
+  deployment.
+
+What this is **not**: a way to use the product. It is read-only by
+construction, and the initial-route budget is unaffected (89.5 KB gz against
+170 KB) because the preview is a separate build.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

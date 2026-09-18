@@ -178,18 +178,18 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
       {error && <p className="err">Could not load links. {(error as Error).message}</p>}
 
       {keys && keys.length > 0 && (
-        <table>
+        <table className="stacky">
           <thead><tr><th>Given to</th><th>Opens</th><th>Use</th><th /></tr></thead>
           <tbody>
             {keys.map((key) => (
               <tr key={key.id}>
-                <td><strong>{key.label}</strong></td>
-                <td className="muted">
+                <td data-label="Given to"><strong>{key.label}</strong></td>
+                <td className="muted" data-label="Opens">
                   {key.role === 'limited'
                     ? (key.collections ?? []).join(', ') || 'nothing'
                     : 'Everything approved'}
                 </td>
-                <td className="muted">{describeKey(key)}</td>
+                <td className="muted" data-label="Use">{describeKey(key)}</td>
                 <td>
                   <button
                     type="button" disabled={revoke.isPending}

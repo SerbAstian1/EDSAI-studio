@@ -89,6 +89,11 @@ p{margin:0 0 .8rem}
 .role{color:var(--muted);font-size:.85rem}
 button.copy{margin-top:.4rem;font:inherit;font-size:.85rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f5f6f8;border:1px solid var(--control-line);border-radius:.3rem;padding:.25rem .5rem;cursor:pointer}
 button.copy:focus-visible{outline:3px solid #16181d;outline-offset:2px}
+/* Measured on a 390px phone: the copy control was 31px tall. Sized by input
+   type rather than by screen width — a small tap target is a finger problem,
+   not a narrow-viewport problem. */
+@media (pointer:coarse){button.copy{min-height:44px;padding:.5rem .75rem}
+a.get{min-height:44px;display:inline-flex;align-items:center}}
 .target{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:.4rem;padding:.7rem .85rem;margin:.5rem 0}
 .target.is-pass{border-left-color:var(--pass)}
 .target.is-fail{border-left-color:var(--fail)}

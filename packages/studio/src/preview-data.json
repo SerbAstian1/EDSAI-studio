@@ -1,0 +1,1081 @@
+{
+  "capturedAt": "2026-09-18T16:14:06.449Z",
+  "from": "http://localhost:4330",
+  "responses": {
+    "/api/health": {
+      "status": 200,
+      "body": {
+        "ok": true,
+        "departments": 28,
+        "needsSetup": false
+      }
+    },
+    "/api/session": {
+      "status": 200,
+      "body": {
+        "principal": {
+          "kind": "studio",
+          "userId": "user-mu75rva4-2b0eadff",
+          "role": "owner"
+        }
+      }
+    },
+    "/api/rubric": {
+      "status": 200,
+      "body": {
+        "departments": [
+          {
+            "id": 1,
+            "name": "Brand Strategy Intelligence",
+            "mode": "scored",
+            "dimensions": [
+              "Positioning Sharpness",
+              "Audience Insight Depth",
+              "Differentiation Strength"
+            ]
+          },
+          {
+            "id": 2,
+            "name": "Creative Direction & World Design",
+            "mode": "scored",
+            "dimensions": [
+              "Emotional Coherence",
+              "World Specificity",
+              "Cinematic Discipline"
+            ]
+          },
+          {
+            "id": 3,
+            "name": "Conversion Copywriting",
+            "mode": "scored",
+            "dimensions": [
+              "Persuasion Structure",
+              "Voice Consistency",
+              "Friction-per-Word"
+            ]
+          },
+          {
+            "id": 4,
+            "name": "UX Architecture",
+            "mode": "scored",
+            "dimensions": [
+              "Flow Linearity",
+              "Decision-Point Clarity",
+              "Information Scent"
+            ]
+          },
+          {
+            "id": 5,
+            "name": "Interface Design System",
+            "mode": "scored",
+            "dimensions": [
+              "Hierarchy Legibility",
+              "System Consistency",
+              "Token Discipline",
+              "Optical Precision"
+            ]
+          },
+          {
+            "id": 6,
+            "name": "Motion & Cinematic System",
+            "mode": "scored",
+            "dimensions": [
+              "Narrative Purpose",
+              "Timing Discipline",
+              "Restraint"
+            ]
+          },
+          {
+            "id": 7,
+            "name": "Frontend Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Architecture Scalability",
+              "Performance Headroom",
+              "Code Coupling"
+            ]
+          },
+          {
+            "id": 8,
+            "name": "Performance + SEO + Accessibility",
+            "mode": "measured",
+            "dimensions": []
+          },
+          {
+            "id": 9,
+            "name": "Quality Assurance",
+            "mode": "issue-counted",
+            "dimensions": []
+          },
+          {
+            "id": 10,
+            "name": "Agency Critic",
+            "mode": "scored",
+            "dimensions": [
+              "Benchmark Gap"
+            ]
+          },
+          {
+            "id": 11,
+            "name": "Final Arbitration",
+            "mode": "scored",
+            "dimensions": [
+              "Cross-System Coherence"
+            ]
+          },
+          {
+            "id": 12,
+            "name": "Brand Identity Ideation & Mind-Mapping",
+            "mode": "scored",
+            "dimensions": [
+              "Conceptual Breadth",
+              "Strategic Traceability",
+              "Construction Clarity"
+            ]
+          },
+          {
+            "id": 13,
+            "name": "Print, Packaging & Physical Collateral",
+            "mode": "scored",
+            "dimensions": [
+              "Structural Feasibility",
+              "Production Readiness",
+              "Material & Context Fit"
+            ]
+          },
+          {
+            "id": 14,
+            "name": "Poster & Composition Design",
+            "mode": "scored",
+            "dimensions": [
+              "Hierarchy Clarity",
+              "Compositional Intent",
+              "Legibility at Distance"
+            ]
+          },
+          {
+            "id": 15,
+            "name": "Motion Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Engine Fit",
+              "Lifecycle Safety",
+              "Motion Payload Discipline"
+            ]
+          },
+          {
+            "id": 35,
+            "name": "Browser Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Runtime Understanding",
+              "Rendering Efficiency",
+              "Memory Safety",
+              "Event Handling"
+            ]
+          },
+          {
+            "id": 36,
+            "name": "JavaScript & TypeScript Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Type Soundness",
+              "Runtime Boundary Discipline",
+              "Async Correctness"
+            ]
+          },
+          {
+            "id": 37,
+            "name": "State Management",
+            "mode": "scored",
+            "dimensions": [
+              "State Ownership Clarity",
+              "Derivation Discipline",
+              "State Architecture Fit"
+            ]
+          },
+          {
+            "id": 38,
+            "name": "Data Fetching & API Integration",
+            "mode": "scored",
+            "dimensions": [
+              "Request Lifecycle Rigor",
+              "Failure Coverage",
+              "Waterfall Discipline"
+            ]
+          },
+          {
+            "id": 39,
+            "name": "Rendering Architecture",
+            "mode": "scored",
+            "dimensions": [
+              "Strategy Justification",
+              "Hydration Efficiency",
+              "Boundary Clarity"
+            ]
+          },
+          {
+            "id": 40,
+            "name": "Frontend Security Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Browser Security",
+              "Authentication Safety",
+              "Input Safety",
+              "Dependency Safety"
+            ]
+          },
+          {
+            "id": 41,
+            "name": "Caching & Client Data Architecture",
+            "mode": "scored",
+            "dimensions": [
+              "Freshness Policy Clarity",
+              "Invalidation Rigor",
+              "Cache Layer Fit"
+            ]
+          },
+          {
+            "id": 42,
+            "name": "Testing & Quality Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Test Level Fit",
+              "Accessibility Verification",
+              "Cross-Browser Reliability",
+              "Visual Stability"
+            ]
+          },
+          {
+            "id": 43,
+            "name": "Build Systems & Dependency Engineering",
+            "mode": "scored",
+            "dimensions": [
+              "Bundle Efficiency",
+              "Build Reproducibility",
+              "Supply-Chain Safety"
+            ]
+          },
+          {
+            "id": 44,
+            "name": "Browser Storage & Offline Systems",
+            "mode": "scored",
+            "dimensions": [
+              "Storage Mechanism Fit",
+              "Sync Correctness",
+              "Conflict Resolution Clarity"
+            ]
+          },
+          {
+            "id": 45,
+            "name": "Frontend Observability",
+            "mode": "scored",
+            "dimensions": [
+              "Error Visibility",
+              "Performance Visibility",
+              "Traceability",
+              "Production Diagnostics"
+            ]
+          },
+          {
+            "id": 46,
+            "name": "Advanced Frontend Architecture",
+            "mode": "scored",
+            "dimensions": [
+              "Boundary Clarity",
+              "Governance Discipline",
+              "Complexity Justification"
+            ]
+          },
+          {
+            "id": 47,
+            "name": "Frontend Networking",
+            "mode": "scored",
+            "dimensions": [
+              "Network Efficiency",
+              "Latency Awareness",
+              "Connection Resilience"
+            ]
+          }
+        ],
+        "universalDimensions": [
+          "Brand Fidelity",
+          "User Clarity",
+          "Distinctiveness",
+          "Technical Feasibility"
+        ],
+        "compositionFamilies": [
+          {
+            "name": "Grid & Proportion",
+            "effect": "calm, structured, editorial",
+            "structures": [
+              {
+                "id": "rule-of-thirds",
+                "name": "Rule of Thirds",
+                "family": "Grid & Proportion",
+                "description": "frame divided into a 3×3 grid; place the subject/focal point on a gridline or intersection rather than dead-center. Default choice for natural-feeling balance without being static."
+              },
+              {
+                "id": "golden-section-golden-ratio",
+                "name": "Golden Section / Golden Ratio",
+                "family": "Grid & Proportion",
+                "description": "divisions based on the ~1.618 ratio rather than even thirds; slightly more refined/organic proportion than a plain thirds grid. Reach for this when the brief calls for \"premium\" or \"classical\" over \"modern/grid-y.\""
+              },
+              {
+                "id": "golden-spiral-fibonacci-spiral",
+                "name": "Golden Spiral / Fibonacci Spiral",
+                "family": "Grid & Proportion",
+                "description": "the golden ratio expressed as a spiral, leading the eye inward toward a focal point along a curved path rather than straight gridlines. Strong for imagery with implied depth or motion (staircases, natural forms, any subject with its own spiral logic)."
+              },
+              {
+                "id": "spiral-section",
+                "name": "Spiral Section",
+                "family": "Grid & Proportion",
+                "description": "a simpler nested-rectangle version of the golden proportion; use where the golden spiral's curve is too ornate for the deliverable (e.g. a UI grid vs. a poster)."
+              }
+            ]
+          },
+          {
+            "name": "Radial & Focal",
+            "effect": "draws attention to one point",
+            "structures": [
+              {
+                "id": "radiating-radial",
+                "name": "Radiating / Radial",
+                "family": "Radial & Focal",
+                "description": "lines or elements emanating from a single point; pulls the eye immediately to that point and implies energy, explosion, or importance. Strong for a hero product shot, a launch announcement, a single dominant CTA."
+              },
+              {
+                "id": "focal-mass",
+                "name": "Focal Mass",
+                "family": "Radial & Focal",
+                "description": "a cluster of small elements (dots, icons, a crowd) against a comparatively empty field; the density itself becomes the focal point, distinct from radial because there's no single origin point, just concentration vs. sparseness."
+              },
+              {
+                "id": "circular",
+                "name": "Circular",
+                "family": "Radial & Focal",
+                "description": "a strong circular or orbital shape frames or contains the subject; reads as complete, contained, protective, or cyclical. Common for badges, seals, product-hero isolation."
+              }
+            ]
+          },
+          {
+            "name": "Line-Driven",
+            "effect": "directs the eye along a path",
+            "structures": [
+              {
+                "id": "converging-leading-lines",
+                "name": "Converging / Leading Lines",
+                "family": "Line-Driven",
+                "description": "real or implied lines (a road, architecture, shadows) that converge toward a point, pulling the eye there. The strongest tool for \"make sure the eye lands *here*.\""
+              },
+              {
+                "id": "diagonal-double-diagonal",
+                "name": "Diagonal / Double Diagonal",
+                "family": "Line-Driven",
+                "description": "one or two diagonal axes across the frame; inherently more dynamic and tense than horizontal/vertical because diagonals read as instability-in-motion, not rest. Use when the brand energy is kinetic, urgent, or youthful — avoid when the brand needs to read as stable/trustworthy."
+              },
+              {
+                "id": "vertical-lines",
+                "name": "Vertical Lines",
+                "family": "Line-Driven",
+                "description": "repeated verticals (columns, trees, high-rises); read as aspiration, growth, or formality; can also feel like a barrier/cage depending on density and gap."
+              },
+              {
+                "id": "horizontal-lines",
+                "name": "Horizontal Lines",
+                "family": "Line-Driven",
+                "description": "repeated horizontals (horizon, shelving, stacked bands); read as calm, stability, rest — the default \"trustworthy\" line direction."
+              },
+              {
+                "id": "cross",
+                "name": "Cross",
+                "family": "Line-Driven",
+                "description": "one strong horizontal and one strong vertical intersecting; a very quiet, almost architectural balance point — good for restraint-heavy, minimal-brand compositions where a single intersection is the whole story."
+              },
+              {
+                "id": "tunnel",
+                "name": "Tunnel",
+                "family": "Line-Driven",
+                "description": "receding frame-within-frame lines (an archway, a corridor) that pull the eye toward a distant point; combines leading lines with actual depth compression — strong for \"reveal\" or \"destination\" messaging."
+              }
+            ]
+          },
+          {
+            "name": "Weighted Shapes",
+            "effect": "implies stability, tension, or motion through geometry",
+            "structures": [
+              {
+                "id": "v-shape-v-arrangement",
+                "name": "V-Shape / V-Arrangement",
+                "family": "Weighted Shapes",
+                "description": "elements forming a V, converging toward a base point; reads as funneling attention downward/inward, or (inverted) as expansion/opening upward."
+              },
+              {
+                "id": "pyramid-triangle-composition",
+                "name": "Pyramid / Triangle Composition",
+                "family": "Weighted Shapes",
+                "description": "a stable, wide-based triangular arrangement; the most classically \"stable and grounded\" weighted shape — use for anything needing gravitas, permanence, trust."
+              },
+              {
+                "id": "golden-triangles-harmonious-triangles",
+                "name": "Golden Triangles / Harmonious Triangles",
+                "family": "Weighted Shapes",
+                "description": "diagonal-plus-perpendicular triangle divisions of the frame (not the same as a simple pyramid); used to divide asymmetric compositions while keeping proportional harmony — a more dynamic cousin of the golden section for diagonal-heavy imagery."
+              },
+              {
+                "id": "l-arrangement",
+                "name": "L-Arrangement",
+                "family": "Weighted Shapes",
+                "description": "elements forming an L, anchoring two adjoining edges of the frame and leaving the opposite corner open as negative space; a strong, quiet asymmetric-balance move."
+              },
+              {
+                "id": "c-shape",
+                "name": "C-Shape",
+                "family": "Weighted Shapes",
+                "description": "an arc or C-curve of elements around a partially enclosed negative-space center; frames a focal point without fully surrounding it the way Circular does — feels more organic/gestural than the closed Circular structure."
+              },
+              {
+                "id": "compound-curve-s-curve",
+                "name": "Compound Curve / S-Curve",
+                "family": "Weighted Shapes",
+                "description": "an S-shaped path through the frame; the classic \"graceful, meandering, editorial\" path — strong for fashion, lifestyle, anything wanting elegance-in-motion over the Diagonal family's raw energy."
+              }
+            ]
+          },
+          {
+            "name": "Balance Logic",
+            "effect": "how weight is distributed, independent of shape",
+            "structures": [
+              {
+                "id": "symmetry",
+                "name": "Symmetry",
+                "family": "Balance Logic",
+                "description": "both halves mirror; reads as order, formality, perfection, sometimes coldness if overused. Strongest where the brand truth is precision/reliability."
+              },
+              {
+                "id": "asymmetry-balance-unequal-massing",
+                "name": "Asymmetry / Balance (unequal massing)",
+                "family": "Balance Logic",
+                "description": "unequal elements balanced by weight rather than mirrored form (a large shape on one side offset by a smaller-but-denser or higher-contrast element on the other); reads as more human, more alive than symmetry, but requires the weights to be genuinely felt as equal — this is the difference between \"balance\" (intentional, felt-equal) and \"unbalanced\" (a genuine failure state, one side visually heavier with no compensating device on the other)."
+              },
+              {
+                "id": "juxtaposition",
+                "name": "Juxtaposition",
+                "family": "Balance Logic",
+                "description": "two elements placed close together specifically to invite comparison or contrast (old/new, small/large, rough/refined); the composition's whole point is the relationship between the two things, not either one alone."
+              },
+              {
+                "id": "contrast",
+                "name": "Contrast",
+                "family": "Balance Logic",
+                "description": "light/dark, large/small, rough/smooth, or busy/empty pushed deliberately far apart within the same frame to create drama and hierarchy; distinct from Juxtaposition in that contrast is about visual difference driving hierarchy, not necessarily inviting a comparison of meaning."
+              }
+            ]
+          },
+          {
+            "name": "Depth & Frame",
+            "effect": "uses the space itself, not just shapes in it",
+            "structures": [
+              {
+                "id": "negative-space",
+                "name": "Negative Space",
+                "family": "Depth & Frame",
+                "description": "deliberate empty area that isolates and emphasizes the subject; absence functioning as an active compositional element, not leftover space (see Department 14's identical requirement)."
+              },
+              {
+                "id": "framing-frame-within-frame",
+                "name": "Framing / Frame Within Frame",
+                "family": "Depth & Frame",
+                "description": "using an element within the scene (a doorway, an arch, foliage) to create a frame around the subject, emphasizing it and adding depth."
+              },
+              {
+                "id": "fill-the-frame",
+                "name": "Fill the Frame",
+                "family": "Depth & Frame",
+                "description": "the opposite move: subject/texture fills the entire frame edge-to-edge with no breathing room, for maximum intimacy/intensity or a texture/pattern-forward brand moment."
+              },
+              {
+                "id": "depth-foreground-midground-background-layering",
+                "name": "Depth (foreground/midground/background layering)",
+                "family": "Depth & Frame",
+                "description": "deliberate layering so the eye reads three distinct distance planes rather than one flat plane; makes a static 2D surface feel dimensional."
+              },
+              {
+                "id": "patterns-repetition",
+                "name": "Patterns & Repetition",
+                "family": "Depth & Frame",
+                "description": "a repeated unit (texture, grid of icons, architectural repetition) establishes rhythm; a single deliberate break in the pattern becomes the focal point *because* everything else repeats."
+              },
+              {
+                "id": "figure-to-ground",
+                "name": "Figure to Ground",
+                "family": "Depth & Frame",
+                "description": "a single clear silhouette/subject stands unambiguously apart from its background at a glance — the most basic test any composition should pass regardless of which other structure is also in play (see Department 14's Figure-Ground Clarity requirement)."
+              }
+            ]
+          }
+        ],
+        "severities": [
+          {
+            "name": "Blocker",
+            "definition": "Breaks core function or core message",
+            "targetForFinal": "0",
+            "blocksFinal": true
+          },
+          {
+            "name": "Major",
+            "definition": "Undermines brand, UX, or conversion meaningfully",
+            "targetForFinal": "0",
+            "blocksFinal": true
+          },
+          {
+            "name": "Minor",
+            "definition": "Polish-level, would be caught by a careful second pass",
+            "targetForFinal": "Document, doesn't block FINAL",
+            "blocksFinal": false
+          },
+          {
+            "name": "Nitpick",
+            "definition": "Taste-level, debatable",
+            "targetForFinal": "Log only, no action required",
+            "blocksFinal": false
+          }
+        ],
+        "drift": [
+          {
+            "departmentId": 5,
+            "kind": "missing-from-canonical",
+            "dimension": "Optical Precision",
+            "detail": "Department 5's reference file scores \"Optical Precision\", but the canonical list in 00-scorecard.md §3 does not include it. Treated as scored."
+          }
+        ]
+      }
+    },
+    "/api/assets": {
+      "status": 200,
+      "body": {
+        "assets": [
+          {
+            "id": "asset-mu75rvjx-f07cf9ab",
+            "clientId": "client-disan-footwear",
+            "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
+            "filename": "ss26-lookbook.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "bytes": 212,
+            "approved": false,
+            "uploadedAt": "2026-09-18T16:14:02.109Z"
+          },
+          {
+            "id": "asset-mu75rvjc-57df84f4",
+            "clientId": "client-disan-footwear",
+            "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
+            "filename": "disan-logo.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.088Z"
+          },
+          {
+            "id": "asset-mu75rvit-a0e3e62d",
+            "clientId": "client-morrow-studio",
+            "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
+            "filename": "wordmark-draft.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": false,
+            "uploadedAt": "2026-09-18T16:14:02.069Z"
+          },
+          {
+            "id": "asset-mu75rvic-210ad410",
+            "clientId": "client-morrow-studio",
+            "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
+            "filename": "showroom-01.jpg",
+            "kind": "photography",
+            "contentType": "image/jpeg",
+            "bytes": 212,
+            "collection": "Photography",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.052Z"
+          },
+          {
+            "id": "asset-mu75rvhq-3b8e392e",
+            "clientId": "client-morrow-studio",
+            "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
+            "filename": "brand-guidelines.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "bytes": 212,
+            "collection": "Documents",
+            "description": "Everything below, in one document.",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.030Z"
+          },
+          {
+            "id": "asset-mu75rvh4-98cd89b0",
+            "clientId": "client-morrow-studio",
+            "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
+            "filename": "morrow-logo-mono.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.008Z"
+          },
+          {
+            "id": "asset-mu75rvgm-9ac6a7b9",
+            "clientId": "client-morrow-studio",
+            "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
+            "filename": "morrow-logo-primary.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "description": "The primary mark. Use this unless there is a reason not to.",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:01.990Z"
+          }
+        ]
+      }
+    },
+    "/api/runs": {
+      "status": 200,
+      "body": {
+        "runs": []
+      }
+    },
+    "/api/clients": {
+      "status": 200,
+      "body": {
+        "clients": [
+          {
+            "id": "client-disan-footwear",
+            "name": "Disan Footwear",
+            "slug": "disan-footwear",
+            "industry": "Footwear",
+            "status": "prospect",
+            "createdAt": "2026-09-18T16:14:01.792Z",
+            "updatedAt": "2026-09-18T16:14:01.792Z",
+            "projects": 1,
+            "contacts": 1
+          },
+          {
+            "id": "client-morrow-studio",
+            "name": "Morrow Studio",
+            "slug": "morrow-studio",
+            "industry": "Interiors",
+            "status": "prospect",
+            "createdAt": "2026-09-18T16:14:01.769Z",
+            "updatedAt": "2026-09-18T16:14:01.769Z",
+            "projects": 2,
+            "contacts": 2
+          }
+        ]
+      }
+    },
+    "/api/clients/client-disan-footwear": {
+      "status": 200,
+      "body": {
+        "client": {
+          "id": "client-disan-footwear",
+          "name": "Disan Footwear",
+          "slug": "disan-footwear",
+          "industry": "Footwear",
+          "status": "prospect",
+          "createdAt": "2026-09-18T16:14:01.792Z",
+          "updatedAt": "2026-09-18T16:14:01.792Z"
+        },
+        "contacts": [
+          {
+            "id": "contact-mu75rvc1-b77ec855",
+            "clientId": "client-disan-footwear",
+            "name": "Ife Adeyemi",
+            "title": "Brand manager",
+            "decisionMaker": true,
+            "createdAt": "2026-09-18T16:14:01.825Z"
+          }
+        ],
+        "projects": [
+          {
+            "id": "project-ss26-campaign-909341",
+            "clientId": "client-disan-footwear",
+            "name": "SS26 campaign",
+            "kind": "brand-identity",
+            "phase": "discovery",
+            "createdAt": "2026-09-18T16:14:01.848Z",
+            "updatedAt": "2026-09-18T16:14:01.848Z"
+          }
+        ],
+        "runs": []
+      }
+    },
+    "/api/clients/client-disan-footwear/assets": {
+      "status": 200,
+      "body": {
+        "assets": [
+          {
+            "id": "asset-mu75rvjx-f07cf9ab",
+            "clientId": "client-disan-footwear",
+            "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
+            "filename": "ss26-lookbook.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "bytes": 212,
+            "approved": false,
+            "uploadedAt": "2026-09-18T16:14:02.109Z"
+          },
+          {
+            "id": "asset-mu75rvjc-57df84f4",
+            "clientId": "client-disan-footwear",
+            "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
+            "filename": "disan-logo.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.088Z"
+          }
+        ]
+      }
+    },
+    "/api/clients/client-disan-footwear/brand": {
+      "status": 200,
+      "body": {
+        "values": [
+          {
+            "clientId": "client-disan-footwear",
+            "name": "ink",
+            "kind": "color",
+            "value": "#111111",
+            "role": "Body text",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.235Z",
+            "measured": {
+              "ratio": 18.88,
+              "required": 4.5,
+              "passes": true,
+              "against": "paper",
+              "note": "18.88:1 against paper — clears the 4.5:1 it needs."
+            }
+          },
+          {
+            "clientId": "client-disan-footwear",
+            "name": "paper",
+            "kind": "color",
+            "value": "#FFFFFF",
+            "role": "Page background",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.227Z",
+            "measured": {}
+          }
+        ]
+      }
+    },
+    "/api/clients/client-disan-footwear/onboarding": {
+      "status": 200,
+      "body": {
+        "onboardings": []
+      }
+    },
+    "/api/clients/client-disan-footwear/portal-keys": {
+      "status": 200,
+      "body": {
+        "keys": [
+          {
+            "clientId": "client-disan-footwear",
+            "label": "Ife Adeyemi",
+            "role": "viewer",
+            "createdAt": "2026-09-18T16:14:02.278Z",
+            "expiresAt": "2026-12-17T16:14:02.278Z",
+            "uses": 0,
+            "id": "980a037436fa"
+          }
+        ]
+      }
+    },
+    "/api/clients/client-morrow-studio": {
+      "status": 200,
+      "body": {
+        "client": {
+          "id": "client-morrow-studio",
+          "name": "Morrow Studio",
+          "slug": "morrow-studio",
+          "industry": "Interiors",
+          "status": "prospect",
+          "createdAt": "2026-09-18T16:14:01.769Z",
+          "updatedAt": "2026-09-18T16:14:01.769Z"
+        },
+        "contacts": [
+          {
+            "id": "contact-mu75rvbl-c2d5874f",
+            "clientId": "client-morrow-studio",
+            "name": "Ada Obi",
+            "title": "Founder",
+            "decisionMaker": true,
+            "createdAt": "2026-09-18T16:14:01.809Z"
+          },
+          {
+            "id": "contact-mu75rvbt-15bbacc2",
+            "clientId": "client-morrow-studio",
+            "name": "Bram Neel",
+            "title": "Marketing lead",
+            "decisionMaker": false,
+            "createdAt": "2026-09-18T16:14:01.817Z"
+          }
+        ],
+        "projects": [
+          {
+            "id": "project-showroom-site-344562",
+            "clientId": "client-morrow-studio",
+            "name": "Showroom site",
+            "kind": "brand-identity",
+            "phase": "discovery",
+            "createdAt": "2026-09-18T16:14:01.840Z",
+            "updatedAt": "2026-09-18T16:14:01.840Z"
+          },
+          {
+            "id": "project-identity-refresh-2e61de",
+            "clientId": "client-morrow-studio",
+            "name": "Identity refresh",
+            "kind": "brand-identity",
+            "phase": "discovery",
+            "createdAt": "2026-09-18T16:14:01.832Z",
+            "updatedAt": "2026-09-18T16:14:01.832Z"
+          }
+        ],
+        "runs": []
+      }
+    },
+    "/api/clients/client-morrow-studio/assets": {
+      "status": 200,
+      "body": {
+        "assets": [
+          {
+            "id": "asset-mu75rvit-a0e3e62d",
+            "clientId": "client-morrow-studio",
+            "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
+            "filename": "wordmark-draft.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": false,
+            "uploadedAt": "2026-09-18T16:14:02.069Z"
+          },
+          {
+            "id": "asset-mu75rvic-210ad410",
+            "clientId": "client-morrow-studio",
+            "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
+            "filename": "showroom-01.jpg",
+            "kind": "photography",
+            "contentType": "image/jpeg",
+            "bytes": 212,
+            "collection": "Photography",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.052Z"
+          },
+          {
+            "id": "asset-mu75rvhq-3b8e392e",
+            "clientId": "client-morrow-studio",
+            "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
+            "filename": "brand-guidelines.pdf",
+            "kind": "document",
+            "contentType": "application/pdf",
+            "bytes": 212,
+            "collection": "Documents",
+            "description": "Everything below, in one document.",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.030Z"
+          },
+          {
+            "id": "asset-mu75rvh4-98cd89b0",
+            "clientId": "client-morrow-studio",
+            "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
+            "filename": "morrow-logo-mono.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:02.008Z"
+          },
+          {
+            "id": "asset-mu75rvgm-9ac6a7b9",
+            "clientId": "client-morrow-studio",
+            "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
+            "filename": "morrow-logo-primary.png",
+            "kind": "logo",
+            "contentType": "image/png",
+            "bytes": 212,
+            "collection": "Logos",
+            "description": "The primary mark. Use this unless there is a reason not to.",
+            "approved": true,
+            "uploadedAt": "2026-09-18T16:14:01.990Z"
+          }
+        ]
+      }
+    },
+    "/api/clients/client-morrow-studio/brand": {
+      "status": 200,
+      "body": {
+        "values": [
+          {
+            "clientId": "client-morrow-studio",
+            "name": "accent",
+            "kind": "color",
+            "value": "#EB5E28",
+            "role": "Calls to action",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.199Z",
+            "measured": {
+              "ratio": 3.19,
+              "required": 4.5,
+              "passes": false,
+              "against": "paper",
+              "note": "3.19:1 against paper — under the 4.5:1 it needs."
+            }
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "name": "ink",
+            "kind": "color",
+            "value": "#1A1A1A",
+            "role": "Body text",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.192Z",
+            "measured": {
+              "ratio": 16.29,
+              "required": 4.5,
+              "passes": true,
+              "against": "paper",
+              "note": "16.29:1 against paper — clears the 4.5:1 it needs."
+            }
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "name": "muted",
+            "kind": "color",
+            "value": "#6B6257",
+            "role": "Secondary text",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.206Z",
+            "measured": {
+              "ratio": 5.6,
+              "required": 4.5,
+              "passes": true,
+              "against": "paper",
+              "note": "5.6:1 against paper — clears the 4.5:1 it needs."
+            }
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "name": "paper",
+            "kind": "color",
+            "value": "#FAF7F2",
+            "role": "Page background",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.184Z",
+            "measured": {}
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "name": "body",
+            "kind": "font",
+            "value": "Inter",
+            "role": "Everything else",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.219Z",
+            "measured": {}
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "name": "display",
+            "kind": "font",
+            "value": "Space Grotesk",
+            "role": "Headings",
+            "origin": "studio",
+            "updatedAt": "2026-09-18T16:14:02.212Z",
+            "measured": {}
+          }
+        ]
+      }
+    },
+    "/api/clients/client-morrow-studio/onboarding": {
+      "status": 200,
+      "body": {
+        "onboardings": [
+          {
+            "id": "onb-mu75rvnm-50b84345",
+            "clientId": "client-morrow-studio",
+            "status": "sent",
+            "createdAt": "2026-09-18T16:14:02.242Z",
+            "sentAt": "2026-09-18T16:14:02.242Z",
+            "progress": {
+              "answered": 0,
+              "required": 14,
+              "percent": 0,
+              "outstanding": [
+                "f-what",
+                "f-who",
+                "f-deliverables",
+                "w-headline",
+                "e1",
+                "e2",
+                "e3",
+                "e4",
+                "e5",
+                "e6",
+                "e7",
+                "e8",
+                "d-traits",
+                "d-worst"
+              ],
+              "axesDecided": 0,
+              "axesDrafted": [
+                "T1 Positioning",
+                "T2 Emotional tone",
+                "T3 Motion law"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/clients/client-morrow-studio/portal-keys": {
+      "status": 200,
+      "body": {
+        "keys": [
+          {
+            "clientId": "client-morrow-studio",
+            "label": "Northways (agency)",
+            "role": "limited",
+            "collections": [
+              "Logos"
+            ],
+            "createdAt": "2026-09-18T16:14:02.270Z",
+            "expiresAt": "2026-12-17T16:14:02.270Z",
+            "uses": 0,
+            "id": "a46ea77e88f3"
+          },
+          {
+            "clientId": "client-morrow-studio",
+            "label": "Ada Obi",
+            "role": "viewer",
+            "createdAt": "2026-09-18T16:14:02.250Z",
+            "expiresAt": "2026-12-17T16:14:02.250Z",
+            "lastUsedAt": "2026-09-18T16:14:02.298Z",
+            "uses": 3,
+            "id": "ca319252d308"
+          }
+        ]
+      }
+    }
+  }
+}

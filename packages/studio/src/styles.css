@@ -192,6 +192,32 @@ input, textarea, select {
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* — preview —————————————————————————————————————————————————————— */
+
+/* Only the preview build renders this. It has to be unmissable and must not
+   look like part of the product, because its whole job is to stop someone
+   believing they are looking at live data. */
+.preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 3) calc(var(--step) * 4);
+  background: var(--charcoal);
+  color: #F5F3F0;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.preview-bar strong {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--aw-orange);
+  flex: none;
+}
+.preview-bar span { flex: 1 1 18rem; min-width: 0; }
+
 /* — shell ——————————————————————————————————————————————————————— */
 
 .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
@@ -282,6 +308,92 @@ input, textarea, select {
 .topbar nav a[aria-current="page"] { background: var(--surface); color: var(--text-primary); }
 
 .content { padding: calc(var(--step) * 8); max-width: 1120px; width: 100%; }
+
+/*
+ * Phones.
+ *
+ * Measured rather than guessed: at a 390px viewport the shell laid out at
+ * 504px, because a fixed sidebar column plus a content column that cannot
+ * shrink below its widest table has a floor. The browser then zoomed the whole
+ * page out to fit, which is why every measurement here is about letting things
+ * shrink rather than about making them smaller.
+ *
+ * The breakpoint is where the sidebar stops earning its column, not a device.
+ */
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+
+  /* The sidebar becomes a band across the top. Sticky and full-height is a
+     desktop affordance; on a phone it would eat the screen. */
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--step) * 3);
+    padding: calc(var(--step) * 4);
+  }
+  .nav-group { grid-auto-flow: column; grid-auto-columns: max-content; gap: calc(var(--step) * 1); }
+  /* The group labels are a vertical-list affordance and read as noise in a row. */
+  .nav-group > .label { display: none; }
+  .nav-item { border-left: 0; border-bottom: 2px solid transparent; padding: 8px 10px; }
+  .nav-item[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--aw-orange); }
+  .nav-item .phase { margin-left: calc(var(--step) * 1); }
+
+  .topbar { padding: calc(var(--step) * 3) calc(var(--step) * 4); }
+  .content { padding: calc(var(--step) * 4); }
+
+  /* A table is the one thing here with a genuine minimum width. It scrolls
+     inside its own box rather than setting the width of the page. */
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+  th, td { white-space: normal; }
+
+  /*
+   * A table whose last column is an action does not survive that treatment:
+   * the button ends up off the right edge, inside a scroll nobody thinks to
+   * try. Measured on a 390px phone — Approve, the one control that changes
+   * what a client can see, was invisible.
+   *
+   * So a `.stacky` table becomes one card per row, each cell labelled by the
+   * header it came from. The markup stays a table, which is what it is.
+   */
+  table.stacky { display: block; overflow: visible; white-space: normal; }
+  table.stacky thead { display: none; }
+  table.stacky tbody, table.stacky tr { display: block; }
+  table.stacky tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: calc(var(--step) * 2);
+    margin-bottom: calc(var(--step) * 2);
+  }
+  table.stacky tbody tr:hover { background: none; }
+  table.stacky td {
+    display: flex;
+    gap: calc(var(--step) * 3);
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 0;
+    padding: 4px 0;
+  }
+  table.stacky td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    flex: none;
+  }
+  /* A cell with no label is the actions cell: it gets the full width. */
+  table.stacky td:not([data-label]) { justify-content: flex-start; padding-top: calc(var(--step) * 2); }
+  table.stacky td:not([data-label])::before { content: none; }
+}
+
+/* Anything in a grid or flex track defaults to a min-content floor, which is
+   what stops a long filename or a wide table from letting the page narrow. */
+.main, .content, .card, .stack, .row { min-width: 0; }
 
 .kbd {
   font-family: var(--font-mono); font-size: 11px;

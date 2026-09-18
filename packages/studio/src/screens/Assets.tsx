@@ -157,22 +157,27 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
         groupByCollection(assets).map(([name, group]) => (
           <div key={name} className="stack" style={{ gap: 'calc(var(--step) * 2)' }}>
             <span className="label">{name}</span>
-            <table>
+            <table className="stacky">
               <thead>
                 <tr><th>File</th><th>Kind</th><th>Size</th><th>In the portal</th><th /></tr>
               </thead>
               <tbody>
                 {group.map((asset) => (
                   <tr key={asset.id}>
-                    <td>
-                      <span aria-hidden="true" style={{ marginRight: 8 }}>
-                        {KIND_GLYPH[asset.kind]}
+                    <td data-label="File">
+                      {/* One child, not two: a stacked row spreads its cell
+                          contents apart, which put the glyph adrift from the
+                          name it belongs to. */}
+                      <span>
+                        <span aria-hidden="true" style={{ marginRight: 8 }}>
+                          {KIND_GLYPH[asset.kind]}
+                        </span>
+                        <strong>{asset.filename}</strong>
                       </span>
-                      <strong>{asset.filename}</strong>
                     </td>
-                    <td className="muted">{asset.kind}</td>
-                    <td className="mono">{readableSize(asset.bytes)}</td>
-                    <td>
+                    <td className="muted" data-label="Kind">{asset.kind}</td>
+                    <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
+                    <td data-label="In the portal">
                       {asset.approved
                         ? <span className="pill pass">Visible</span>
                         : <span className="pill major">Not yet</span>}
