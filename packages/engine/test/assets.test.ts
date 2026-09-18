@@ -170,6 +170,26 @@ describe('who can see an asset', () => {
     expect(scoped.getAsset('photos')).toBeUndefined();
   });
 
+  it('gathers every visible asset across clients, and no more', () => {
+    const store = fixture();
+    store.saveClient({
+      id: 'morrow', name: 'Morrow', slug: 'morrow', status: 'active',
+      createdAt: NOW, updatedAt: NOW,
+    });
+    store.saveAsset({
+      id: 'theirs', clientId: 'morrow', digest: 't'.padEnd(64, '0'), filename: 't.png',
+      kind: 'logo', contentType: 'image/png', bytes: 10, approved: true, uploadedAt: NOW,
+    });
+
+    expect(new ScopedStore(store, studio).listAllAssets()).toHaveLength(4);
+    // The portal is bound to Acme, so the library view is still only Acme's —
+    // a convenience over the same filters, never a wider door.
+    expect(new ScopedStore(store, portal).listAllAssets().map((a) => a.id).sort())
+      .toEqual(['approved', 'photos']);
+    expect(new ScopedStore(store, limited).listAllAssets().map((a) => a.id))
+      .toEqual(['approved']);
+  });
+
   it('shows another client nothing', () => {
     const other: Principal = { kind: 'portal', userId: 'x', clientId: 'morrow', role: 'owner' };
     const scoped = new ScopedStore(fixture(), other);

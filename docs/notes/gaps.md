@@ -526,6 +526,36 @@ reading or by accident. The honest summary is that this codebase's checks are
 good at the case they were written for and have no mechanism for the case they
 were not.
 
+## 4n. The same wrong inference, a second time
+
+`listAssets` once returned nothing for a `limited` portal session because it
+asked "may this session read assets?" of a resource with no collection on it.
+That was fixed in §4m's commit. The convenience view added immediately after —
+`listAllAssets`, every file across every visible client — reintroduced it by
+resolving clients first, and `listClients` runs the same question against the
+`client` record, which also has no collection.
+
+The policy was the real site of the error both times. Rule 2 read:
+
+    if (resource.collection === undefined || !granted.includes(...)) deny
+
+which treats **the absence of a collection as a denial**. Only assets have
+collections, so for every other resource kind that condition is not a rule, it
+is an accident. A contractor given the logos folder therefore opened a portal
+that could not name whose portal it was.
+
+The rule now says what it means: read-only, the client record is readable
+because a portal with no title is not a portal, assets are checked against the
+grant, and every other kind is refused with a reason that names the kind. Each
+of those four branches has a test; before, one did.
+
+Sixth instance of the family in §4g/§4j/§4k/§4l/§4m, and the first **repeat** —
+the same wrong inference, made twice, three hours apart, by the same reasoning.
+That is the evidence that the pattern is structural rather than incidental. The
+generalisable form: **a condition that is meaningful for one input shape and
+merely true for all the others.** It is invisible in review precisely because
+the line is correct where it was written.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

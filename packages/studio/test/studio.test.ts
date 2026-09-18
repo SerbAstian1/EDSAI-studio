@@ -7,7 +7,9 @@ import { parseRoute, activeSection } from '../src/App.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
-import type { DepartmentOutput, Issue } from '../src/api.js';
+import type { Asset, DepartmentOutput, Issue } from '../src/api.js';
+import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
+import { shelves } from '../src/screens/FileLibrary.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
   runId: 'r1', departmentId, body: 'x',
@@ -317,5 +319,69 @@ describe('studio summary', () => {
   it('does not treat a run with no departments as complete', () => {
     const s = summarise([run({ id: 'a', activatedDepartments: [], completed: 0 })]);
     expect(s).toMatchObject({ inProgress: 1, awaitingFinal: 0 });
+  });
+});
+
+/* --------------------------------------------------------------------- files */
+
+const asset = (over: Partial<Asset> & { id: string }): Asset => ({
+  clientId: 'acme', digest: 'd'.repeat(64), filename: `${over.id}.png`, kind: 'logo',
+  contentType: 'image/png', bytes: 1024, approved: true,
+  uploadedAt: '2026-09-17T00:00:00Z', ...over,
+});
+
+describe('the files shelf', () => {
+  it('reads a size the way a person would', () => {
+    expect(readableSize(512)).toBe('512 B');
+    expect(readableSize(2048)).toBe('2 KB');
+    expect(readableSize(3 * 1024 * 1024)).toBe('3.0 MB');
+  });
+
+  it('puts what is waiting on the studio first, not what is newest', () => {
+    // The unapproved file is the older one, so recency alone would bury it.
+    const shelved = shelve([
+      asset({ id: 'live', approved: true, uploadedAt: '2026-09-18T00:00:00Z' }),
+      asset({ id: 'waiting', approved: false, uploadedAt: '2026-09-10T00:00:00Z' }),
+    ]);
+    expect(shelved.map((a) => a.id)).toEqual(['waiting', 'live']);
+  });
+
+  it('orders approved files newest first', () => {
+    const shelved = shelve([
+      asset({ id: 'old', uploadedAt: '2026-09-10T00:00:00Z' }),
+      asset({ id: 'new', uploadedAt: '2026-09-18T00:00:00Z' }),
+    ]);
+    expect(shelved.map((a) => a.id)).toEqual(['new', 'old']);
+  });
+
+  it('keeps Unfiled last, because it is the pile and not a choice', () => {
+    const groups = groupByCollection([
+      asset({ id: 'loose' }),
+      asset({ id: 'z', collection: 'Zines' }),
+      asset({ id: 'a', collection: 'Artwork' }),
+    ]);
+    expect(groups.map(([name]) => name)).toEqual(['Artwork', 'Zines', 'Unfiled']);
+  });
+
+  it('ranks a client with unapproved files above a fuller one with none', () => {
+    const clients = [
+      { id: 'full', name: 'Full', slug: 'full', status: 'active' as const },
+      { id: 'waiting', name: 'Waiting', slug: 'waiting', status: 'active' as const },
+    ];
+    const ranked = shelves(clients, [
+      asset({ id: 'a', clientId: 'full' }), asset({ id: 'b', clientId: 'full' }),
+      asset({ id: 'c', clientId: 'full' }),
+      asset({ id: 'd', clientId: 'waiting', approved: false }),
+    ]);
+    expect(ranked.map((shelf) => shelf.client.id)).toEqual(['waiting', 'full']);
+    expect(ranked[0]?.waiting).toBe(1);
+  });
+
+  it('leaves out a client with no files rather than showing an empty shelf', () => {
+    const ranked = shelves(
+      [{ id: 'empty', name: 'Empty', slug: 'empty', status: 'active' as const }],
+      [],
+    );
+    expect(ranked).toEqual([]);
   });
 });

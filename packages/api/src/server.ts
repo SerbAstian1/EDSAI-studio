@@ -482,6 +482,14 @@ export class ApiServer {
       /* ----------------------------------------------------------------- assets */
 
       {
+        method: 'GET', pattern: /^\/api\/assets$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          send(res, 200, { assets: scoped.listAllAssets() });
+        },
+      },
+
+      {
         method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/assets$/,
         run: ({ res, params, scoped }) => {
           if (!scoped) return;

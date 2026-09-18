@@ -32,13 +32,14 @@ const Clients = lazy(() => import('./screens/Clients.js'));
 const ClientDetail = lazy(() => import('./screens/ClientDetail.js'));
 const Brands = lazy(() => import('./screens/Brands.js'));
 const Portals = lazy(() => import('./screens/Portals.js'));
+const FileLibrary = lazy(() => import('./screens/FileLibrary.js'));
 const Activity = lazy(() => import('./screens/Activity.js'));
 const Settings = lazy(() => import('./screens/Settings.js'));
 const Planned = lazy(() => import('./screens/Planned.js'));
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
-  | 'runs' | 'brands' | 'portals' | 'activity' | 'settings' | 'planned'
+  | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'planned'
   | 'clients' | 'client' | 'onboard';
 
 export interface Route {
@@ -57,6 +58,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   clients: 'clients',
   brands: 'brands',
   portals: 'portals',
+  assets: 'assets',
   activity: 'activity',
   settings: 'settings',
 };
@@ -215,6 +217,7 @@ const TITLES: Record<Screen, string> = {
   finalize: 'Finalise',
   brands: 'Brands',
   portals: 'Portals',
+  assets: 'Files',
   activity: 'Activity',
   settings: 'Settings',
   planned: 'Studio',
@@ -263,6 +266,7 @@ function Shell(): ReactElement {
             {route.screen === 'client' && route.clientId && <ClientDetail clientId={route.clientId} />}
             {route.screen === 'brands' && <Brands />}
             {route.screen === 'portals' && <Portals />}
+            {route.screen === 'assets' && <FileLibrary />}
             {route.screen === 'activity' && <Activity />}
             {route.screen === 'settings' && <Settings />}
             {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}

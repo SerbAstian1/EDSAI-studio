@@ -50,10 +50,8 @@ export const SECTIONS: readonly Section[] = [
     status: 'built', href: '#/clients',
   },
   {
-    id: 'assets', label: 'Assets', glyph: '◈', group: 'Workspace',
-    status: 'planned', phase: 'P5',
-    intent: 'The asset library — upload, tagging, versions and approval state. '
-      + 'Needs a storage layer the engine does not have.',
+    id: 'assets', label: 'Files', glyph: '◈', group: 'Workspace',
+    status: 'built', href: '#/assets',
   },
   {
     id: 'templates', label: 'Templates', glyph: '✎', group: 'Workspace',

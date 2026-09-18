@@ -153,6 +153,19 @@ export class ScopedStore {
     });
   }
 
+  /**
+   * Every asset this principal may see, across every client they may see.
+   *
+   * Built from the two scoped reads rather than a query of its own, so the
+   * client filter and the approval filter cannot drift apart from the
+   * per-client view. A portal session sees exactly one client's approved files,
+   * which is the same answer `listAssets` gives — this is a convenience, not a
+   * wider door.
+   */
+  listAllAssets(): Asset[] {
+    return this.listClients().flatMap((client) => this.listAssets(client.id));
+  }
+
   getAsset(id: string): Asset | undefined {
     const asset = this.store.getAsset(id);
     if (!asset) return undefined;

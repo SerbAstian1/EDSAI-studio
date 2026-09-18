@@ -55,9 +55,21 @@ export function can(principal: Principal, action: Action, resource: Resource): D
   }
 
   // 2. A `limited` portal principal sees only the collections it was granted.
+  //
+  //    The restriction is about **collections**, and only assets have those. An
+  //    earlier version treated "this resource has no collection" as "not
+  //    granted", which denied a limited session its own client record — so a
+  //    contractor given the logos folder opened a portal that could not name
+  //    whose portal it was, and `listAllAssets`, which resolves clients first,
+  //    returned nothing at all. Absence of a collection is not a denial; it
+  //    means the question does not apply, and the resource kind decides.
   if (principal.kind === 'portal' && principal.role === 'limited') {
     if (action !== 'read') {
       return deny('a limited portal session is read-only');
+    }
+    if (resource.kind === 'client') return ALLOW;
+    if (resource.kind !== 'asset') {
+      return deny(`a limited session sees files, not ${resource.kind} records`);
     }
     const granted = principal.collections ?? [];
     if (resource.collection === undefined || !granted.includes(resource.collection)) {

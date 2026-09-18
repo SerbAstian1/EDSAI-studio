@@ -240,6 +240,52 @@ export interface BrandValue {
   measured?: Measured;
 }
 
+export interface Asset {
+  id: string;
+  clientId: string;
+  digest: string;
+  filename: string;
+  kind: 'logo' | 'photography' | 'video' | 'font' | 'icon' | 'illustration'
+    | 'document' | 'presentation' | 'template' | 'other';
+  contentType: string;
+  bytes: number;
+  collection?: string;
+  description?: string;
+  approved: boolean;
+  uploadedAt: string;
+}
+
+/**
+ * An upload is the one request that is not JSON.
+ *
+ * The file is the body and the metadata rides in headers, which is why it does
+ * not go through `call`: that helper forces `content-type: application/json`,
+ * and here the content type *is* the file's. The filename is encoded because
+ * headers are latin-1 on the wire and a client's file may not be.
+ */
+async function upload(
+  clientId: string,
+  file: File,
+  opts: { collection?: string } = {},
+): Promise<Asset> {
+  const res = await fetch(`/api/clients/${clientId}/assets`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'content-type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name),
+      ...(opts.collection ? { 'x-collection': encodeURIComponent(opts.collection) } : {}),
+    },
+    body: file,
+  });
+  const body: unknown = await res.json().catch(() => undefined);
+  if (!res.ok) {
+    const detail = body as { message?: string } | undefined;
+    throw new ApiError(res.status, detail?.message ?? `Upload failed with ${res.status}.`, []);
+  }
+  return (body as { asset: Asset }).asset;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
@@ -295,6 +341,17 @@ export const api = {
     call<Project>(`/api/clients/${clientId}/projects`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+
+  allAssets: () => call<{ assets: Asset[] }>('/api/assets').then((r) => r.assets),
+  assets: (clientId: string) =>
+    call<{ assets: Asset[] }>(`/api/clients/${clientId}/assets`).then((r) => r.assets),
+  uploadAsset: upload,
+  updateAsset: (assetId: string, input: {
+    approved?: boolean; filename?: string; description?: string; collection?: string;
+  }) => call<{ asset: Asset }>(`/api/assets/${assetId}`, {
+    method: 'PATCH', body: JSON.stringify(input),
+  }).then((r) => r.asset),
+  downloadPath: (assetId: string) => `/api/assets/${assetId}/download`,
 
   rubric: () => call<RubricSummary>('/api/rubric'),
   runs: () => call<{ runs: Run[] }>('/api/runs').then((r) => r.runs),

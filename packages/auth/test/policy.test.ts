@@ -88,6 +88,33 @@ describe('the limited role', () => {
     expect(can(portal('acme', 'limited'), 'read', res('acme', 'asset', 'logos')).allowed)
       .toBe(false);
   });
+
+  it('can still read the client record whose portal it is in', () => {
+    // Not a hole: a session that cannot name the client it is looking at opens
+    // a portal with no title, and every list that resolves clients first —
+    // `listAllAssets` among them — returns nothing at all.
+    expect(can(portal('acme', 'limited', ['logos']), 'read', res('acme', 'client')).allowed)
+      .toBe(true);
+  });
+
+  it('still cannot write the client record it may read', () => {
+    expect(can(portal('acme', 'limited', ['logos']), 'write', res('acme', 'client')).allowed)
+      .toBe(false);
+  });
+
+  it('sees files and nothing else about the client', () => {
+    const principal = portal('acme', 'limited', ['logos']);
+    for (const kind of ['contact', 'project', 'run', 'brand', 'portal'] as const) {
+      expect(can(principal, 'read', res('acme', kind)).allowed).toBe(false);
+      // And granting a collection does not turn a record into a file.
+      expect(can(principal, 'read', res('acme', kind, 'logos')).allowed).toBe(false);
+    }
+  });
+
+  it('is still bound to its own client, record or not', () => {
+    expect(can(portal('acme', 'limited', ['logos']), 'read', res('morrow', 'client')).allowed)
+      .toBe(false);
+  });
 });
 
 describe('role thresholds', () => {

@@ -4,14 +4,17 @@ import { api } from '../api.js';
 import { RunTable } from '../components/RunTable.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import Brand from './Brand.js';
+import Assets from './Assets.js';
 import type { Run } from '../api.js';
 
 /**
  * One client: their people, their work, and the runs underneath it.
  *
- * The tabs the brief lists (assets, deliverables, portal, approvals) are not
- * here because the entities behind them do not exist yet. Rendering empty tabs
- * would make the record look finished when it is not.
+ * The tabs the brief lists (deliverables, portal, approvals) are not here
+ * because the entities behind them do not exist yet. Rendering empty tabs would
+ * make the record look finished when it is not. Files are here now: they are
+ * what the client actually downloads, so they belong beside the people and the
+ * work rather than in a library of their own.
  */
 export default function ClientDetail({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
@@ -133,6 +136,8 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
       <OnboardingPanel clientId={clientId} />
 
       <Brand clientId={clientId} />
+
+      <Assets clientId={clientId} />
 
       <h3>Runs</h3>
       {runs.length === 0
