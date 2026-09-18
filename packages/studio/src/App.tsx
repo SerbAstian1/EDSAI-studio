@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useState , type ReactElement } from 'react';
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Run } from './api.js';
+import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from './api.js';
 import { useRunStream } from './useRunStream.js';
+import { Sidebar } from './shell/Sidebar.js';
+import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
+import Home from './screens/Home.js';
 
 /**
  * The Studio shell.
@@ -22,11 +25,32 @@ const RunView = lazy(() => import('./screens/RunView.js'));
 const Scorecard = lazy(() => import('./screens/Scorecard.js'));
 const Review = lazy(() => import('./screens/Review.js'));
 const Finalize = lazy(() => import('./screens/Finalize.js'));
+const Runs = lazy(() => import('./screens/Runs.js'));
+const Brands = lazy(() => import('./screens/Brands.js'));
+const Portals = lazy(() => import('./screens/Portals.js'));
+const Activity = lazy(() => import('./screens/Activity.js'));
+const Settings = lazy(() => import('./screens/Settings.js'));
+const Planned = lazy(() => import('./screens/Planned.js'));
+
+export type Screen =
+  | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
+  | 'runs' | 'brands' | 'portals' | 'activity' | 'settings' | 'planned';
 
 export interface Route {
-  screen: 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize';
+  screen: Screen;
   runId?: string;
+  /** The section id, when a planned section was opened. */
+  sectionId?: string;
 }
+
+/** Top-level sections that are a screen of their own, by hash segment. */
+const SECTION_SCREENS: Record<string, Screen> = {
+  runs: 'runs',
+  brands: 'brands',
+  portals: 'portals',
+  activity: 'activity',
+  settings: 'settings',
+};
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -38,7 +62,20 @@ export function parseRoute(hash: string): Route {
     }
     return { screen: 'run', runId: path[1] };
   }
+  if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
+  const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
+  if (section) return { screen: section };
   return { screen: 'workspace' };
+}
+
+/** Which sidebar entry should read as current for a route. */
+export function activeSection(route: Route): string {
+  if (route.screen === 'planned') return route.sectionId ?? '';
+  if (route.screen === 'workspace') return 'overview';
+  if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
+    || route.screen === 'review' || route.screen === 'finalize'
+    || route.screen === 'runs') return 'runs';
+  return route.screen;
 }
 
 function useRoute(): Route {
@@ -52,52 +89,6 @@ function useRoute(): Route {
 }
 
 /* ------------------------------------------------------------------ screens */
-
-function Workspace(): ReactElement {
-  const { data: runs, isPending, error } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
-
-  if (isPending) return <p className="muted">Loading runs…</p>;
-  if (error) return <p className="err">Could not load runs. {(error as Error).message}</p>;
-
-  return (
-    <section className="stack">
-      <div className="row">
-        <h2>Runs</h2>
-        <a href="#/new" style={{ marginLeft: 'auto' }}><button className="primary">New run</button></a>
-      </div>
-
-      {runs.length === 0 ? (
-        <div className="card">
-          <p><strong>No runs yet.</strong></p>
-          <p className="muted">
-            A run takes a brief and a system level, then walks the departments the
-            classification activates. Start one, or run <code>edsai run</code> from
-            the terminal — both write to the same store.
-          </p>
-        </div>
-      ) : (
-        <table>
-          <thead>
-            <tr><th>Run</th><th>Project</th><th>Level</th><th>Progress</th><th>Version</th></tr>
-          </thead>
-          <tbody>
-            {runs.map((run: Run) => (
-              <tr key={run.id}>
-                <td><a href={`#/run/${run.id}`} className="mono">{run.id}</a></td>
-                <td>{run.projectId}</td>
-                <td className="mono">{run.level}</td>
-                <td className="mono">
-                  {run.completed ?? 0}/{run.activatedDepartments.length}
-                </td>
-                <td className="mono">{run.determination ?? run.version}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
-}
 
 function Intake(): ReactElement {
   const client = useQueryClient();
@@ -199,8 +190,24 @@ function Intake(): ReactElement {
 
 /* -------------------------------------------------------------------- shell */
 
+const TITLES: Record<Screen, string> = {
+  workspace: 'Overview',
+  runs: 'Runs',
+  intake: 'New run',
+  run: 'Run',
+  scorecard: 'Scorecard',
+  review: 'Review',
+  finalize: 'Finalise',
+  brands: 'Brands',
+  portals: 'Portals',
+  activity: 'Activity',
+  settings: 'Settings',
+  planned: 'Studio',
+};
+
 function Shell(): ReactElement {
   const route = useRoute();
+  const palette = useCommandPalette();
   useRunStream(route.runId);
 
   const tabs = route.runId
@@ -211,26 +218,42 @@ function Shell(): ReactElement {
     : [];
 
   return (
-    <div className="app">
-      <header className="top">
-        <h1><a href="#/" style={{ textDecoration: 'none', color: 'inherit' }}>EDSAI Studio</a></h1>
-        {route.runId && <span className="mono muted">{route.runId}</span>}
-        <nav>
-          {tabs.map(([key, label]) => (
-            <a key={key} href={`#/run/${route.runId}${key === 'run' ? '' : `/${key}`}`}
-               aria-current={route.screen === key ? 'page' : undefined}>{label}</a>
-          ))}
-        </nav>
-      </header>
+    <div className="shell">
+      <Sidebar current={activeSection(route)} onOpenPalette={() => palette.setOpen(true)} />
 
-      <Suspense fallback={<p className="muted">Loading…</p>}>
-        {route.screen === 'workspace' && <Workspace />}
-        {route.screen === 'intake' && <Intake />}
-        {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
-        {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
-        {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
-        {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
-      </Suspense>
+      <div className="main">
+        <header className="topbar">
+          <h1>{TITLES[route.screen]}</h1>
+          {route.runId && <span className="mono muted">{route.runId}</span>}
+          {tabs.length > 0 && (
+            <nav aria-label="Run">
+              {tabs.map(([key, label]) => (
+                <a key={key} href={`#/run/${route.runId}${key === 'run' ? '' : `/${key}`}`}
+                   aria-current={route.screen === key ? 'page' : undefined}>{label}</a>
+              ))}
+            </nav>
+          )}
+        </header>
+
+        <main className="content">
+          <Suspense fallback={<p className="muted">Loading…</p>}>
+            {route.screen === 'workspace' && <Home />}
+            {route.screen === 'intake' && <Intake />}
+            {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
+            {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
+            {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
+            {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
+            {route.screen === 'runs' && <Runs />}
+            {route.screen === 'brands' && <Brands />}
+            {route.screen === 'portals' && <Portals />}
+            {route.screen === 'activity' && <Activity />}
+            {route.screen === 'settings' && <Settings />}
+            {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
+          </Suspense>
+        </main>
+      </div>
+
+      {palette.open && <CommandPalette onClose={() => palette.setOpen(false)} />}
     </div>
   );
 }

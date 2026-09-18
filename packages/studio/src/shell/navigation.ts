@@ -1,0 +1,94 @@
+/**
+ * The studio's navigation, as data.
+ *
+ * One list drives the sidebar, the command palette and the route parser, so a
+ * section cannot exist in one and be missing from another.
+ *
+ * `status` is the honest part. The product this shell is being built toward has
+ * Clients, Projects, Assets, Templates and Campaigns; the codebase underneath
+ * has none of those entities yet. Rendering them as working links would be a
+ * demo rather than a product, and hiding them would make the shape of the
+ * product unreadable. They are listed, marked with the phase that brings them,
+ * and not clickable until the entity behind them exists.
+ */
+
+export type SectionStatus = 'built' | 'planned';
+
+export interface Section {
+  id: string;
+  label: string;
+  glyph: string;
+  group: 'Workspace' | 'AI' | 'Studio';
+  status: SectionStatus;
+  /** The hash route, for a built section. */
+  href?: string;
+  /** Which phase of the build plan introduces it, for a planned one. */
+  phase?: string;
+  /** What it will be, shown where a planned section is opened. */
+  intent?: string;
+}
+
+export const SECTIONS: readonly Section[] = [
+  {
+    id: 'overview', label: 'Overview', glyph: '⌂', group: 'Workspace',
+    status: 'built', href: '#/',
+  },
+  {
+    id: 'runs', label: 'Runs', glyph: '▣', group: 'Workspace',
+    status: 'built', href: '#/runs',
+  },
+  {
+    id: 'brands', label: 'Brands', glyph: '✦', group: 'Workspace',
+    status: 'built', href: '#/brands',
+  },
+  {
+    id: 'portals', label: 'Portals', glyph: '◎', group: 'Workspace',
+    status: 'built', href: '#/portals',
+  },
+  {
+    id: 'clients', label: 'Clients', glyph: '◉', group: 'Workspace',
+    status: 'planned', phase: 'P2',
+    intent: 'Client records, contacts and the onboarding a project is built from. '
+      + 'A run currently carries a project id and nothing behind it.',
+  },
+  {
+    id: 'assets', label: 'Assets', glyph: '◈', group: 'Workspace',
+    status: 'planned', phase: 'P5',
+    intent: 'The asset library — upload, tagging, versions and approval state. '
+      + 'Needs a storage layer the engine does not have.',
+  },
+  {
+    id: 'templates', label: 'Templates', glyph: '✎', group: 'Workspace',
+    status: 'planned', phase: 'P10',
+    intent: 'Reusable artwork a client can use without touching the brand system.',
+  },
+  {
+    id: 'campaigns', label: 'Campaigns', glyph: '◌', group: 'Workspace',
+    status: 'planned', phase: 'P10',
+    intent: 'Campaign spaces that inherit an approved brand rather than restating it.',
+  },
+  {
+    id: 'brand-brain', label: 'Brand Brain', glyph: '✦', group: 'AI',
+    status: 'planned', phase: 'P8',
+    intent: 'Structured brand context, retrieved per task rather than pasted whole '
+      + 'into every prompt. The department outputs are already the raw material.',
+  },
+  {
+    id: 'activity', label: 'Activity', glyph: '◷', group: 'Studio',
+    status: 'built', href: '#/activity',
+  },
+  {
+    id: 'settings', label: 'Settings', glyph: '⚙', group: 'Studio',
+    status: 'built', href: '#/settings',
+  },
+];
+
+export const GROUPS = ['Workspace', 'AI', 'Studio'] as const;
+
+export function sectionsIn(group: Section['group']): Section[] {
+  return SECTIONS.filter((section) => section.group === group);
+}
+
+export function findSection(id: string): Section | undefined {
+  return SECTIONS.find((section) => section.id === id);
+}

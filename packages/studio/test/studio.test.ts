@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseRoute } from '../src/App.js';
+import { SECTIONS, GROUPS, sectionsIn } from '../src/shell/navigation.js';
+import { allCommands, search } from '../src/shell/commands.js';
+import { summarise } from '../src/screens/Home.js';
+import type { Run } from '../src/api.js';
+import { parseRoute, activeSection } from '../src/App.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
@@ -159,5 +163,147 @@ describe('progress', () => {
 
   it('handles a run with nothing activated', () => {
     expect(progress([], []).share).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------ Phase 1: the shell */
+
+describe('routing — sections', () => {
+  it('keeps the overview on the root hash', () => {
+    expect(parseRoute('#/').screen).toBe('workspace');
+    expect(parseRoute('#/runs').screen).toBe('runs');
+  });
+
+  it('reads each built section', () => {
+    expect(parseRoute('#/brands').screen).toBe('brands');
+    expect(parseRoute('#/portals').screen).toBe('portals');
+    expect(parseRoute('#/activity').screen).toBe('activity');
+    expect(parseRoute('#/settings').screen).toBe('settings');
+  });
+
+  it('reads a planned section and keeps its id', () => {
+    expect(parseRoute('#/section/clients')).toEqual({ screen: 'planned', sectionId: 'clients' });
+  });
+
+  it('falls back to the overview for an unknown section', () => {
+    expect(parseRoute('#/nonsense').screen).toBe('workspace');
+  });
+
+  it('marks the runs entry current for every run sub-screen', () => {
+    for (const hash of ['#/new', '#/run/r1', '#/run/r1/scorecard', '#/run/r1/finalize']) {
+      expect(activeSection(parseRoute(hash))).toBe('runs');
+    }
+  });
+
+  it('marks the section itself current elsewhere', () => {
+    expect(activeSection(parseRoute('#/'))).toBe('overview');
+    expect(activeSection(parseRoute('#/brands'))).toBe('brands');
+    expect(activeSection(parseRoute('#/section/assets'))).toBe('assets');
+  });
+});
+
+describe('navigation model', () => {
+  it('gives every planned section a phase and an intent', () => {
+    for (const section of SECTIONS.filter((s) => s.status === 'planned')) {
+      expect(section.phase, section.id).toBeTruthy();
+      expect(section.intent, section.id).toBeTruthy();
+      expect(section.href, section.id).toBeUndefined();
+    }
+  });
+
+  it('gives every built section a route the parser understands', () => {
+    for (const section of SECTIONS.filter((s) => s.status === 'built')) {
+      expect(section.href, section.id).toBeTruthy();
+      expect(activeSection(parseRoute(section.href ?? ''))).toBe(section.id);
+    }
+  });
+
+  it('places every section in a rendered group', () => {
+    const grouped = GROUPS.flatMap((g) => sectionsIn(g)).map((s) => s.id).sort();
+    expect(grouped).toEqual([...SECTIONS].map((s) => s.id).sort());
+  });
+});
+
+describe('command palette', () => {
+  const commands = allCommands();
+
+  it('derives a navigation command for every section, with no second list', () => {
+    for (const section of SECTIONS) {
+      expect(commands.some((c) => c.id === `go:${section.id}`), section.id).toBe(true);
+    }
+  });
+
+  it('offers only runnable commands on an empty query', () => {
+    expect(search(commands, '').every((c) => c.available)).toBe(true);
+  });
+
+  it('ranks a prefix match above a match in the middle', () => {
+    const results = search(commands, 'new');
+    expect(results[0]?.title.toLowerCase().startsWith('new')).toBe(true);
+  });
+
+  it('finds a command by keyword rather than only by title', () => {
+    expect(search(commands, 'brief').some((c) => c.id === 'run:new')).toBe(true);
+  });
+
+  it('sorts unavailable commands last but still shows them', () => {
+    const results = search(commands, 'client');
+    expect(results.length).toBeGreaterThan(0);
+    const firstUnavailable = results.findIndex((c) => !c.available);
+    const lastAvailable = results.map((c) => c.available).lastIndexOf(true);
+    if (firstUnavailable !== -1 && lastAvailable !== -1) {
+      expect(firstUnavailable).toBeGreaterThan(lastAvailable);
+    }
+  });
+
+  it('says why an unavailable command cannot run', () => {
+    for (const command of commands.filter((c) => !c.available)) {
+      expect(command.unavailable, command.id).toBeTruthy();
+      expect(command.run, command.id).toBeUndefined();
+    }
+  });
+
+  it('returns nothing for a query that matches nothing', () => {
+    expect(search(commands, 'zzzzq')).toEqual([]);
+  });
+
+  it('does not throw on a query with regex metacharacters', () => {
+    expect(() => search(commands, 'c++ (')).not.toThrow();
+  });
+});
+
+describe('studio summary', () => {
+  const run = (over: Partial<Run> & { id: string }): Run => ({
+    projectId: 'p', brief: '', level: 1, tracks: [], scopeId: 'full',
+    activatedDepartments: [1, 2], version: 'V1', status: 'running',
+    startedAt: '', completed: 0, ...over,
+  } as Run);
+
+  it('counts a FINAL run as a brand rather than as work in progress', () => {
+    const s = summarise([run({ id: 'a', determination: 'FINAL', completed: 2 })]);
+    expect(s).toMatchObject({ brands: 1, inProgress: 0, awaitingFinal: 0 });
+  });
+
+  it('counts a finished run that has not cleared the gate as awaiting FINAL', () => {
+    const s = summarise([run({ id: 'a', completed: 2, version: 'V2' })]);
+    expect(s).toMatchObject({ brands: 0, inProgress: 0, awaitingFinal: 1 });
+  });
+
+  it('counts an unfinished run as in progress', () => {
+    const s = summarise([run({ id: 'a', completed: 1 })]);
+    expect(s).toMatchObject({ inProgress: 1, awaitingFinal: 0 });
+  });
+
+  it('counts distinct projects rather than runs', () => {
+    const s = summarise([
+      run({ id: 'a', projectId: 'x' }), run({ id: 'b', projectId: 'x' }),
+      run({ id: 'c', projectId: 'y' }),
+    ]);
+    expect(s.projects).toBe(2);
+  });
+
+  it('does not treat a run with no departments as complete', () => {
+    const s = summarise([run({ id: 'a', activatedDepartments: [], completed: 0 })]);
+    expect(s).toMatchObject({ inProgress: 1, awaitingFinal: 0 });
   });
 });

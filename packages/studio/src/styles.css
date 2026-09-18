@@ -1,68 +1,385 @@
-/* Tokens measured with the contrast instrument before they were written here:
-   ink on ground 17.21:1, muted on panel 4.51:1, edge on panel 3:1 (WCAG 1.4.11). */
+/* ===========================================================================
+   AW design system — EDS AI Studio
+   ---------------------------------------------------------------------------
+   Every colour pair below was measured with this repository's own `contrast`
+   instrument before it was written here, because a product whose argument is
+   "we compute what others assert" does not get to pick its own palette by eye.
+   The measurements that shaped it:
+
+     AW orange #EB5E28 on white .................. 3.41:1  FAILS body text
+     AW orange #EB5E28 on white, large ........... 3.41:1  passes (needs 3)
+     AW orange #EB5E28 as a non-text boundary .... 3.41:1  passes (needs 3)
+     white ON #EB5E28 ............................ 3.41:1  FAILS a button label
+     charcoal #1A1A1A ON #EB5E28 ................. 5.11:1  passes
+     #C4400C on the tightest light surface ....... 4.63:1  passes body text
+     #EB5E28 on charcoal #14161A ................. 5.32:1  passes body text
+
+   Three consequences, and they are design decisions rather than preferences:
+
+   1. On light surfaces AW orange is a *display and fill* colour — headlines,
+      indicators, rules, filled controls — never small body text. `--accent-ink`
+      is the derived variant for text at body size, and it is the nearest hue
+      to the brand orange that clears 4.5:1.
+   2. A filled orange control carries a **charcoal** label, not a white one.
+      White on orange is the obvious choice and it fails at 3.41:1.
+   3. In dark mode the brand orange clears 4.5:1 against the charcoal ground on
+      its own, so no variant is needed there — the brand colour is the text
+      colour, which is where the identity should read strongest anyway.
+
+   Every token is measured against the *tightest* surface it can land on, not
+   against white. The first draft of this file checked muted text and the accent
+   against `--surface-elevated` and shipped two failures — 4.45:1 and 4.41:1 —
+   because the sidebar is `--surface`, which is darker. Checking the easy
+   background is the same mistake as running a check only on the passing case.
+
+   `--border` is deliberately below 3:1. It is a decorative hairline between
+   sections; `--border-strong` is the boundary of a control and clears 1.4.11
+   at 3.11:1 on the background. Holding a divider to a control's standard would
+   make the interface louder for no accessibility gain.
+   ======================================================================== */
+
 :root {
-  --ground: #FBFBFC; --panel: #F1F3F5; --ink: #14181F;
-  --muted: #67707D; --edge: #898D93; --accent: #A8571F;
-  --blocker: #B32A21; --major: #A8571F; --minor: #5C6470; --ok: #2F6D4F;
-  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* — brand ————————————————————————————————————————————————————— */
+  --aw-orange: #EB5E28;
+  --charcoal: #1A1A1A;
+
+  /* — semantic surfaces ————————————————————————————————————————— */
+  --background: #FBFBFA;
+  --surface: #F4F3F1;
+  --surface-elevated: #FFFFFF;
+
+  /* — semantic text —————————————————————————————————————————————— */
+  --text-primary: #16181C;
+  --text-secondary: #4B5159;
+  --text-muted: #656C75;
+
+  /* — lines ————————————————————————————————————————————————————— */
+  --border: #DCDAD6;
+  --border-strong: #8A9099;
+
+  /* — accent roles ——————————————————————————————————————————————— */
+  --accent: var(--aw-orange);
+  --accent-ink: #C4400C;
+  --accent-on: var(--charcoal);
+
+  /* — status ———————————————————————————————————————————————————— */
+  --success: #1F6B45;
+  --warning: #8A5A10;
+  --error: #A32317;
+
+  /* — type ————————————————————————————————————————————————————— */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-accent: "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* — geometry —————————————————————————————————————————————————— */
+  --radius: 4px;
+  --radius-lg: 6px;
+  --sidebar-w: 232px;
+  --step: 4px;
+
+  --transition: 120ms cubic-bezier(0.2, 0, 0.2, 1);
 }
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --ground: #101319; --panel: #191D25; --ink: #EDEFF3;
-    --muted: #98A0AC; --edge: #6B717A; --accent: #E08C4A;
-    --blocker: #EA6E64; --major: #E0A15A; --minor: #98A0AC; --ok: #66B98E;
+    --background: #121316;
+    --surface: #1A1C20;
+    --surface-elevated: #22252A;
+    --text-primary: #EFEFED;
+    --text-secondary: #B3B7BD;
+    --text-muted: #8B9199;
+    --border: #2C2F35;
+    --border-strong: #6F757D;
+    /* Measured 5.32:1 on this ground, so the brand colour *is* the text colour. */
+    --accent-ink: var(--aw-orange);
+    --success: #5FB98A;
+    --warning: #D8A857;
+    --error: #E8796C;
   }
 }
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--ui); }
-a { color: var(--accent); }
-button { font: inherit; cursor: pointer; border-radius: 7px;
-         border: 1px solid var(--edge); background: var(--panel); color: var(--ink);
-         padding: 8px 14px; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button[disabled] { opacity: .55; cursor: not-allowed; }
-input, textarea, select { font: inherit; color: var(--ink); background: var(--ground);
-  border: 1px solid var(--edge); border-radius: 7px; padding: 8px 10px; width: 100%; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text-primary);
+  font: 15px/1.55 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent-ink); }
+
+/* — type roles —————————————————————————————————————————————————— */
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+h1 { font-size: 20px; }
+h2 { font-size: 22px; margin-bottom: calc(var(--step) * 1); }
+h3 { font-size: 15px; margin: calc(var(--step) * 5) 0 calc(var(--step) * 1.5); }
+
+/* Instrument Serif stays an accent: editorial statements, never UI furniture. */
+.editorial {
+  font-family: var(--font-accent);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+/* The small uppercase label that carries most of the hierarchy in this UI. */
+.label, th {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.metric {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.muted { color: var(--text-muted); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* — controls ———————————————————————————————————————————————————— */
+
+button {
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  padding: 7px 13px;
+  transition: background var(--transition), border-color var(--transition);
+}
+button:hover:not([disabled]) { border-color: var(--text-secondary); }
+
+/* Charcoal on orange, not white on orange. Measured: 5.11:1 against 3.41:1. */
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+  font-weight: 500;
+}
+button.primary:hover:not([disabled]) { filter: brightness(0.94); }
+button[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+input, textarea, select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  width: 100%;
+}
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.app { max-width: 960px; margin: 0 auto; padding: 0 16px 64px; }
-header.top { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
-  padding: 16px 0; border-bottom: 1px solid var(--edge); margin-bottom: 20px; }
-header.top h1 { font-size: 16px; margin: 0; letter-spacing: .01em; }
-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
-nav a { text-decoration: none; padding: 5px 10px; border-radius: 6px; color: var(--muted); }
-nav a[aria-current="page"] { background: var(--panel); color: var(--ink); }
+/* — shell ——————————————————————————————————————————————————————— */
 
-.card { background: var(--panel); border: 1px solid var(--edge); border-radius: 11px;
-        padding: 16px; margin-bottom: 14px; }
-.row { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-.muted { color: var(--muted); }
-.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.stack { display: grid; gap: 12px; }
-h2 { font-size: 19px; margin: 0 0 4px; }
-h3 { font-size: 15px; margin: 18px 0 6px; }
+.shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: calc(var(--step) * 5) calc(var(--step) * 3);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 6);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+}
+.wordmark::before {
+  content: "";
+  width: 9px; height: 9px;
+  background: var(--aw-orange);
+  border-radius: 1px;
+}
+
+.nav-group { display: grid; gap: 1px; }
+.nav-group > .label { margin-bottom: calc(var(--step) * 1.5); }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2.5);
+  padding: 6px calc(var(--step) * 2);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  border-left: 2px solid transparent;
+  transition: color var(--transition), background var(--transition);
+}
+.nav-item:hover { color: var(--text-primary); background: var(--surface-elevated); }
+.nav-item[aria-current="page"] {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-left-color: var(--aw-orange);
+  background: var(--surface-elevated);
+}
+.nav-item .glyph { width: 14px; font-family: var(--font-mono); color: var(--text-muted); }
+.nav-item[aria-current="page"] .glyph { color: var(--aw-orange); }
+
+/* A section the product will have and does not have yet. Marked rather than
+   hidden: the shape of the product should be legible, and a nav item that
+   silently goes nowhere is worse than one that says what it is waiting for. */
+.nav-item.pending { opacity: 0.45; cursor: not-allowed; }
+.nav-item.pending:hover { background: none; color: var(--text-secondary); }
+.nav-item .phase {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 4);
+  padding: calc(var(--step) * 4) calc(var(--step) * 8);
+  border-bottom: 1px solid var(--border);
+}
+.topbar nav { display: flex; gap: calc(var(--step) * 1); margin-left: auto; flex-wrap: wrap; }
+.topbar nav a {
+  text-decoration: none; padding: 5px 10px; border-radius: var(--radius);
+  color: var(--text-muted); font-size: 14px;
+}
+.topbar nav a[aria-current="page"] { background: var(--surface); color: var(--text-primary); }
+
+.content { padding: calc(var(--step) * 8); max-width: 1120px; width: 100%; }
+
+.kbd {
+  font-family: var(--font-mono); font-size: 11px;
+  border: 1px solid var(--border-strong); border-radius: 3px;
+  padding: 2px 5px; color: var(--text-muted); background: var(--surface-elevated);
+}
+
+/* — command palette —————————————————————————————————————————————— */
+
+.palette-scrim {
+  position: fixed; inset: 0; background: rgb(0 0 0 / 0.35);
+  display: flex; justify-content: center; align-items: flex-start;
+  padding-top: 12vh; z-index: 50;
+}
+.palette {
+  width: min(560px, 92vw);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.18);
+}
+.palette input {
+  border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  font-size: 15px; padding: 14px 16px;
+}
+.palette input:focus-visible { outline: none; }
+.palette ul { list-style: none; margin: 0; padding: calc(var(--step) * 1); max-height: 46vh; overflow-y: auto; }
+.palette li { padding: 0; }
+.palette li button {
+  width: 100%; text-align: left; border: 0; background: none; border-radius: var(--radius);
+  display: flex; align-items: center; gap: calc(var(--step) * 2.5); padding: 8px 10px;
+}
+.palette li[aria-selected="true"] button { background: var(--surface); }
+.palette li[aria-selected="true"] button .glyph { color: var(--aw-orange); }
+.palette .glyph { font-family: var(--font-mono); color: var(--text-muted); width: 14px; }
+.palette .group { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.palette .none { padding: 18px 16px; color: var(--text-muted); font-size: 14px; }
+
+/* — surfaces ———————————————————————————————————————————————————— */
+
+.card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 4);
+  margin-bottom: calc(var(--step) * 3.5);
+}
+.row { display: flex; gap: calc(var(--step) * 3); align-items: baseline; flex-wrap: wrap; }
+.stack { display: grid; gap: calc(var(--step) * 3); }
+
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden; background: var(--surface-elevated);
+}
+.stat { padding: calc(var(--step) * 4) calc(var(--step) * 5); border-right: 1px solid var(--border); }
+.stat:last-child { border-right: 0; }
+.stat .label { display: block; margin-bottom: calc(var(--step) * 2); }
+
+.empty { border: 1px dashed var(--border-strong); border-radius: var(--radius-lg);
+         padding: calc(var(--step) * 10) calc(var(--step) * 6); text-align: center; }
+.empty .editorial { margin-bottom: calc(var(--step) * 2); }
+.empty p { max-width: 42ch; margin: 0 auto calc(var(--step) * 4); color: var(--text-muted); }
+
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--edge); vertical-align: top; }
-th { color: var(--muted); font-weight: 600; font-size: 12px;
-     text-transform: uppercase; letter-spacing: .05em; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-weight: 500; }
+tbody tr:hover { background: var(--surface); }
 
-.pill { display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
-        border: 1px solid currentColor; }
-.Blocker, .blocker { color: var(--blocker); }
-.Major, .major { color: var(--major); }
-.Minor, .minor, .Nitpick, .nitpick { color: var(--minor); }
-.pass { color: var(--ok); }
+.pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+        border: 1px solid currentColor; letter-spacing: 0.03em; }
+.Blocker, .blocker, .err { color: var(--error); }
+.Major, .major { color: var(--warning); }
+.Minor, .minor, .Nitpick, .nitpick { color: var(--text-muted); }
+.pass, .ok { color: var(--success); }
 
 .bars { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px;
         align-items: end; height: 120px; margin: 10px 0 6px; }
-.bar { background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
-.bar.empty { background: var(--edge); opacity: .35; }
+.bar { background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; }
+.bar.empty { background: var(--border-strong); opacity: 0.3; border: 0; padding: 0; }
 .bar-labels { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px;
-              font-size: 11px; color: var(--muted); text-align: center; }
-.meter { height: 7px; background: var(--edge); border-radius: 4px; overflow: hidden; }
+              font-size: 11px; color: var(--text-muted); text-align: center; }
+.meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .meter > i { display: block; height: 100%; background: var(--accent); }
-.gate { border-left: 3px solid var(--blocker); padding-left: 12px; }
-.gate.pass { border-left-color: var(--ok); }
-.err { color: var(--blocker); }
-@media (max-width: 560px) { .bars { height: 88px; } }
+.gate { border-left: 2px solid var(--error); padding-left: calc(var(--step) * 3); }
+.gate.pass { border-left-color: var(--success); }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap;
+             align-items: center; gap: calc(var(--step) * 3); border-right: 0;
+             border-bottom: 1px solid var(--border); }
+  .nav-group { display: flex; flex-wrap: wrap; }
+  .nav-group > .label { display: none; }
+  .content, .topbar { padding-left: calc(var(--step) * 4); padding-right: calc(var(--step) * 4); }
+  .bars { height: 88px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

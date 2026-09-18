@@ -44,10 +44,11 @@ packages/
   export/        internal document, gated client summary, DEVPOINT handoff
   measure/       probes and instruments for Departments 8, 40 and 43
   api/           node:http contract over the engine, with SSE run progress
-  studio/        the React shell — nine screens, CSR, route-split
+  studio/        the AW studio shell — sidebar, command palette, CSR, route-split
   hub/           the client-facing brand hub, generated from a FINAL run
   desktop/       the Tauri shell around the Studio, with a launch check
 docs/
+  product/       the AW product direction, the audit behind it, and its phases
   discovery/     the client discovery flow that produces a Direction Lock
   phases/        phase specifications
   runs/          pipeline run records
@@ -59,7 +60,7 @@ docs/
 
 ```bash
 pnpm install
-pnpm test          # 614 tests
+pnpm test          # 640 tests
 pnpm typecheck
 pnpm corpus:diff   # compare vendored corpus against the installed skill
 ```
