@@ -287,7 +287,15 @@ statement, because that is one of the three the flow deliberately leaves open.
 | Isolation | one client's invite opens only their onboarding; a portal session for another client 404s on accept |
 | Junk answers | an answer that fails catalog validation is refused and does not count toward progress, so 100% cannot be reached by sending nonsense |
 | Budget | 88.7 KB gz against 170 KB |
-| Suite | 782 tests |
+| Suite | 785 tests |
+
+A fourth came out of probing the public endpoints afterwards rather than
+driving them: **a client could keep editing after submitting.** The status still
+read "submitted" either way, so a studio reading the answers, deciding they were
+good, and accepting them could be accepting something different from what they
+read — with no way to tell. Submitting now closes the form, and reopening is the
+studio's call. Prototype pollution through an answer value was probed at the
+same time and does not occur.
 
 Three bugs came out of driving it rather than reading it: a client who tapped
 **Back** had no way forward again, because the forward control only appeared for

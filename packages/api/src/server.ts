@@ -604,10 +604,16 @@ export class ApiServer {
             send(res, 404, { error: 'bad_invite', message: 'This link is not valid.' });
             return;
           }
-          if (onboarding.status === 'accepted') {
+          // Submitting closes the form. Without this a client can keep editing
+          // underneath a studio that is reading their answers, and what gets
+          // accepted is not what was reviewed — the studio would have no way to
+          // tell, because the status still says "submitted" either way.
+          if (onboarding.status === 'submitted' || onboarding.status === 'accepted') {
             send(res, 409, {
               error: 'closed',
-              message: 'These answers have already been accepted by the studio.',
+              message: onboarding.status === 'accepted'
+                ? 'These answers have already been accepted by the studio.'
+                : 'These answers are with the studio. Ask them to reopen the form to change anything.',
             });
             return;
           }

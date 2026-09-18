@@ -899,3 +899,68 @@ describe('onboarding', () => {
     cookie = saved;
   });
 });
+
+describe('an onboarding closes when it is submitted', () => {
+  const complete = async () => {
+    const { body: created } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Freeze Co' }),
+    });
+    const clientId = created['id'] as unknown as string;
+    const { body } = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    const token = (body['invite'] as unknown as { token: string }).token;
+
+    const form = await json(`/api/onboard/${token}`);
+    const questions = form.body['questions'] as unknown as {
+      id: string; kind: string; required: boolean; take?: number; options?: { id: string }[];
+    }[];
+    for (const q of questions.filter((x) => x.required)) {
+      const value = q.kind === 'text' ? 'The answer the studio will read.'
+        : q.kind === 'scale' ? 3
+          : q.kind === 'ratio' ? { side: 'a', strength: 'clearly' }
+            : q.kind === 'binary' ? q.options?.[0]?.id
+              : (q.options ?? []).slice(0, q.take || 1).map((o) => o.id);
+      await json(`/api/onboard/${token}`, {
+        method: 'POST', body: JSON.stringify({ questionId: q.id, value }),
+      });
+    }
+    await json(`/api/onboard/${token}`, { method: 'POST', body: JSON.stringify({ submit: true }) });
+    return { token, clientId };
+  };
+
+  it('refuses an edit after submission', async () => {
+    const { token } = await complete();
+    const { status, body } = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'CHANGED' }),
+    });
+    expect(status).toBe(409);
+    expect(body['message']).toContain('reopen');
+  });
+
+  it('keeps the answers the studio will actually read', async () => {
+    const { token } = await complete();
+    await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'CHANGED' }),
+    });
+    const { body } = await json(`/api/onboard/${token}`);
+    const answers = body['answers'] as unknown as { questionId: string; value: unknown }[];
+    expect(answers.find((a) => a.questionId === 'f-what')?.value)
+      .toBe('The answer the studio will read.');
+  });
+
+  it('still lets a client edit before they submit', async () => {
+    const { body: created } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Open Co' }),
+    });
+    const { body } = await json(`/api/clients/${created['id'] as unknown as string}/onboarding`, {
+      method: 'POST',
+    });
+    const token = (body['invite'] as unknown as { token: string }).token;
+    await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'first go' }),
+    });
+    const second = await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'second go' }),
+    });
+    expect(second.status).toBe(200);
+  });
+});
