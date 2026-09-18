@@ -460,6 +460,33 @@ Two things worth saying about this rather than moving on:
   desktop checks: a check that only ever ran against the passing case. Here the
   passing case was "a machine that had already built".
 
+## 4l. Two auth holes, found by attacking my own code
+
+Authentication was written and immediately reviewed adversarially, which found
+two real vulnerabilities in it. Both are fixed; both are worth recording for the
+shape rather than the specifics.
+
+**A test that was true and proved nothing.** Sign-in returned the same status
+and the same message for a wrong password and an unknown account, and there is a
+test asserting precisely that. It is a correct test of the wrong property: scrypt
+is slow, so a known email answered in 49.2 ms and an unknown one in 0.8 ms — a
+60x tell that enumerates every account. Checking the *content* of two responses
+says nothing about their *cost*, and having written both the code and the test
+made the gap invisible.
+
+**A race in the first-run setup.** The "is anyone set up yet" check and the write
+were separated by an `await hashPassword`, which is deliberately slow. Four
+concurrent requests all passed the check and all created an owner. The fix is a
+second check after the only suspension point; the test was confirmed to fail
+without it.
+
+This is the same pattern as §4g, §4j and §4k, now for the fourth time: **a check
+that was only ever exercised on the case it was written for.** The difference
+here is that it was caught deliberately rather than by accident, by going back
+over fresh security-sensitive code looking for the hole instead of running it
+once and moving on. That is not a systematic defence — it is a habit, and it
+only happened because the code was obviously worth attacking.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  hashPassword, verifyPassword, mintSessionToken, digestToken,
+  hashPassword, verifyPassword, verifyAgainstAccount, mintSessionToken, digestToken,
   serializeSession, serializeLogout, readSessionCookie, isCsrfSafe, SESSION_COOKIE,
 } from '../src/index.js';
 
@@ -38,6 +38,35 @@ describe('passwords', () => {
       .toBe(false);
     expect(await verifyPassword('a-long-enough-password', { salt: '00', hash: 'ab' }))
       .toBe(false);
+  });
+});
+
+describe('verifying against an account that may not exist', () => {
+  it('returns false for an absent account', async () => {
+    expect(await verifyAgainstAccount('a-long-enough-password', undefined)).toBe(false);
+  });
+
+  it('still returns true for a present account and the right password', async () => {
+    const record = await hashPassword('a-long-enough-password');
+    expect(await verifyAgainstAccount('a-long-enough-password', record)).toBe(true);
+  });
+
+  it('does the same work whether the account exists or not', async () => {
+    // The vulnerability this closes was an early return: an unknown account
+    // answered in under a millisecond while a known one paid for scrypt, which
+    // turns sign-in into an account enumerator. Measured at 60x before the fix.
+    // The bound is deliberately loose — the regression to catch is "returns
+    // immediately", not a few milliseconds of jitter.
+    const record = await hashPassword('a-long-enough-password');
+
+    const elapsed = async (arg: typeof record | undefined): Promise<number> => {
+      const start = performance.now();
+      await verifyAgainstAccount('some-other-password', arg);
+      return performance.now() - start;
+    };
+
+    expect(await elapsed(record)).toBeGreaterThan(5);
+    expect(await elapsed(undefined)).toBeGreaterThan(5);
   });
 });
 

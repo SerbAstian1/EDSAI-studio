@@ -661,3 +661,45 @@ describe('clients', () => {
     expect(body['contacts']).toEqual([]);
   });
 });
+
+describe('the first-run window', () => {
+  it('creates exactly one owner under concurrent setup requests', async () => {
+    // `hashPassword` is deliberately slow, which leaves a wide window between
+    // "is anyone set up?" and the write. Without a second check after the await,
+    // several requests all pass the first one and each writes an owner.
+    const fresh = new RunStore();
+    const server2 = new ApiServer({ store: fresh, rubric, insecureCookies: true });
+    const base2 = `http://localhost:${await server2.listen(0)}`;
+
+    const attempt = (n: number) => fetch(`${base2}/api/setup`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: `Owner ${n}`, email: `owner${n}@example.com`, password: 'a-long-enough-password',
+      }),
+    });
+
+    const results = await Promise.all([1, 2, 3, 4].map(attempt));
+    const created = results.filter((r) => r.status === 201);
+
+    expect(created).toHaveLength(1);
+    expect(fresh.countUsers()).toBe(1);
+    await server2.close();
+  });
+
+  it('reports that setup is needed before anyone exists, and not after', async () => {
+    const fresh = new RunStore();
+    const server2 = new ApiServer({ store: fresh, rubric, insecureCookies: true });
+    const base2 = `http://localhost:${await server2.listen(0)}`;
+
+    const needs = async (): Promise<boolean> =>
+      ((await (await fetch(`${base2}/api/health`)).json()) as { needsSetup: boolean }).needsSetup;
+
+    expect(await needs()).toBe(true);
+    await fetch(`${base2}/api/setup`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'A', email: 'a@b.c', password: 'a-long-enough-password' }),
+    });
+    expect(await needs()).toBe(false);
+    await server2.close();
+  });
+});

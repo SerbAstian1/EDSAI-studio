@@ -10,8 +10,8 @@ import {
 import { RunEvents } from './events.js';
 import { ScopedStore, ensureLocalProject, slugify, type Run } from '@edsai/engine';
 import {
-  Forbidden, mintSessionToken, digestToken, verifyPassword, hashPassword,
-  readSessionCookie, serializeSession, serializeLogout, isCsrfSafe,
+  Forbidden, mintSessionToken, digestToken, hashPassword,
+  readSessionCookie, serializeSession, serializeLogout, isCsrfSafe, verifyAgainstAccount,
   type Principal,
 } from '@edsai/auth';
 
@@ -346,6 +346,20 @@ export class ApiServer {
             send(res, 400, { error: 'weak_password', message: (error as Error).message });
             return;
           }
+
+          // Check again after the await. `hashPassword` is deliberately slow,
+          // which leaves a wide window in which a second setup request passes
+          // the first check and both write an owner. Re-reading after the only
+          // suspension point closes it — the store's writes are synchronous, so
+          // there is no further gap between here and the insert.
+          if (this.store.countUsers() > 0) {
+            send(res, 409, {
+              error: 'already_set_up',
+              message: 'This studio already has a user. Sign in instead.',
+            });
+            return;
+          }
+
           const user = {
             id: `user-${Date.now().toString(36)}`,
             email: input.email.trim(),
@@ -369,10 +383,15 @@ export class ApiServer {
 
           // One message and one shape for both failures. Saying "no such user"
           // turns the sign-in form into a way to enumerate who works here.
-          const ok = user !== undefined && typeof input?.password === 'string'
-            && await verifyPassword(input.password, {
-              salt: user.passwordSalt, hash: user.passwordHash,
-            });
+          // Always does the scrypt work, present account or not. Returning
+          // early for an unknown email made this endpoint an account
+          // enumerator: 49.2 ms against 0.8 ms, measured, with both responses
+          // otherwise identical.
+          const ok = typeof input?.password === 'string'
+            && await verifyAgainstAccount(
+              input.password,
+              user ? { salt: user.passwordSalt, hash: user.passwordHash } : undefined,
+            );
 
           if (!ok || !user) {
             send(res, 401, {

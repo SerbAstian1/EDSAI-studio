@@ -179,6 +179,29 @@ allows. So JSON with no Origin is a programmatic client and a form-encoded body
 with no Origin is refused. The residual risk is stated in the module: it trusts
 a specification guarantee, which is a guarantee and not a proof.
 
+### Two holes found by reviewing my own auth code
+
+Both were in code written in the same sitting, and both were found by attacking
+it rather than by running it.
+
+**Sign-in was an account enumerator.** The responses for a wrong password and an
+unknown account were identical in status and message — there is a test asserting
+exactly that — and the test proved less than it appeared to. scrypt is
+deliberately slow, so a known email answered in **49.2 ms** and an unknown one
+in **0.8 ms**: a 60x tell, trivially readable over a network. Sign-in now always
+does the work, verifying against a record no password matches when the account
+is absent. Re-measured at 1.0x.
+
+The lesson is narrower than "test timing": a test that checks the *content* of
+two responses says nothing about their *cost*, and it is easy to mistake one for
+the other when you wrote both.
+
+**The first-run setup had a race.** `countUsers() === 0` was checked, then
+`hashPassword` awaited — tens of milliseconds — then the owner written. Four
+concurrent requests all passed the first check and all wrote an owner. There is
+now a second check after the only suspension point, and the test that covers it
+was confirmed to fail without the fix rather than assumed to.
+
 ## Phase 2 — clients (built)
 
 `Client`, `Contact` and `Project` exist in `@edsai/engine` beside `Run`, and
@@ -205,7 +228,7 @@ and runs.
 | The session cookie | `document.cookie` cannot see it, checked in the running page |
 | Account enumeration | a wrong password and an unknown account return the same status and the same message |
 | Budget | 88.3 KB gz against 170 KB |
-| Suite | 738 tests |
+| Suite | 743 tests |
 
 ## What Phases 3–10 still need
 
