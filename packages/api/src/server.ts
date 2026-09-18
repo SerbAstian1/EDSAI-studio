@@ -12,6 +12,8 @@ import {
   ScopedStore, ensureLocalProject, slugify,
   QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject,
   measure, applyEdit, seedFromRun, EditRefused,
+  MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
+  type AssetStore,
   type Run, type Onboarding,
 } from '@edsai/engine';
 import {
@@ -46,6 +48,11 @@ export interface ApiOptions {
    * `Secure` attribute, so it has to be asked for rather than inferred.
    */
   insecureCookies?: boolean;
+  /**
+   * Where uploaded files live. Defaults to memory, so a server started without
+   * being told writes nothing to a disk it was not given.
+   */
+  assets?: AssetStore;
 }
 
 /** How long a session lasts before it has to be renewed by signing in again. */
@@ -64,6 +71,15 @@ interface Handler {
    * added without thinking about auth fails closed.
    */
   auth?: 'public';
+  /**
+   * How this route's body is read. The pipeline reads the stream exactly once,
+   * so the route cannot read it again — an upload route that did would wait
+   * forever on a stream that has already ended.
+   *
+   * `json` (the default) parses into `ctx.body`; `raw` puts the bytes in
+   * `ctx.raw` under the larger upload ceiling and never tries to parse them.
+   */
+  body?: 'json' | 'raw';
   run(ctx: RequestContext): void | Promise<void>;
 }
 
@@ -72,6 +88,8 @@ interface RequestContext {
   res: ServerResponse;
   params: Record<string, string>;
   body: unknown;
+  /** The unparsed body. Present only on a route declared `body: 'raw'`. */
+  raw?: Buffer;
   url: URL;
   /** Absent only on a public route. */
   principal?: Principal;
@@ -92,6 +110,7 @@ export class ApiServer {
   private readonly origins: readonly string[];
   private readonly routes: Handler[];
   private readonly insecureCookies: boolean;
+  readonly assets: AssetStore;
   private server?: Server;
 
   constructor(options: ApiOptions = {}) {
@@ -103,6 +122,7 @@ export class ApiServer {
     });
     this.origins = options.origins ?? [];
     this.insecureCookies = options.insecureCookies ?? false;
+    this.assets = options.assets ?? new MemoryAssetStore();
     this.routes = this.buildRoutes();
   }
 
@@ -166,9 +186,9 @@ export class ApiServer {
       if (!match) continue;
 
       try {
-        const body = req.method === 'GET' ? undefined : await readJson(req);
-        const context: RequestContext = { req, res, params: match.groups ?? {}, body, url };
-
+        const context: RequestContext = {
+          req, res, params: match.groups ?? {}, body: undefined, url,
+        };
         if (route.auth !== 'public') {
           const principal = this.principalFor(req);
           if (!principal) {
@@ -200,6 +220,13 @@ export class ApiServer {
           }
         }
 
+        // Read after the session is resolved, never before: an unauthenticated
+        // caller should not be able to make this server buffer 25MB first.
+        if (req.method !== 'GET') {
+          if (route.body === 'raw') context.raw = await readBinary(req, MAX_ASSET_BYTES);
+          else context.body = await readJson(req);
+        }
+
         await route.run(context);
       } catch (error) {
         this.fail(res, error);
@@ -218,6 +245,10 @@ export class ApiServer {
    * "something broke".
    */
   private fail(res: ServerResponse, error: unknown): void {
+    if (error instanceof TooLarge) {
+      send(res, 413, { error: 'too_large', message: error.message });
+      return;
+    }
     if (error instanceof ClientSummaryRefused) {
       send(res, 409, { error: 'summary_refused', message: error.message, reasons: error.reasons });
       return;
@@ -446,6 +477,153 @@ export class ApiServer {
           severities: this.rubric.severities,
           drift: this.rubric.drift,
         }),
+      },
+
+      /* ----------------------------------------------------------------- assets */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/assets$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { assets: scoped.listAssets(clientId) });
+        },
+      },
+
+      /**
+       * Upload.
+       *
+       * The body is the file itself rather than a multipart envelope: parsing
+       * multipart correctly is a dependency's worth of work, and the metadata
+       * fits in headers. The filename arrives as a header and is treated as a
+       * label — the file is stored under the hash of its bytes, so the name
+       * never reaches a filesystem.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/assets$/,
+        body: 'raw',
+        run: ({ req, res, params, scoped, raw }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          if (!scoped.canWrite('asset', clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot add files for that client.',
+            });
+            return;
+          }
+
+          const bytes = raw ?? Buffer.alloc(0);
+          if (bytes.byteLength === 0) {
+            send(res, 400, { error: 'bad_request', message: 'That upload had no content.' });
+            return;
+          }
+
+          const header = (name: string): string =>
+            String(req.headers[name] ?? '').slice(0, 300);
+          const filename = safeFilename(decodeHeader(header('x-filename')) || 'download');
+          const contentType = header('content-type') || 'application/octet-stream';
+          const collection = safeFilename(decodeHeader(header('x-collection')));
+
+          const digest = this.assets.put(bytes);
+          const asset = {
+            id: `asset-${digest.slice(0, 12)}-${clientId}`,
+            clientId,
+            digest,
+            filename,
+            kind: kindFor(contentType, filename),
+            contentType,
+            bytes: bytes.byteLength,
+            ...(collection && collection !== 'download' ? { collection } : {}),
+            // Nothing reaches a client until the studio says so. The default is
+            // the safe one, so forgetting to review cannot expose a draft.
+            approved: false,
+            uploadedAt: new Date().toISOString(),
+          };
+          scoped.saveAsset(asset);
+          send(res, 201, { asset });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/assets\/(?<assetId>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getAsset(params['assetId'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such file for this session.' });
+            return;
+          }
+          if (!scoped.canWrite('asset', existing.clientId)) {
+            send(res, 403, { error: 'forbidden', message: 'This session cannot change that file.' });
+            return;
+          }
+          const input = body as {
+            approved?: boolean; filename?: string; description?: string; collection?: string;
+          };
+          const updated = {
+            ...existing,
+            ...(typeof input?.approved === 'boolean' ? { approved: input.approved } : {}),
+            ...(input?.filename ? { filename: safeFilename(input.filename) } : {}),
+            ...(input?.description !== undefined ? { description: input.description } : {}),
+            ...(input?.collection !== undefined
+              ? { collection: safeFilename(input.collection) } : {}),
+          };
+          scoped.saveAsset(updated);
+          send(res, 200, { asset: updated });
+        },
+      },
+
+      /**
+       * Download.
+       *
+       * The one route that returns bytes a person uploaded, so it is the one
+       * that has to be careful about how they come back:
+       *
+       * - The type is restricted to a list a browser may safely render. Anything
+       *   else is `application/octet-stream`, so an uploaded `payload.html`
+       *   downloads rather than executing on the portal's origin.
+       * - `Content-Disposition: attachment` for those, and a sanitised filename
+       *   in the header either way.
+       * - `X-Content-Type-Options: nosniff`, so the browser does not go looking
+       *   for a better type than the one it was given.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/assets\/(?<assetId>[\w-]+)\/download$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const asset = scoped.getAsset(params['assetId'] ?? '');
+          if (!asset) {
+            send(res, 404, { error: 'not_found', message: 'No such file for this session.' });
+            return;
+          }
+          const bytes = this.assets.get(asset.digest);
+          if (!bytes) {
+            send(res, 410, {
+              error: 'gone',
+              message: 'The record is here but the file is not. It was removed from storage.',
+            });
+            return;
+          }
+
+          const type = safeContentType(asset.contentType);
+          const disposition = mustDownload(asset.contentType) ? 'attachment' : 'inline';
+          res.writeHead(200, {
+            'content-type': type,
+            'content-length': bytes.byteLength,
+            'x-content-type-options': 'nosniff',
+            'content-disposition': `${disposition}; filename="${safeFilename(asset.filename)}"`,
+            'cache-control': 'private, max-age=300',
+          });
+          res.end(bytes);
+        },
       },
 
       /* --------------------------------------------------------- brand system */
@@ -1210,6 +1388,9 @@ function sendText(res: ServerResponse, status: number, body: string): void {
 /** Bounded so a malformed or hostile request cannot exhaust memory. */
 const MAX_BODY = 4 * 1024 * 1024;
 
+/** A body over its route's ceiling. Typed, so it becomes a 413 and not a 500. */
+class TooLarge extends Error {}
+
 function readJson(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -1234,4 +1415,42 @@ function readJson(req: IncomingMessage): Promise<unknown> {
     });
     req.on('error', reject);
   });
+}
+
+/**
+ * Read a binary body with a hard ceiling.
+ *
+ * Separate from `readJson` because an upload is not JSON and because its limit
+ * is a different number: 4MB is generous for a request body and mean for a logo
+ * pack.
+ */
+function readBinary(req: IncomingMessage, max: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > max) {
+        reject(new TooLarge(`That file is over the ${Math.round(max / 1024 / 1024)}MB limit.`));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Headers are latin-1 on the wire, so a filename with any non-Latin character
+ * has to be encoded by the client. This decodes it, and falls back to the raw
+ * value rather than throwing on something malformed.
+ */
+function decodeHeader(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

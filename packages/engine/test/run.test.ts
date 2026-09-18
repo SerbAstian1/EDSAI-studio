@@ -23,8 +23,7 @@ function fixture(options?: { scopeId?: string; path?: string }) {
   });
   const run = context.start({
     projectId: 'p1',
-    clientId: 'client-test', clientId: 'client-test', clientId: 'client-test',
-    brief: 'A booking interface for a Kampala shoemaker.',
+    clientId: 'client-test', brief: 'A booking interface for a Kampala shoemaker.',
     level: 1,
     runId: 'test-run',
   });

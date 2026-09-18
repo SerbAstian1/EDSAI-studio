@@ -6,6 +6,7 @@ import type { RunStore } from './store.js';
 import type { Client, Contact, Project } from './entities.js';
 import type { Onboarding } from './onboarding.js';
 import type { BrandValue } from './brand.js';
+import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 
 /**
@@ -126,6 +127,43 @@ export class ScopedStore {
     const run = this.store.getRun(id);
     if (!run || !this.mayRead('run', run.clientId)) return undefined;
     return run;
+  }
+
+  /* ----------------------------------------------------------------- assets */
+
+  /**
+   * Assets this principal may see.
+   *
+   * A studio sees everything the client has. A portal sees only what has been
+   * approved — an unapproved asset is the studio's working copy, and a client
+   * finding it in their own portal is the kind of leak that is embarrassing
+   * rather than dangerous, which makes it easy to forget.
+   */
+  listAssets(clientId: string): Asset[] {
+    // The coarse gate is the client scope, not `read` on a collection-less
+    // resource: a `limited` session is defined by which collections it may see,
+    // so asking whether it can read "assets in general" is a question with no
+    // true answer, and the first version of this returned nothing at all.
+    if (!this.inScope(clientId)) return [];
+
+    return this.store.listAssets(clientId).filter((asset) => {
+      if (this.principal.kind !== 'studio' && !asset.approved) return false;
+      return can(this.principal, 'read',
+        this.resource('asset', clientId, asset.collection ?? 'default')).allowed;
+    });
+  }
+
+  getAsset(id: string): Asset | undefined {
+    const asset = this.store.getAsset(id);
+    if (!asset) return undefined;
+    // Resolved through the same list, so the approval and collection rules
+    // cannot be bypassed by knowing an id.
+    return this.listAssets(asset.clientId).find((candidate) => candidate.id === id);
+  }
+
+  saveAsset(asset: Asset): void {
+    this.mustWrite('asset', asset.clientId);
+    this.store.saveAsset(asset);
   }
 
   /* ----------------------------------------------------------- brand values */

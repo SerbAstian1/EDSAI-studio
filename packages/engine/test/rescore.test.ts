@@ -17,7 +17,7 @@ function fixture() {
   const context = new RunContext({ rubric, store });
   const run = context.start({
     projectId: 'p',
-    clientId: 'client-test', clientId: 'client-test', clientId: 'client-test', brief: 'A booking interface.', level: 1, runId: 'r1',
+    clientId: 'client-test', brief: 'A booking interface.', level: 1, runId: 'r1',
   });
 
   const dimensions = [

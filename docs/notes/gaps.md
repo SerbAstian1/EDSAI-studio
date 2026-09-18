@@ -487,6 +487,45 @@ over fresh security-sensitive code looking for the hole instead of running it
 once and moving on. That is not a systematic defence — it is a habit, and it
 only happened because the code was obviously worth attacking.
 
+## 4m. One pipeline, one assumption, five broken routes
+
+The request pipeline read every non-GET body as JSON before dispatching to the
+route. That was correct for eleven months of routes because every route took
+JSON, so nothing ever contradicted it. The upload route takes a PNG.
+
+Two failures, and the second is the instructive one:
+
+- The PNG was rejected as "body is not JSON" before the upload route ran at all.
+  Loud, and easy to read from the test output.
+- On an **empty** body, `readJson` resolved happily, the route ran, and its own
+  `readBinary` waited on a stream that had already ended. The promise never
+  settled; the test sat for 15 seconds and timed out. Nothing in the failure
+  named the cause.
+
+This is the fifth instance of the §4g/§4j/§4k/§4l pattern, with a new face: not a
+check exercised only on its own case, but **a shared assumption that held because
+every caller so far happened to satisfy it.** A pipeline that reads the body one
+way for everyone is not wrong until something needs it read another way, and the
+first thing that does is the thing that finds out.
+
+The fix makes the assumption explicit rather than removing it: a route declares
+`body: 'json'` or `body: 'raw'`, and the pipeline reads the stream exactly once,
+accordingly. A route that wants bytes now says so where a reader can see it.
+
+Two things came out of the same change and are worth keeping:
+
+- **The body is now read after the session is resolved, not before.** It had to
+  move anyway, and the ordering matters on its own: an unauthenticated caller
+  could previously make this server buffer 25 MB before being told 401. There is
+  a test for the ordering, not just for the status.
+- **Over-limit is a typed error**, so it becomes a 413 rather than falling
+  through the message-matching in `fail()` and arriving as a 500.
+
+Still no systematic defence against the pattern itself — five for five found by
+reading or by accident. The honest summary is that this codebase's checks are
+good at the case they were written for and have no mechanism for the case they
+were not.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

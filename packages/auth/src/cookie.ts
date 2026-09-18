@@ -69,17 +69,29 @@ export function readSessionCookie(header: string | undefined): string | undefine
  *   exactly that and locked the studio out of its own sign-in endpoint.
  * - Allowing outright would readmit the classic HTML-form CSRF.
  *
- * The resolution is the content type. A cross-origin `<form>` can only send
- * `application/x-www-form-urlencoded`, `multipart/form-data` or `text/plain`;
- * it cannot send `application/json` without triggering a CORS preflight, which
- * this server answers only for origins it allows. So a JSON body with no Origin
- * is a programmatic client, and a form-encoded body with no Origin is refused.
+ * The resolution is the content type, stated as the browser states it. A simple
+ * cross-origin request — the kind a `<form>` makes with no preflight — may only
+ * carry `application/x-www-form-urlencoded`, `multipart/form-data` or
+ * `text/plain`. **Any other type forces a CORS preflight**, which this server
+ * answers only for origins it allows.
+ *
+ * So the rule is to refuse those three, not to require one particular type. The
+ * first version required `application/json`, which was over-narrow in a way that
+ * did not show up until file uploads arrived: an `image/png` body is exactly as
+ * unforgeable as a JSON one, and was being refused with a 403.
  *
  * The residual risk is stated rather than papered over: this trusts that the
  * browser will not one day permit a simple cross-origin request with a JSON
  * content type. That is a specification guarantee, not an implementation
  * detail, but it is a guarantee and not a proof.
  */
+/** The only content types a cross-origin form can send without a preflight. */
+const FORM_ENCODABLE = new Set([
+  'application/x-www-form-urlencoded',
+  'multipart/form-data',
+  'text/plain',
+]);
+
 export interface CsrfCheck {
   origin: string | undefined;
   method: string;
@@ -93,7 +105,8 @@ export function isCsrfSafe({ origin, method, contentType, allowedOrigins }: Csrf
   // A browser told us where it came from: that answer is authoritative.
   if (origin !== undefined) return allowedOrigins.includes(origin);
 
-  // No Origin. Only a client that could not have been an HTML form gets through.
-  const type = (contentType ?? '').split(';')[0]?.trim().toLowerCase();
-  return type === 'application/json';
+  // No Origin. Refuse exactly the types a simple cross-origin request may
+  // carry; everything else had to clear a preflight to get here.
+  const type = (contentType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  return type !== '' && !FORM_ENCODABLE.has(type);
 }

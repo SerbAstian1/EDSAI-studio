@@ -8,6 +8,7 @@ import {
 } from './types.js';
 import { slugify } from './entities.js';
 import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
+import { Asset, type Asset as AssetType } from './assets.js';
 import {
   Onboarding, Answer,
   type Onboarding as OnboardingType, type Answer as AnswerType,
@@ -84,6 +85,22 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS assets (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  collection TEXT,
+  description TEXT,
+  approved INTEGER NOT NULL DEFAULT 0,
+  uploaded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS assets_by_client ON assets (client_id);
 
 CREATE TABLE IF NOT EXISTS brand_values (
   client_id TEXT NOT NULL,
@@ -445,6 +462,45 @@ export class RunStore {
       : this.db.prepare('SELECT * FROM projects WHERE client_id = ? ORDER BY updated_at DESC')
         .all(clientId)) as Record<string, unknown>[];
     return rows.map(hydrateProject);
+  }
+
+  /* ----------------------------------------------------------------- assets */
+
+  saveAsset(asset: AssetType): void {
+    Asset.parse(asset);
+    this.db.prepare(`
+      INSERT INTO assets (id, client_id, digest, filename, kind, content_type, bytes,
+                          collection, description, approved, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        filename = excluded.filename, kind = excluded.kind,
+        collection = excluded.collection, description = excluded.description,
+        approved = excluded.approved
+    `).run(asset.id, asset.clientId, asset.digest, asset.filename, asset.kind,
+      asset.contentType, asset.bytes, asset.collection ?? null, asset.description ?? null,
+      asset.approved ? 1 : 0, asset.uploadedAt);
+  }
+
+  listAssets(clientId: string): AssetType[] {
+    return (this.db.prepare('SELECT * FROM assets WHERE client_id = ? ORDER BY uploaded_at DESC')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateAsset);
+  }
+
+  getAsset(id: string): AssetType | undefined {
+    const row = this.db.prepare('SELECT * FROM assets WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateAsset(row) : undefined;
+  }
+
+  deleteAsset(id: string): void {
+    this.db.prepare('DELETE FROM assets WHERE id = ?').run(id);
+  }
+
+  /** How many records still point at a digest, so a file is not orphaned early. */
+  countByDigest(digest: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM assets WHERE digest = ?')
+      .get(digest) as { n: number };
+    return row.n;
   }
 
   /* ------------------------------------------------------------ brand values */
@@ -900,5 +956,17 @@ function hydrateOnboarding(row: Record<string, unknown>): OnboardingType {
     ...(row['sent_at'] ? { sentAt: row['sent_at'] } : {}),
     ...(row['submitted_at'] ? { submittedAt: row['submitted_at'] } : {}),
     ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+  });
+}
+
+function hydrateAsset(row: Record<string, unknown>): AssetType {
+  return Asset.parse({
+    id: row['id'], clientId: row['client_id'], digest: row['digest'],
+    filename: row['filename'], kind: row['kind'], contentType: row['content_type'],
+    bytes: row['bytes'],
+    ...(row['collection'] ? { collection: row['collection'] } : {}),
+    ...(row['description'] ? { description: row['description'] } : {}),
+    approved: row['approved'] === 1,
+    uploadedAt: row['uploaded_at'],
   });
 }

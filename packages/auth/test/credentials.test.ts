@@ -141,14 +141,21 @@ describe('CSRF: origin and content type', () => {
   });
 
   it('allows a JSON request with no origin — a CLI, a test, a server', () => {
-    // A cross-origin HTML form cannot send this content type without a
-    // preflight, which this server answers only for origins it allows.
     expect(check({ origin: undefined })).toBe(true);
   });
 
-  it('refuses the content types a cross-site form can actually send', () => {
+  it('allows a file upload with no origin, which is equally unforgeable', () => {
+    // An image/png body forces a preflight just as a JSON one does. Requiring
+    // JSON specifically was over-narrow and refused uploads with a 403.
+    for (const type of ['image/png', 'application/pdf', 'application/octet-stream']) {
+      expect(check({ contentType: type }), type).toBe(true);
+    }
+  });
+
+  it('refuses exactly the content types a cross-site form can send', () => {
     for (const type of [
-      'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', undefined,
+      'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain',
+      undefined, '',
     ]) {
       expect(check({ contentType: type }), String(type)).toBe(false);
     }

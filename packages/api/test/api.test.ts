@@ -328,10 +328,20 @@ describe('request handling', () => {
   it('rejects a body that is not JSON', async () => {
     const run = await startRun();
     const res = await fetch(`${base}/api/runs/${run.id}/issues`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json',
+      method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: 'not json',
     });
     expect(res.status).toBe(400);
     expect((await res.json() as { message: string }).message).toMatch(/not JSON/);
+  });
+
+  it('refuses a session-less request before it reads the body at all', async () => {
+    // Ordering, not cosmetics: the body is read after the session is resolved,
+    // so an unauthenticated caller cannot make this server buffer an upload.
+    const run = await startRun();
+    const res = await fetch(`${base}/api/runs/${run.id}/issues`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json',
+    });
+    expect(res.status).toBe(401);
   });
 
   it('sets nosniff on every JSON response', async () => {
@@ -1199,5 +1209,171 @@ describe('brand value names', () => {
       .find((v) => v.name === 'ink');
     expect(ink?.value).toBe('#CCCCCC');
     expect(ink?.reason).toBe('A deliberate, recorded decision.');
+  });
+});
+
+describe('assets', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+
+  const assetClient = async (name = 'Asset Co') => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const upload = async (clientId: string, opts: {
+    bytes?: Buffer; filename?: string; type?: string; collection?: string; cookieOverride?: string;
+  } = {}) => {
+    const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST',
+      headers: {
+        'content-type': opts.type ?? 'image/png',
+        'x-filename': opts.filename ?? 'logo.png',
+        ...(opts.collection ? { 'x-collection': opts.collection } : {}),
+        cookie: opts.cookieOverride ?? cookie,
+      },
+      body: opts.bytes ?? PNG,
+    });
+    return { status: res.status, body: await res.json() as Record<string, never> };
+  };
+
+  it('stores an upload under the hash of its bytes, not its name', async () => {
+    const clientId = await assetClient();
+    const { status, body } = await upload(clientId);
+    expect(status).toBe(201);
+    const asset = body['asset'] as unknown as { digest: string; filename: string; bytes: number };
+    expect(asset.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(asset.filename).toBe('logo.png');
+    expect(asset.bytes).toBe(PNG.byteLength);
+  });
+
+  it('treats a traversal filename as a label, never a path', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId, { filename: '../../etc/passwd' });
+    const asset = body['asset'] as unknown as { filename: string; digest: string };
+    expect(asset.filename).not.toContain('/');
+    expect(asset.digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('is unapproved on arrival, so nothing reaches a client by forgetting', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId);
+    expect((body['asset'] as unknown as { approved: boolean }).approved).toBe(false);
+  });
+
+  it('refuses an empty upload', async () => {
+    const clientId = await assetClient();
+    expect((await upload(clientId, { bytes: Buffer.alloc(0) })).status).toBe(400);
+  });
+
+  it('serves a real image inline and an HTML upload as a download', async () => {
+    const clientId = await assetClient();
+    const image = await upload(clientId, { filename: 'a.png', type: 'image/png' });
+    const html = await upload(clientId, {
+      filename: 'payload.html', type: 'text/html', bytes: Buffer.from('<script>alert(1)</script>'),
+    });
+    const id = (r: typeof image) => (r.body['asset'] as unknown as { id: string }).id;
+
+    for (const asset of [image, html]) {
+      await json(`/api/assets/${id(asset)}`, {
+        method: 'PATCH', body: JSON.stringify({ approved: true }),
+      });
+    }
+
+    const imageRes = await fetch(`${base}/api/assets/${id(image)}/download`, { headers: { cookie } });
+    expect(imageRes.headers.get('content-type')).toBe('image/png');
+    expect(imageRes.headers.get('content-disposition')).toContain('inline');
+
+    const htmlRes = await fetch(`${base}/api/assets/${id(html)}/download`, { headers: { cookie } });
+    // The attack this closes: an uploaded page executing on the portal's origin.
+    expect(htmlRes.headers.get('content-type')).toBe('application/octet-stream');
+    expect(htmlRes.headers.get('content-disposition')).toContain('attachment');
+    expect(htmlRes.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('returns the exact bytes that went in', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId, { bytes: Buffer.from('precise contents') });
+    const id = (body['asset'] as unknown as { id: string }).id;
+    const res = await fetch(`${base}/api/assets/${id}/download`, { headers: { cookie } });
+    expect(Buffer.from(await res.arrayBuffer()).toString()).toBe('precise contents');
+  });
+
+  it('stores one copy when the same file is uploaded twice', async () => {
+    const clientId = await assetClient();
+    const first = await upload(clientId, { bytes: Buffer.from('identical') });
+    const second = await upload(clientId, { bytes: Buffer.from('identical'), filename: 'other.png' });
+    expect((first.body['asset'] as unknown as { digest: string }).digest)
+      .toBe((second.body['asset'] as unknown as { digest: string }).digest);
+  });
+
+  it('refuses a file over the limit', async () => {
+    const clientId = await assetClient();
+    const huge = Buffer.alloc(26 * 1024 * 1024);
+    const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-filename': 'huge.png', cookie },
+      body: huge,
+    }).catch(() => undefined);
+    expect(res === undefined || res.status === 413).toBe(true);
+  });
+
+  it('hides an unapproved file from the client it belongs to', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId);
+    const id = (body['asset'] as unknown as { id: string }).id;
+
+    const saved = cookie;
+    const token = 'portal-assets';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId, role: 'viewer',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+
+    expect((await json(`/api/clients/${clientId}/assets`)).body['assets']).toEqual([]);
+    expect((await fetch(`${base}/api/assets/${id}/download`, { headers: { cookie } })).status)
+      .toBe(404);
+
+    // Approve it as the studio, and the same client can now fetch it.
+    cookie = saved;
+    await json(`/api/assets/${id}`, { method: 'PATCH', body: JSON.stringify({ approved: true }) });
+    cookie = `edsai_session=${token}`;
+    expect((await fetch(`${base}/api/assets/${id}/download`, { headers: { cookie } })).status)
+      .toBe(200);
+    cookie = saved;
+  });
+
+  it('keeps one client’s files away from another client', async () => {
+    const mine = await assetClient('Mine');
+    const { body } = await upload(mine);
+    const id = (body['asset'] as unknown as { id: string }).id;
+    await json(`/api/assets/${id}`, { method: 'PATCH', body: JSON.stringify({ approved: true }) });
+
+    const saved = cookie;
+    const token = 'portal-other-assets';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'owner',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+    expect((await fetch(`${base}/api/assets/${id}/download`, { headers: { cookie } })).status)
+      .toBe(404);
+    cookie = saved;
+  });
+
+  it('needs a session at all', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId);
+    const id = (body['asset'] as unknown as { id: string }).id;
+    const res = await fetch(`${base}/api/assets/${id}/download`);
+    expect(res.status).toBe(401);
   });
 });
