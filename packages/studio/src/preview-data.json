@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-09-19T13:34:23.847Z",
-  "from": "http://localhost:4350",
+  "capturedAt": "2026-09-19T13:54:39.495Z",
+  "from": "http://localhost:4360",
   "responses": {
     "/api/health": {
       "status": 200,
@@ -15,7 +15,7 @@
       "body": {
         "principal": {
           "kind": "studio",
-          "userId": "user-mu8fhx02-2ac661fa",
+          "userId": "user-mu8g6ydh-74a8a0d4",
           "role": "owner"
         }
       }
@@ -557,7 +557,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu8fhxcc-533b5702",
+            "id": "asset-mu8g6yqv-84dd52ed",
             "clientId": "client-disan-footwear",
             "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
             "filename": "ss26-lookbook.pdf",
@@ -565,10 +565,10 @@
             "contentType": "application/pdf",
             "bytes": 212,
             "approved": false,
-            "uploadedAt": "2026-09-19T13:34:00.204Z"
+            "uploadedAt": "2026-09-19T13:53:28.423Z"
           },
           {
-            "id": "asset-mu8fhxbn-5157341a",
+            "id": "asset-mu8g6ypx-52346263",
             "clientId": "client-disan-footwear",
             "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
             "filename": "disan-logo.png",
@@ -577,10 +577,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.179Z"
+            "uploadedAt": "2026-09-19T13:53:28.389Z"
           },
           {
-            "id": "asset-mu8fhxay-b1cd46e8",
+            "id": "asset-mu8g6yp5-98fc273d",
             "clientId": "client-morrow-studio",
             "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
             "filename": "wordmark-draft.png",
@@ -589,10 +589,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": false,
-            "uploadedAt": "2026-09-19T13:34:00.155Z"
+            "uploadedAt": "2026-09-19T13:53:28.361Z"
           },
           {
-            "id": "asset-mu8fhxa9-9383b8c5",
+            "id": "asset-mu8g6yoi-17ee422d",
             "clientId": "client-morrow-studio",
             "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
             "filename": "showroom-01.jpg",
@@ -601,10 +601,10 @@
             "bytes": 212,
             "collection": "Photography",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.130Z"
+            "uploadedAt": "2026-09-19T13:53:28.338Z"
           },
           {
-            "id": "asset-mu8fhx9k-2e55d73c",
+            "id": "asset-mu8g6ynd-0d85ee0a",
             "clientId": "client-morrow-studio",
             "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
             "filename": "brand-guidelines.pdf",
@@ -614,10 +614,10 @@
             "collection": "Documents",
             "description": "Everything below, in one document.",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.104Z"
+            "uploadedAt": "2026-09-19T13:53:28.297Z"
           },
           {
-            "id": "asset-mu8fhx8v-50955d3b",
+            "id": "asset-mu8g6ymn-8dfd92a5",
             "clientId": "client-morrow-studio",
             "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
             "filename": "morrow-logo-mono.png",
@@ -626,10 +626,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.079Z"
+            "uploadedAt": "2026-09-19T13:53:28.271Z"
           },
           {
-            "id": "asset-mu8fhx87-a9746045",
+            "id": "asset-mu8g6yly-126da2d9",
             "clientId": "client-morrow-studio",
             "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
             "filename": "morrow-logo-primary.png",
@@ -639,7 +639,7 @@
             "collection": "Logos",
             "description": "The primary mark. Use this unless there is a reason not to.",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.055Z"
+            "uploadedAt": "2026-09-19T13:53:28.246Z"
           }
         ]
       }
@@ -649,8 +649,8 @@
       "body": {
         "runs": [
           {
-            "id": "c193f4cb",
-            "projectId": "project-ss26-campaign-5e7b64",
+            "id": "78ab6240",
+            "projectId": "project-ss26-campaign-d5d4dc",
             "clientId": "client-disan-footwear",
             "brief": "## Explicit\nA campaign site for the SS26 drop: one page, the lookbook, and a form to join the waiting list. Live by February.\n\n## Implicit (assumptions)\nThey expect most visits from Instagram on a phone. Nobody said so.\n\n## Critical missing information\nWhether the waiting list feeds their existing mailing tool, or a new one.\n\n## Classification\nLevel 1\nOne page and a form. Nothing to sign into, no live data.",
             "level": 1,
@@ -688,7 +688,7 @@
             ],
             "version": "V1",
             "status": "running",
-            "startedAt": "2026-09-19T13:34:00.510Z",
+            "startedAt": "2026-09-19T13:53:28.867Z",
             "completed": 0
           }
         ]
@@ -704,8 +704,8 @@
             "slug": "disan-footwear",
             "industry": "Footwear",
             "status": "prospect",
-            "createdAt": "2026-09-19T13:33:59.804Z",
-            "updatedAt": "2026-09-19T13:33:59.804Z",
+            "createdAt": "2026-09-19T13:53:27.989Z",
+            "updatedAt": "2026-09-19T13:53:27.989Z",
             "projects": 1,
             "contacts": 1
           },
@@ -715,8 +715,8 @@
             "slug": "morrow-studio",
             "industry": "Interiors",
             "status": "prospect",
-            "createdAt": "2026-09-19T13:33:59.779Z",
-            "updatedAt": "2026-09-19T13:33:59.779Z",
+            "createdAt": "2026-09-19T13:53:27.961Z",
+            "updatedAt": "2026-09-19T13:53:27.961Z",
             "projects": 2,
             "contacts": 2
           }
@@ -728,31 +728,31 @@
       "body": {
         "projects": [
           {
-            "id": "project-ss26-campaign-5e7b64",
+            "id": "project-ss26-campaign-d5d4dc",
             "clientId": "client-disan-footwear",
             "name": "SS26 campaign",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.883Z",
-            "updatedAt": "2026-09-19T13:33:59.883Z"
+            "createdAt": "2026-09-19T13:53:28.068Z",
+            "updatedAt": "2026-09-19T13:53:28.068Z"
           },
           {
-            "id": "project-showroom-site-adb8b0",
+            "id": "project-showroom-site-a26195",
             "clientId": "client-morrow-studio",
             "name": "Showroom site",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.872Z",
-            "updatedAt": "2026-09-19T13:33:59.872Z"
+            "createdAt": "2026-09-19T13:53:28.057Z",
+            "updatedAt": "2026-09-19T13:53:28.057Z"
           },
           {
-            "id": "project-identity-refresh-79ba3a",
+            "id": "project-identity-refresh-75bcf9",
             "clientId": "client-morrow-studio",
             "name": "Identity refresh",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.862Z",
-            "updatedAt": "2026-09-19T13:33:59.862Z"
+            "createdAt": "2026-09-19T13:53:28.047Z",
+            "updatedAt": "2026-09-19T13:53:28.047Z"
           }
         ]
       }
@@ -766,34 +766,34 @@
           "slug": "disan-footwear",
           "industry": "Footwear",
           "status": "prospect",
-          "createdAt": "2026-09-19T13:33:59.804Z",
-          "updatedAt": "2026-09-19T13:33:59.804Z"
+          "createdAt": "2026-09-19T13:53:27.989Z",
+          "updatedAt": "2026-09-19T13:53:27.989Z"
         },
         "contacts": [
           {
-            "id": "contact-mu8fhx2j-5035caf1",
+            "id": "contact-mu8g6yg5-7ad49177",
             "clientId": "client-disan-footwear",
             "name": "Ife Adeyemi",
             "title": "Brand manager",
             "decisionMaker": true,
-            "createdAt": "2026-09-19T13:33:59.851Z"
+            "createdAt": "2026-09-19T13:53:28.037Z"
           }
         ],
         "projects": [
           {
-            "id": "project-ss26-campaign-5e7b64",
+            "id": "project-ss26-campaign-d5d4dc",
             "clientId": "client-disan-footwear",
             "name": "SS26 campaign",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.883Z",
-            "updatedAt": "2026-09-19T13:33:59.883Z"
+            "createdAt": "2026-09-19T13:53:28.068Z",
+            "updatedAt": "2026-09-19T13:53:28.068Z"
           }
         ],
         "runs": [
           {
-            "id": "c193f4cb",
-            "projectId": "project-ss26-campaign-5e7b64",
+            "id": "78ab6240",
+            "projectId": "project-ss26-campaign-d5d4dc",
             "clientId": "client-disan-footwear",
             "brief": "## Explicit\nA campaign site for the SS26 drop: one page, the lookbook, and a form to join the waiting list. Live by February.\n\n## Implicit (assumptions)\nThey expect most visits from Instagram on a phone. Nobody said so.\n\n## Critical missing information\nWhether the waiting list feeds their existing mailing tool, or a new one.\n\n## Classification\nLevel 1\nOne page and a form. Nothing to sign into, no live data.",
             "level": 1,
@@ -831,7 +831,7 @@
             ],
             "version": "V1",
             "status": "running",
-            "startedAt": "2026-09-19T13:34:00.510Z"
+            "startedAt": "2026-09-19T13:53:28.867Z"
           }
         ]
       }
@@ -841,7 +841,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu8fhxcc-533b5702",
+            "id": "asset-mu8g6yqv-84dd52ed",
             "clientId": "client-disan-footwear",
             "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
             "filename": "ss26-lookbook.pdf",
@@ -849,10 +849,10 @@
             "contentType": "application/pdf",
             "bytes": 212,
             "approved": false,
-            "uploadedAt": "2026-09-19T13:34:00.204Z"
+            "uploadedAt": "2026-09-19T13:53:28.423Z"
           },
           {
-            "id": "asset-mu8fhxbn-5157341a",
+            "id": "asset-mu8g6ypx-52346263",
             "clientId": "client-disan-footwear",
             "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
             "filename": "disan-logo.png",
@@ -861,7 +861,7 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.179Z"
+            "uploadedAt": "2026-09-19T13:53:28.389Z"
           }
         ]
       }
@@ -877,7 +877,7 @@
             "value": "#111111",
             "role": "Body text",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.364Z",
+            "updatedAt": "2026-09-19T13:53:28.591Z",
             "measured": {
               "ratio": 18.88,
               "required": 4.5,
@@ -893,7 +893,7 @@
             "value": "#FFFFFF",
             "role": "Page background",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.354Z",
+            "updatedAt": "2026-09-19T13:53:28.582Z",
             "measured": {}
           }
         ]
@@ -913,12 +913,83 @@
             "clientId": "client-disan-footwear",
             "label": "Ife Adeyemi",
             "role": "viewer",
-            "createdAt": "2026-09-19T13:34:00.419Z",
-            "expiresAt": "2026-12-18T13:34:00.419Z",
+            "createdAt": "2026-09-19T13:53:28.647Z",
+            "expiresAt": "2026-12-18T13:53:28.647Z",
             "uses": 0,
-            "id": "b91614a1ca87"
+            "id": "15fee00ee7f4"
           }
         ]
+      }
+    },
+    "/api/clients/client-disan-footwear/positioning?x=E4&y=E6": {
+      "status": 200,
+      "body": {
+        "matrix": {
+          "x": {
+            "id": "E4",
+            "questionId": "e4",
+            "label": "How much is on show",
+            "low": "Minimal",
+            "high": "Expressive"
+          },
+          "y": {
+            "id": "E6",
+            "questionId": "e6",
+            "label": "Who it answers to",
+            "low": "Corporate",
+            "high": "Artistic"
+          },
+          "points": [],
+          "unanswered": [
+            "E4",
+            "E6"
+          ]
+        },
+        "axes": [
+          {
+            "id": "E2",
+            "questionId": "e2",
+            "label": "How they talk",
+            "low": "Plain",
+            "high": "Story-led"
+          },
+          {
+            "id": "E3",
+            "questionId": "e3",
+            "label": "How loud they look",
+            "low": "Quiet",
+            "high": "Loud"
+          },
+          {
+            "id": "E4",
+            "questionId": "e4",
+            "label": "How much is on show",
+            "low": "Minimal",
+            "high": "Expressive"
+          },
+          {
+            "id": "E5",
+            "questionId": "e5",
+            "label": "How it should age",
+            "low": "Of its time",
+            "high": "Timeless"
+          },
+          {
+            "id": "E6",
+            "questionId": "e6",
+            "label": "Who it answers to",
+            "low": "Corporate",
+            "high": "Artistic"
+          },
+          {
+            "id": "E7",
+            "questionId": "e7",
+            "label": "How it is kept",
+            "low": "Structured",
+            "high": "Organic"
+          }
+        ],
+        "answersFrom": "none"
       }
     },
     "/api/clients/client-morrow-studio": {
@@ -930,45 +1001,45 @@
           "slug": "morrow-studio",
           "industry": "Interiors",
           "status": "prospect",
-          "createdAt": "2026-09-19T13:33:59.779Z",
-          "updatedAt": "2026-09-19T13:33:59.779Z"
+          "createdAt": "2026-09-19T13:53:27.961Z",
+          "updatedAt": "2026-09-19T13:53:27.961Z"
         },
         "contacts": [
           {
-            "id": "contact-mu8fhx1y-24b2ba63",
+            "id": "contact-mu8g6yfj-1cc3f77a",
             "clientId": "client-morrow-studio",
             "name": "Ada Obi",
             "title": "Founder",
             "decisionMaker": true,
-            "createdAt": "2026-09-19T13:33:59.830Z"
+            "createdAt": "2026-09-19T13:53:28.015Z"
           },
           {
-            "id": "contact-mu8fhx29-f467d3f4",
+            "id": "contact-mu8g6yfv-21b33a0e",
             "clientId": "client-morrow-studio",
             "name": "Bram Neel",
             "title": "Marketing lead",
             "decisionMaker": false,
-            "createdAt": "2026-09-19T13:33:59.841Z"
+            "createdAt": "2026-09-19T13:53:28.027Z"
           }
         ],
         "projects": [
           {
-            "id": "project-showroom-site-adb8b0",
+            "id": "project-showroom-site-a26195",
             "clientId": "client-morrow-studio",
             "name": "Showroom site",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.872Z",
-            "updatedAt": "2026-09-19T13:33:59.872Z"
+            "createdAt": "2026-09-19T13:53:28.057Z",
+            "updatedAt": "2026-09-19T13:53:28.057Z"
           },
           {
-            "id": "project-identity-refresh-79ba3a",
+            "id": "project-identity-refresh-75bcf9",
             "clientId": "client-morrow-studio",
             "name": "Identity refresh",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-19T13:33:59.862Z",
-            "updatedAt": "2026-09-19T13:33:59.862Z"
+            "createdAt": "2026-09-19T13:53:28.047Z",
+            "updatedAt": "2026-09-19T13:53:28.047Z"
           }
         ],
         "runs": []
@@ -979,7 +1050,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu8fhxay-b1cd46e8",
+            "id": "asset-mu8g6yp5-98fc273d",
             "clientId": "client-morrow-studio",
             "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
             "filename": "wordmark-draft.png",
@@ -988,10 +1059,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": false,
-            "uploadedAt": "2026-09-19T13:34:00.155Z"
+            "uploadedAt": "2026-09-19T13:53:28.361Z"
           },
           {
-            "id": "asset-mu8fhxa9-9383b8c5",
+            "id": "asset-mu8g6yoi-17ee422d",
             "clientId": "client-morrow-studio",
             "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
             "filename": "showroom-01.jpg",
@@ -1000,10 +1071,10 @@
             "bytes": 212,
             "collection": "Photography",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.130Z"
+            "uploadedAt": "2026-09-19T13:53:28.338Z"
           },
           {
-            "id": "asset-mu8fhx9k-2e55d73c",
+            "id": "asset-mu8g6ynd-0d85ee0a",
             "clientId": "client-morrow-studio",
             "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
             "filename": "brand-guidelines.pdf",
@@ -1013,10 +1084,10 @@
             "collection": "Documents",
             "description": "Everything below, in one document.",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.104Z"
+            "uploadedAt": "2026-09-19T13:53:28.297Z"
           },
           {
-            "id": "asset-mu8fhx8v-50955d3b",
+            "id": "asset-mu8g6ymn-8dfd92a5",
             "clientId": "client-morrow-studio",
             "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
             "filename": "morrow-logo-mono.png",
@@ -1025,10 +1096,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.079Z"
+            "uploadedAt": "2026-09-19T13:53:28.271Z"
           },
           {
-            "id": "asset-mu8fhx87-a9746045",
+            "id": "asset-mu8g6yly-126da2d9",
             "clientId": "client-morrow-studio",
             "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
             "filename": "morrow-logo-primary.png",
@@ -1038,7 +1109,7 @@
             "collection": "Logos",
             "description": "The primary mark. Use this unless there is a reason not to.",
             "approved": true,
-            "uploadedAt": "2026-09-19T13:34:00.055Z"
+            "uploadedAt": "2026-09-19T13:53:28.246Z"
           }
         ]
       }
@@ -1054,7 +1125,7 @@
             "value": "#EB5E28",
             "role": "Calls to action",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.314Z",
+            "updatedAt": "2026-09-19T13:53:28.542Z",
             "measured": {
               "ratio": 3.19,
               "required": 4.5,
@@ -1070,7 +1141,7 @@
             "value": "#1A1A1A",
             "role": "Body text",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.304Z",
+            "updatedAt": "2026-09-19T13:53:28.530Z",
             "measured": {
               "ratio": 16.29,
               "required": 4.5,
@@ -1086,7 +1157,7 @@
             "value": "#6B6257",
             "role": "Secondary text",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.324Z",
+            "updatedAt": "2026-09-19T13:53:28.551Z",
             "measured": {
               "ratio": 5.6,
               "required": 4.5,
@@ -1102,7 +1173,7 @@
             "value": "#FAF7F2",
             "role": "Page background",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.294Z",
+            "updatedAt": "2026-09-19T13:53:28.520Z",
             "measured": {}
           },
           {
@@ -1112,7 +1183,7 @@
             "value": "Inter",
             "role": "Everything else",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.344Z",
+            "updatedAt": "2026-09-19T13:53:28.571Z",
             "measured": {}
           },
           {
@@ -1122,7 +1193,7 @@
             "value": "Space Grotesk",
             "role": "Headings",
             "origin": "studio",
-            "updatedAt": "2026-09-19T13:34:00.334Z",
+            "updatedAt": "2026-09-19T13:53:28.561Z",
             "measured": {}
           }
         ]
@@ -1133,11 +1204,39 @@
       "body": {
         "onboardings": [
           {
-            "id": "onb-mu8fhxh3-006085e7",
+            "id": "onb-mu8g6yy4-0286e68a",
+            "clientId": "client-morrow-studio",
+            "status": "in-progress",
+            "createdAt": "2026-09-19T13:53:28.684Z",
+            "sentAt": "2026-09-19T13:53:28.684Z",
+            "progress": {
+              "answered": 6,
+              "required": 14,
+              "percent": 43,
+              "outstanding": [
+                "f-what",
+                "f-who",
+                "f-deliverables",
+                "w-headline",
+                "e1",
+                "e8",
+                "d-traits",
+                "d-worst"
+              ],
+              "axesDecided": 6,
+              "axesDrafted": [
+                "T1 Positioning",
+                "T2 Emotional tone",
+                "T3 Motion law"
+              ]
+            }
+          },
+          {
+            "id": "onb-mu8g6yvt-f2a9a169",
             "clientId": "client-morrow-studio",
             "status": "sent",
-            "createdAt": "2026-09-19T13:34:00.375Z",
-            "sentAt": "2026-09-19T13:34:00.375Z",
+            "createdAt": "2026-09-19T13:53:28.601Z",
+            "sentAt": "2026-09-19T13:53:28.601Z",
             "progress": {
               "answered": 0,
               "required": 14,
@@ -1180,30 +1279,130 @@
             "collections": [
               "Logos"
             ],
-            "createdAt": "2026-09-19T13:34:00.410Z",
-            "expiresAt": "2026-12-18T13:34:00.410Z",
+            "createdAt": "2026-09-19T13:53:28.637Z",
+            "expiresAt": "2026-12-18T13:53:28.637Z",
             "uses": 0,
-            "id": "dd525b39a049"
+            "id": "18984c233e2c"
           },
           {
             "clientId": "client-morrow-studio",
             "label": "Ada Obi",
             "role": "viewer",
-            "createdAt": "2026-09-19T13:34:00.386Z",
-            "expiresAt": "2026-12-18T13:34:00.386Z",
-            "lastUsedAt": "2026-09-19T13:34:00.448Z",
-            "uses": 3,
-            "id": "1f60df74c145"
+            "createdAt": "2026-09-19T13:53:28.613Z",
+            "expiresAt": "2026-12-18T13:53:28.613Z",
+            "lastUsedAt": "2026-09-19T13:53:38.800Z",
+            "uses": 5,
+            "id": "45d8b15ab64f"
           }
         ]
       }
     },
-    "/api/runs/c193f4cb": {
+    "/api/clients/client-morrow-studio/positioning?x=E4&y=E6": {
+      "status": 200,
+      "body": {
+        "matrix": {
+          "x": {
+            "id": "E4",
+            "questionId": "e4",
+            "label": "How much is on show",
+            "low": "Minimal",
+            "high": "Expressive"
+          },
+          "y": {
+            "id": "E6",
+            "questionId": "e6",
+            "label": "Who it answers to",
+            "low": "Corporate",
+            "high": "Artistic"
+          },
+          "points": [
+            {
+              "id": "brand",
+              "label": "Morrow Studio",
+              "x": 15,
+              "y": 70,
+              "source": "computed"
+            },
+            {
+              "id": "cmp-mu8g6z1f-84ef8037",
+              "label": "Dims.",
+              "x": 40,
+              "y": 80,
+              "source": "placed",
+              "note": "Nearest in feel, different price."
+            },
+            {
+              "id": "cmp-mu8g6z15-1d20032f",
+              "label": "Soho Home",
+              "x": 78,
+              "y": 30,
+              "source": "placed",
+              "note": "The one they get mistaken for."
+            },
+            {
+              "id": "cmp-mu8g6z0t-c0b9d5a1",
+              "label": "Vitsoe",
+              "x": 20,
+              "y": 35,
+              "source": "placed",
+              "note": "Where they say they want to be."
+            }
+          ],
+          "unanswered": []
+        },
+        "axes": [
+          {
+            "id": "E2",
+            "questionId": "e2",
+            "label": "How they talk",
+            "low": "Plain",
+            "high": "Story-led"
+          },
+          {
+            "id": "E3",
+            "questionId": "e3",
+            "label": "How loud they look",
+            "low": "Quiet",
+            "high": "Loud"
+          },
+          {
+            "id": "E4",
+            "questionId": "e4",
+            "label": "How much is on show",
+            "low": "Minimal",
+            "high": "Expressive"
+          },
+          {
+            "id": "E5",
+            "questionId": "e5",
+            "label": "How it should age",
+            "low": "Of its time",
+            "high": "Timeless"
+          },
+          {
+            "id": "E6",
+            "questionId": "e6",
+            "label": "Who it answers to",
+            "low": "Corporate",
+            "high": "Artistic"
+          },
+          {
+            "id": "E7",
+            "questionId": "e7",
+            "label": "How it is kept",
+            "low": "Structured",
+            "high": "Organic"
+          }
+        ],
+        "answersFrom": "in-progress"
+      }
+    },
+    "/api/runs/78ab6240": {
       "status": 200,
       "body": {
         "run": {
-          "id": "c193f4cb",
-          "projectId": "project-ss26-campaign-5e7b64",
+          "id": "78ab6240",
+          "projectId": "project-ss26-campaign-d5d4dc",
           "clientId": "client-disan-footwear",
           "brief": "## Explicit\nA campaign site for the SS26 drop: one page, the lookbook, and a form to join the waiting list. Live by February.\n\n## Implicit (assumptions)\nThey expect most visits from Instagram on a phone. Nobody said so.\n\n## Critical missing information\nWhether the waiting list feeds their existing mailing tool, or a new one.\n\n## Classification\nLevel 1\nOne page and a form. Nothing to sign into, no live data.",
           "level": 1,
@@ -1241,7 +1440,7 @@
           ],
           "version": "V1",
           "status": "running",
-          "startedAt": "2026-09-19T13:34:00.510Z"
+          "startedAt": "2026-09-19T13:53:28.867Z"
         },
         "outputs": [],
         "issues": [],
@@ -1257,7 +1456,7 @@
         }
       }
     },
-    "/api/runs/c193f4cb/next": {
+    "/api/runs/78ab6240/next": {
       "status": 200,
       "body": {
         "done": false,

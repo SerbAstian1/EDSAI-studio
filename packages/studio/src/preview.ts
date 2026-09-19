@@ -39,13 +39,21 @@ const json = (status: number, body: unknown): Response =>
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 
-/** The path part of whatever `fetch` was handed, relative or absolute. */
+/**
+ * The key a recording is filed under: path **and** query.
+ *
+ * The query is part of the request, not decoration — `?x=E4&y=E6` chooses which
+ * chart the positioning endpoint returns. An earlier version keyed on pathname
+ * alone, so every chart resolved to whichever one happened to be recorded, or
+ * to nothing at all.
+ */
 function pathOf(input: RequestInfo | URL): string {
   const raw = typeof input === 'string' ? input
     : input instanceof URL ? input.href
       : input.url;
   try {
-    return new URL(raw, location.origin).pathname;
+    const url = new URL(raw, location.origin);
+    return url.pathname + url.search;
   } catch {
     return raw;
   }

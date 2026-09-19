@@ -71,6 +71,8 @@ for (const client of clients?.clients ?? []) {
   await record(`/api/clients/${client.id}/brand`);
   await record(`/api/clients/${client.id}/onboarding`);
   await record(`/api/clients/${client.id}/portal-keys`);
+  // The chart's default pair, which is what the client page opens on.
+  await record(`/api/clients/${client.id}/positioning?x=E4&y=E6`);
 }
 
 for (const run of runs?.runs ?? []) {
