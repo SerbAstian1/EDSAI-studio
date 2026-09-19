@@ -367,6 +367,9 @@ export const api = {
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
 
+  projects: () =>
+    call<{ projects: Project[] }>('/api/projects').then((r) => r.projects),
+
   allAssets: () => call<{ assets: Asset[] }>('/api/assets').then((r) => r.assets),
   assets: (clientId: string) =>
     call<{ assets: Asset[] }>(`/api/clients/${clientId}/assets`).then((r) => r.assets),

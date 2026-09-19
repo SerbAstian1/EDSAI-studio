@@ -65,8 +65,11 @@ function forRoute(route: Route): Warm[] {
       return id ? [{ queryKey: ['run', id], queryFn: () => api.run(id) }] : [];
     }
 
-    // The intake form and the client-facing discovery flow load nothing the
-    // shell can predict, and a planned section has nothing to load at all.
+    case 'intake':
+      return [clients, { queryKey: ["projects"], queryFn: api.projects }];
+
+    // The client-facing discovery flow loads nothing the shell can predict,
+    // and a planned section has nothing to load at all.
     default:
       return [];
   }

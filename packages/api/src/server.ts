@@ -513,6 +513,23 @@ export class ApiServer {
 
       /* ----------------------------------------------------------------- assets */
 
+      /**
+       * Every project this session may see.
+       *
+       * A run has to name a project that exists, so something has to be able to
+       * list them. Before this, the only way to learn a project id was to open
+       * the client it belongs to — which meant the form that starts a run asked
+       * for an id a person had no way to know, and every run started from the
+       * interface was refused.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/projects$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          send(res, 200, { projects: scoped.listProjects() });
+        },
+      },
+
       {
         method: 'GET', pattern: /^\/api\/assets$/,
         run: ({ res, scoped }) => {

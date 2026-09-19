@@ -33,6 +33,7 @@ import Home from './screens/Home.js';
  * interrupted by a spinner is worse than no animation.
  */
 const LOADERS = {
+  intake: () => import('./screens/NewRun.js'),
   run: () => import('./screens/RunView.js'),
   scorecard: () => import('./screens/Scorecard.js'),
   review: () => import('./screens/Review.js'),
@@ -49,6 +50,7 @@ const LOADERS = {
   planned: () => import('./screens/Planned.js'),
 } satisfies Partial<Record<Screen, () => Promise<unknown>>>;
 
+const NewRun = lazy(LOADERS.intake);
 const RunView = lazy(LOADERS.run);
 const Scorecard = lazy(LOADERS.scorecard);
 const Review = lazy(LOADERS.review);
@@ -191,103 +193,6 @@ function useRoute(): Route {
 
 /* ------------------------------------------------------------------ screens */
 
-function Intake(): ReactElement {
-  const client = useQueryClient();
-  const [projectId, setProjectId] = useState('');
-  const [explicit, setExplicit] = useState('');
-  const [implicit, setImplicit] = useState('');
-  const [missing, setMissing] = useState('');
-  const [level, setLevel] = useState(1);
-  const [defence, setDefence] = useState('');
-
-  const start = useMutation({
-    mutationFn: () => api.startRun({
-      projectId: projectId || 'default',
-      level,
-      // The three layers the Input Protocol requires, kept distinct in the brief
-      // so a department can see what was stated and what was inferred.
-      brief: [
-        '## Explicit', explicit,
-        '', '## Implicit (assumptions)', implicit || '(none stated)',
-        '', '## Critical missing information', missing || '(none stated)',
-        '', `## Classification`, `Level ${level} — ${defence || 'no defence stated'}`,
-      ].join('\n'),
-    }),
-    onSuccess: (run) => {
-      void client.invalidateQueries({ queryKey: ['runs'] });
-      location.hash = `#/run/${run.id}`;
-    },
-  });
-
-  // Level 2 and above owes the six justification questions; below that the
-  // defence is one sentence. The gate is the corpus's, not this form's.
-  const needsSixQuestions = level >= 2;
-
-  return (
-    <section className="stack">
-      <h2>New run</h2>
-
-      <div className="card stack">
-        <label>Project<input value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          placeholder="Disan Footwear" id="project" /></label>
-
-        <label>Explicit — what the brief actually states
-          <textarea rows={4} value={explicit} id="explicit"
-            onChange={(e) => setExplicit(e.target.value)}
-            placeholder="Goals, audience, deliverables, constraints." /></label>
-
-        <label>Implicit — what you inferred, labelled as assumption
-          <textarea rows={3} value={implicit} id="implicit"
-            onChange={(e) => setImplicit(e.target.value)}
-            placeholder="Business intent, market category, client archetype." /></label>
-
-        <label>Missing — what is genuinely required for precision
-          <textarea rows={2} value={missing} id="missing"
-            onChange={(e) => setMissing(e.target.value)}
-            placeholder="Budget tier, device profile, existing API contract." /></label>
-      </div>
-
-      <div className="card stack">
-        <label>Frontend system level
-          <select value={level} id="level" onChange={(e) => setLevel(Number(e.target.value))}>
-            <option value={0}>0 — Static interface</option>
-            <option value={1}>1 — Interactive application</option>
-            <option value={2}>2 — Data-heavy application</option>
-            <option value={3}>3 — Real-time application</option>
-            <option value={4}>4 — Offline / distributed client</option>
-            <option value={5}>5 — Large-scale frontend platform</option>
-          </select>
-        </label>
-
-        <label>{needsSixQuestions
-          ? 'Level 2+ owes the six justification questions — answer them here'
-          : 'One-sentence defence of this level'}
-          <textarea rows={needsSixQuestions ? 5 : 2} value={defence} id="defence"
-            onChange={(e) => setDefence(e.target.value)}
-            placeholder={needsSixQuestions
-              ? 'Endpoint count, caching need, pagination, optimistic updates, real-time, offline.'
-              : 'Six endpoints, no real-time requirement.'} />
-        </label>
-        {needsSixQuestions && !defence.trim() && (
-          <p className="muted">
-            Classifying up “to be safe” is how a form ends up with a normalised store.
-            The six questions are the check on that.
-          </p>
-        )}
-      </div>
-
-      {start.error && <p className="err">{(start.error as Error).message}</p>}
-
-      <div className="row">
-        <button className="primary" onClick={() => start.mutate()}
-          disabled={!explicit.trim() || start.isPending || (needsSixQuestions && !defence.trim())}>
-          {start.isPending ? 'Starting…' : 'Start run'}
-        </button>
-        <a href="#/"><button>Cancel</button></a>
-      </div>
-    </section>
-  );
-}
 
 /* -------------------------------------------------------------------- shell */
 
@@ -343,7 +248,7 @@ function Shell(): ReactElement {
         <main className="content">
           <Suspense fallback={<p className="muted">Loading…</p>}>
             {route.screen === 'workspace' && <Home />}
-            {route.screen === 'intake' && <Intake />}
+            {route.screen === 'intake' && <NewRun />}
             {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
             {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
             {route.screen === 'review' && route.runId && <Review runId={route.runId} />}

@@ -1843,3 +1843,52 @@ describe('the portal', () => {
     expect(await res.text()).toContain('This is the client side');
   });
 });
+
+describe('listing projects', () => {
+  it('lists every project the session can see, so a run can name one', async () => {
+    // A run is refused unless it names a project that exists. Without this
+    // route the only way to learn a project id was to open its client, so the
+    // form that starts a run asked for something a person could not know.
+    const { body: a } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'One' }),
+    });
+    const { body: b } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Two' }),
+    });
+    await json(`/api/clients/${a['id']}/projects`, {
+      method: 'POST', body: JSON.stringify({ name: 'Rebrand' }),
+    });
+    await json(`/api/clients/${b['id']}/projects`, {
+      method: 'POST', body: JSON.stringify({ name: 'Packaging' }),
+    });
+
+    const { status, body } = await json('/api/projects');
+    expect(status).toBe(200);
+    const projects = body['projects'] as unknown as { name: string; clientId: string }[];
+    expect(projects.map((p) => p.name).sort()).toEqual(
+      expect.arrayContaining(['Packaging', 'Rebrand']),
+    );
+    // And each one carries the client it belongs to, which is what lets the
+    // form group them by client rather than showing a flat list of names.
+    expect(projects.every((p) => typeof p.clientId === 'string' && p.clientId)).toBe(true);
+  });
+
+  it('starts a run against a project id the listing gave out', async () => {
+    const { body: client } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Runnable' }),
+    });
+    const { body: project } = await json(`/api/clients/${client['id']}/projects`, {
+      method: 'POST', body: JSON.stringify({ name: 'Identity' }),
+    });
+    const listed = await json('/api/projects');
+    const found = (listed.body['projects'] as unknown as { id: string }[])
+      .find((p) => p.id === (project['id'] as unknown as string));
+    expect(found).toBeTruthy();
+
+    const { status } = await json('/api/runs', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: found?.id, level: 1, brief: '## Explicit\nA test.' }),
+    });
+    expect(status).toBe(201);
+  });
+});

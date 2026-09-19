@@ -7,9 +7,10 @@ import { parseRoute, activeSection } from '../src/App.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
-import type { Asset, Client, DepartmentOutput, Issue } from '../src/api.js';
+import type { Asset, Client, DepartmentOutput, Issue, Project } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
+import { briefFrom, byClient } from '../src/screens/NewRun.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
   runId: 'r1', departmentId, body: 'x',
@@ -384,5 +385,115 @@ describe('the files shelf', () => {
   it('leaves out a client with no files rather than showing an empty shelf', () => {
     const ranked = shelves([client('empty', 'Empty')], []);
     expect(ranked).toEqual([]);
+  });
+});
+
+/* ----------------------------------------------------------- starting a run */
+
+describe('the brief a run is started with', () => {
+  const base = {
+    asked: 'A new identity and a site.',
+    assumed: '', unknown: '', level: 1, why: '', answers: {},
+  };
+
+  it('keeps the four headings the departments read', () => {
+    // The words on the form changed; this is the contract that did not. A
+    // department looks for these sections, so they survive any rewording.
+    const brief = briefFrom({ ...base, why: 'A brochure site.' });
+    expect(brief).toContain('## Explicit');
+    expect(brief).toContain('## Implicit (assumptions)');
+    expect(brief).toContain('## Critical missing information');
+    expect(brief).toContain('## Classification');
+  });
+
+  it('separates what was said from what was assumed', () => {
+    const brief = briefFrom({
+      ...base,
+      asked: 'They want a rebrand.',
+      assumed: 'They want to look more expensive.',
+    });
+    const explicit = brief.slice(brief.indexOf('## Explicit'), brief.indexOf('## Implicit'));
+    expect(explicit).toContain('They want a rebrand.');
+    // The whole reason these are separate fields: an assumption filed as a fact
+    // is treated as a fact for the rest of the run.
+    expect(explicit).not.toContain('look more expensive');
+  });
+
+  it('says "none stated" rather than leaving a section blank', () => {
+    // A blank section reads as "there is nothing here". "(none stated)" reads
+    // as "this was asked and the answer was nothing", which is different.
+    const brief = briefFrom(base);
+    expect(brief).toContain('## Implicit (assumptions)\n(none stated)');
+    expect(brief).toContain('## Critical missing information\n(none stated)');
+  });
+
+  it('records the level, which is what decides how much of the pipeline runs', () => {
+    expect(briefFrom({ ...base, level: 3 })).toContain('Level 3');
+  });
+
+  it('records all six answers when the build is a big one', () => {
+    const brief = briefFrom({
+      ...base,
+      level: 2,
+      answers: {
+        metric: 'The list takes four seconds to open.',
+        pain: 'Staff export to a spreadsheet instead.',
+        simpler: 'A plain table stops working past 2,000 rows.',
+        cost: 'A cache to keep correct.',
+        owner: 'Me, then their in-house developer.',
+        exit: 'Two days to strip out.',
+      },
+    });
+    expect(brief).toContain('### Justification');
+    expect(brief).toContain('**Measurable problem:** The list takes four seconds to open.');
+    expect(brief).toContain('**Exit:** Two days to strip out.');
+    expect(brief.match(/^- \*\*/gm)).toHaveLength(6);
+  });
+
+  it('marks a missing justification rather than omitting the question', () => {
+    // The method's point: a big decision with no recorded reasoning is
+    // indistinguishable from a big decision made out of enthusiasm. Silence
+    // has to be visible in the record.
+    const brief = briefFrom({ ...base, level: 4, answers: { metric: 'Offline use.' } });
+    expect(brief).toContain('**Current pain:** (not answered)');
+    expect(brief.match(/\(not answered\)/g)).toHaveLength(5);
+  });
+
+  it('asks for one reason instead of six when the build is a small one', () => {
+    const brief = briefFrom({ ...base, level: 1, why: 'A brochure site with a form.' });
+    expect(brief).toContain('A brochure site with a form.');
+    expect(brief).not.toContain('### Justification');
+  });
+});
+
+describe('choosing a project for a run', () => {
+  const client = (id: string, name: string): Client => ({
+    id, name, slug: id, status: 'active',
+    createdAt: '2026-09-19T00:00:00Z', updatedAt: '2026-09-19T00:00:00Z',
+  });
+  const project = (id: string, clientId: string, name: string): Project => ({
+    id, clientId, name, kind: 'brand-identity', phase: 'discovery',
+  });
+
+  it('files each project under the client it belongs to', () => {
+    const groups = byClient(
+      [client('a', 'Acme'), client('m', 'Morrow')],
+      [project('p1', 'a', 'Rebrand'), project('p2', 'm', 'Site'), project('p3', 'a', 'Packaging')],
+    );
+    expect(groups.map((g) => g.client.name)).toEqual(['Acme', 'Morrow']);
+    expect(groups[0]?.projects.map((p) => p.name)).toEqual(['Rebrand', 'Packaging']);
+  });
+
+  it('leaves out a client with no projects rather than showing an empty group', () => {
+    const groups = byClient(
+      [client('a', 'Acme'), client('empty', 'Nothing Yet')],
+      [project('p1', 'a', 'Rebrand')],
+    );
+    expect(groups.map((g) => g.client.id)).toEqual(['a']);
+  });
+
+  it('never attaches a project to a client that does not own it', () => {
+    const groups = byClient([client('a', 'Acme')], [project('p1', 'other', 'Not theirs')]);
+    expect(groups).toEqual([]);
   });
 });

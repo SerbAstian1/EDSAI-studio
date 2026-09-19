@@ -762,6 +762,66 @@ probe of `.content` at snapshot time showed a fully rendered page. The §4g
 family is usually a check that passes for the wrong reason; this is the same
 error inverted, and it nearly sent me rewriting a data layer that was working.
 
+## 4t. The run form asked a question nobody could answer
+
+Rewriting the run intake into plain language found that **starting a run from
+the interface had never worked.**
+
+The form asked "Project" as a free-text box with the placeholder "Disan
+Footwear" — a name. The API needs a project *id* that exists and is visible to
+the session, so whatever anybody typed came back `404 no_project`. It had been
+broken since Phase 2 gave projects real identity, and nothing caught it: the
+account has no model credit, so the assumption was that runs fail for that
+reason. This failure happens before any model call.
+
+The fix is the same as the rewrite: the question became answerable. A list of
+real projects, grouped under the client that owns them, from a new
+`GET /api/projects` — which had to be added, because until now the only way to
+learn a project id was to open the client it belonged to. With no projects at
+all the form says so and points at Clients rather than offering an empty
+dropdown.
+
+**The generalisable finding:** a question a person cannot answer correctly is
+not a wording problem, it is a broken feature wearing a wording problem's
+clothes. This one was found by trying to answer it, in a browser, rather than
+by reading the form.
+
+## 4u. Plain words on the outside, the protocol on the inside
+
+The form used to ask for "Explicit", "Implicit" and "Critical missing
+information", and for a "frontend system level" from 0 to 5 with a "six-question
+justification". All real method vocabulary; all unreadable to anyone who has not
+read the method, including the client sitting beside the designer.
+
+**The words changed and the record did not.** The engine still receives the same
+brief under the same headings, because the departments read them, and the
+classification still decides which departments run. `briefFrom` is a pure
+function so that mapping is one readable thing with tests on it, rather than
+string-building inside a submit handler. Verified end to end: a run started
+through the new form stored exactly the old structure.
+
+Three things worth keeping from the rewrite:
+
+- **The three questions stayed three questions.** Separating what was said from
+  what was assumed is the entire point — an assumption typed into the same box
+  as a fact is treated as a fact for the rest of the run. Plain wording was
+  never a reason to merge them.
+- **The classification is described by what the thing does**, not by what it is
+  called. Anyone can answer "does it keep working with no internet"; nobody can
+  pick "Level 4 — offline / distributed client" without already knowing.
+- **The six questions are six fields, not one textarea.** They were previously a
+  single box captioned "answer them here", which records a paragraph where the
+  method asks for six answers. Each is now recorded under its own heading, and
+  an unanswered one is written down as `(not answered)` rather than omitted —
+  the method's point is that a big decision with no recorded reasoning is
+  indistinguishable from one made out of enthusiasm, so the silence has to be
+  visible.
+
+One smaller fix from looking at it rendered: the six questions were using their
+guidance as placeholder text, which disappears the moment someone starts typing
+— which is when they are using it. Guidance now sits beside the field and the
+placeholder holds an example answer.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
