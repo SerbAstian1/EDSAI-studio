@@ -929,6 +929,34 @@ first and reported it as done. What was needed was to ask less, not to ask the
 same amount more clearly — and the way to tell the difference was to put the
 screen in front of the person who has to use it.
 
+## 4x. A disabled button that did not say why
+
+The owner asked when the Start button becomes active. The rule was already
+right — a resolved project plus a brief, and on a bigger build all six answers —
+and the screen said none of it. Asking the question *is* the defect: a disabled
+primary control with no stated reason leaves the reader guessing which of the
+things on screen it is waiting for, and the most common guess is that it is
+broken.
+
+The case that made it genuinely confusing is the one the typed project field
+introduced. **Typing a project name is not the same as choosing one.** "morrow"
+matches two projects, so nothing resolves — and every field on screen looks
+filled in. The button had no way to say "that text does not name one project
+yet", so it just sat there.
+
+Now the same condition that disables the button also names what is missing,
+beside it: "Still needs a project and what they asked for." It is one pure
+function feeding both, so the sentence cannot drift from the rule — a
+hand-written hint next to a separate boolean is a second source of truth about
+the same thing, and the version that goes stale is always the sentence.
+
+Verified by driving it: empty, one field, an ambiguous project, resolved, then a
+Level 2 build counting six answers down to two.
+
+The general form, worth keeping: **the condition that blocks an action and the
+explanation of that condition should be the same expression.** Anything else
+eventually lies.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

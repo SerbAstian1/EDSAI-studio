@@ -161,6 +161,41 @@ export function briefFrom(input: {
   return lines.join('\n');
 }
 
+/**
+ * What is still missing before a run can start.
+ *
+ * A disabled button that does not say why is a dead control: the reader is left
+ * to guess which of the things on screen it is waiting for, and the most common
+ * guess — "it must be broken" — is the one that makes them stop.
+ *
+ * The subtle case this exists for: typing a project name is not the same as
+ * choosing one. "morrow" matches two projects, so nothing is resolved, and
+ * everything on screen looks filled in.
+ */
+export function stillNeeded(state: {
+  projectId: string;
+  asked: string;
+  level: number;
+  unanswered: number;
+}): string[] {
+  const missing: string[] = [];
+  if (!state.projectId) missing.push('a project');
+  if (!state.asked.trim()) missing.push('what they asked for');
+  if (state.level >= 2 && state.unanswered > 0) {
+    missing.push(state.unanswered === JUSTIFY.length
+      ? 'all six answers'
+      : `${state.unanswered} more of the six answers`);
+  }
+  return missing;
+}
+
+/** The same list as a sentence, because "a project and what they asked for" reads. */
+export function missingSentence(missing: readonly string[]): string {
+  if (missing.length === 0) return '';
+  if (missing.length === 1) return `Still needs ${missing[0]}.`;
+  return `Still needs ${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}.`;
+}
+
 export default function NewRun(): ReactElement {
   const client = useQueryClient();
   const [projectId, setProjectId] = useState('');
@@ -193,10 +228,10 @@ export default function NewRun(): ReactElement {
     },
   });
 
-  const blocked = !projectId
-    || !asked.trim()
-    || start.isPending
-    || (needsJustification && unanswered.length > 0);
+  const missing = stillNeeded({
+    projectId, asked, level, unanswered: unanswered.length,
+  });
+  const blocked = missing.length > 0 || start.isPending;
 
   return (
     <section className="stack">
@@ -372,6 +407,9 @@ export default function NewRun(): ReactElement {
         {nothingToRunAgainst
           ? <a href="#/clients"><button type="button">Go to clients</button></a>
           : <a href="#/"><button type="button">Cancel</button></a>}
+        {missing.length > 0 && !start.isPending && (
+          <span className="muted" aria-live="polite">{missingSentence(missing)}</span>
+        )}
       </div>
     </section>
   );

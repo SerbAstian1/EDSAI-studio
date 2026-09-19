@@ -10,7 +10,7 @@ import {
 import type { Asset, Client, DepartmentOutput, Issue, Plotted, Project } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
-import { briefFrom } from '../src/screens/NewRun.js';
+import { briefFrom, stillNeeded, missingSentence } from '../src/screens/NewRun.js';
 import { matchProjects, resolveProject } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
 
@@ -571,5 +571,47 @@ describe('typing a project name', () => {
     const matches = matchProjects(projects, clients, 'nonsense');
     expect(matches).toEqual([]);
     expect(resolveProject(matches, 'nonsense')).toBeUndefined();
+  });
+});
+
+describe('what a run is still waiting for', () => {
+  const state = (over: Partial<Parameters<typeof stillNeeded>[0]> = {}) => ({
+    projectId: 'p1', asked: 'A rebrand.', level: 1, unanswered: 0, ...over,
+  });
+
+  it('asks for nothing once a project and a brief are there', () => {
+    expect(stillNeeded(state())).toEqual([]);
+  });
+
+  it('names a project that was typed but never resolved', () => {
+    // The case this exists for: "morrow" matches two projects, so nothing is
+    // chosen, and every field on screen looks filled in.
+    expect(stillNeeded(state({ projectId: '' }))).toEqual(['a project']);
+  });
+
+  it('does not count whitespace as a brief', () => {
+    expect(stillNeeded(state({ asked: '   ' }))).toEqual(['what they asked for']);
+  });
+
+  it('counts the outstanding six only on a bigger build', () => {
+    expect(stillNeeded(state({ level: 1, unanswered: 4 }))).toEqual([]);
+    expect(stillNeeded(state({ level: 3, unanswered: 4 }))).toEqual(['4 more of the six answers']);
+  });
+
+  it('says "all six" rather than "6 of the six"', () => {
+    expect(stillNeeded(state({ level: 2, unanswered: 6 }))).toEqual(['all six answers']);
+  });
+
+  it('names everything missing at once rather than one at a time', () => {
+    expect(stillNeeded(state({ projectId: '', asked: '', level: 2, unanswered: 6 })))
+      .toEqual(['a project', 'what they asked for', 'all six answers']);
+  });
+
+  it('reads as a sentence', () => {
+    expect(missingSentence(['a project'])).toBe('Still needs a project.');
+    expect(missingSentence(['a project', 'what they asked for']))
+      .toBe('Still needs a project and what they asked for.');
+    expect(missingSentence(['a', 'b', 'c'])).toBe('Still needs a, b and c.');
+    expect(missingSentence([])).toBe('');
   });
 });
