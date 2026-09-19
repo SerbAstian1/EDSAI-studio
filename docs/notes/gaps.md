@@ -684,6 +684,84 @@ What this is **not**: a way to use the product. It is read-only by
 construction, and the initial-route budget is unaffected (89.5 KB gz against
 170 KB) because the preview is a separate build.
 
+## 4r. Web only, and a density pass
+
+**The desktop app is gone.** `packages/desktop` — the Tauri shell, its launch
+check and its Rust — is deleted rather than parked, on the owner's decision to
+make EDSAI a website so it reaches any device. Deleting beats leaving it
+unbuilt: an unmaintained shell in the tree is a thing every future change has
+to consider and nothing exercises. §4j's findings about it stay in this file,
+because what they taught (three checks that were lying) outlives the package.
+The git history has the code if it is ever wanted back.
+
+This raises the stakes on hosting, which still does not exist. Web-only with no
+server is a product that runs on one laptop.
+
+**Spacing is now five tokens, not sixty multipliers.** `--space-page`,
+`--space-block`, `--space-card`, `--space-section` and `--row-y` carry the
+rhythm of the interface, so its density is one edit rather than an archaeology
+exercise. The rule behind the numbers: air *between* blocks is what makes a
+page readable; air *inside* them is mostly scrolling. Gaps stay legible,
+padding is tight.
+
+The pass exposed a bug that had been shipping. **`.swatches` had no rule in the
+Studio's stylesheet at all** — the hub has one, the Studio never got it — so
+every brand value was a full-width block. Four colours became four stacked bars
+taller than the rest of the client page combined, and no two colours in a
+palette could be seen at once, which is the only way a palette is ever read.
+It was invisible at the old density because everything was loose; tightening
+the page made it the loudest thing on it.
+
+**Density is a pointer-precision question, not a screen-width one.** The
+tighter controls sit behind a `@media (pointer: coarse)` floor that keeps
+buttons, inputs and nav items at 44px on touch. Re-measured at 390px after the
+pass: no horizontal scroll, one sub-44px target left (the wordmark, now
+floored).
+
+## 4s. Page transitions, and the three things that make them work
+
+Route changes now animate. The visible part is small — the outgoing page fades
+in 110ms without moving, the incoming one rises 6px over 300ms on a curve that
+decelerates hard and never overshoots. The asymmetry is the effect: equal
+durations in both directions read as a cross-fade, which is a slideshow rather
+than a navigation.
+
+Everything that makes it work is outside the CSS:
+
+1. **Only `.content` is named.** The sidebar, the topbar and the scroll
+   position are outside the transition. Furniture that fades on every click
+   reads as a page reload.
+2. **The next screen's code and data load first.** `startViewTransition`
+   snapshots the page, runs its callback, snapshots again — so whatever the
+   callback renders is what gets animated to. Without preloading, that is a
+   Suspense fallback; with the code preloaded but not the data, it is the
+   screen's own "Loading…" line. An animation that draws the eye to a
+   placeholder is worse than no animation.
+3. **`flushSync` inside the callback.** React batches by default, which would
+   let the transition snapshot the old tree twice and animate nothing.
+
+`prefetch.ts` restates which queries each screen runs, which is duplication and
+is written down as such. The alternative was converting every `useQuery` in the
+product to a suspending one — changing how loading and errors work everywhere —
+to fix a flicker. When the map drifts, the cost is the flicker it was added to
+prevent: nothing renders wrong, and nothing is fetched twice. The warm has a
+250ms deadline, because waiting on the network before moving would make a slow
+connection feel like a broken button.
+
+Two honest limits. **Firefox has no View Transitions** at the time of writing,
+so it gets a plain navigation — a page that only works in Chrome and Safari is
+broken for a third of the web, so the fallback is the default path rather than
+an afterthought. And **`prefers-reduced-motion` removes the animation
+entirely** rather than shortening it; that request is for no motion, not for
+cheaper motion.
+
+One methodological note. The first probe of this reported a loading flash
+during the transition, and it was wrong — it matched the substring "Loading"
+anywhere in `document.body`, including outside the animated region. A narrower
+probe of `.content` at snapshot time showed a fully rendered page. The §4g
+family is usually a check that passes for the wrong reason; this is the same
+error inverted, and it nearly sent me rewriting a data layer that was working.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

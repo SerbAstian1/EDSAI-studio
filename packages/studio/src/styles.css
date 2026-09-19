@@ -76,10 +76,25 @@
   /* — geometry —————————————————————————————————————————————————— */
   --radius: 4px;
   --radius-lg: 6px;
-  --sidebar-w: 232px;
+  --sidebar-w: 216px;
   --step: 4px;
 
+  /* — density ———————————————————————————————————————————————————— */
+  /* The rhythm of the whole interface, in five values rather than sixty
+     scattered multipliers. This is a working tool used for hours at a time:
+     air between blocks is what makes a page readable, and air inside them is
+     mostly scrolling. So the gaps between things stay legible and the padding
+     around things is tight. Change the feel of the product here. */
+  --space-page: calc(var(--step) * 5);
+  --space-block: calc(var(--step) * 2.5);
+  --space-card: calc(var(--step) * 3);
+  --space-section: calc(var(--step) * 4);
+  --row-y: 5px;
+
   --transition: 120ms cubic-bezier(0.2, 0, 0.2, 1);
+  /* Long, decelerating, no overshoot — the curve a surface follows when it is
+     being placed rather than thrown. Used for anything a person watches. */
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -121,14 +136,14 @@ h1, h2, h3, .display {
   margin: 0;
 }
 h1 { font-size: 20px; }
-h2 { font-size: 22px; margin-bottom: calc(var(--step) * 1); }
-h3 { font-size: 15px; margin: calc(var(--step) * 5) 0 calc(var(--step) * 1.5); }
+h2 { font-size: 20px; margin-bottom: calc(var(--step) * 0.5); }
+h3 { font-size: 14px; margin: var(--space-section) 0 calc(var(--step) * 1); }
 
 /* Instrument Serif stays an accent: editorial statements, never UI furniture. */
 .editorial {
   font-family: var(--font-accent);
   font-weight: 400;
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1.15;
   letter-spacing: -0.01em;
 }
@@ -145,7 +160,7 @@ h3 { font-size: 15px; margin: calc(var(--step) * 5) 0 calc(var(--step) * 1.5); }
 
 .metric {
   font-family: var(--font-display);
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 500;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -165,7 +180,7 @@ button {
   border: 1px solid var(--border-strong);
   background: var(--surface-elevated);
   color: var(--text-primary);
-  padding: 7px 13px;
+  padding: 5px 11px;
   transition: background var(--transition), border-color var(--transition);
 }
 button:hover:not([disabled]) { border-color: var(--text-secondary); }
@@ -187,10 +202,66 @@ input, textarea, select {
   background: var(--surface-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 8px 10px;
+  padding: 6px 9px;
   width: 100%;
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The density above is for a pointer that lands where it is aimed. A finger
+   does not, so controls keep a floor on touch — tightening a desktop layout
+   is not a reason to make a phone harder to use. */
+@media (pointer: coarse) {
+  button, input, select { min-height: 44px; }
+  button { padding: 10px 14px; }
+  .nav-item { padding: 9px 10px; }
+  .wordmark { min-height: 44px; }
+}
+
+/* — moving between pages ————————————————————————————————————————— */
+
+/*
+ * The shell stays; the page under it changes.
+ *
+ * Naming only `.content` means the sidebar, the topbar and the scroll position
+ * are outside the transition — they are furniture, and furniture that fades
+ * every time you click reads as a page reload. What moves is the one thing
+ * that actually changed.
+ *
+ * The asymmetry is the whole effect. The outgoing page leaves quickly and
+ * without moving, because it is already the past; the incoming page takes its
+ * time and rises a few pixels into place. Equal durations in both directions
+ * feel like a cross-fade, which is a slideshow, not a navigation.
+ *
+ * `--ease-out` decelerates hard and never overshoots: a surface being placed
+ * rather than thrown.
+ */
+.content { view-transition-name: content; }
+
+::view-transition-old(content) {
+  animation: page-out 110ms linear both;
+}
+::view-transition-new(content) {
+  animation: page-in 300ms var(--ease-out) both;
+}
+
+@keyframes page-out {
+  to { opacity: 0; }
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/*
+ * Motion is a preference, and a reduced-motion request here is not a request
+ * for a cheaper animation — it is a request for none. The page still changes;
+ * it just changes at once.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(content),
+  ::view-transition-new(content) { animation: none; }
+  * { transition-duration: 1ms !important; }
+}
 
 /* — preview —————————————————————————————————————————————————————— */
 
@@ -225,10 +296,10 @@ input, textarea, select {
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: calc(var(--step) * 5) calc(var(--step) * 3);
+  padding: var(--space-page) calc(var(--step) * 2.5);
   display: flex;
   flex-direction: column;
-  gap: calc(var(--step) * 6);
+  gap: var(--space-section);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -253,6 +324,17 @@ input, textarea, select {
   border-radius: 1px;
 }
 
+.sidebar .search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: space-between;
+  color: var(--text-muted);
+  background: none;
+}
+.sidebar .search:hover:not([disabled]) { color: var(--text-primary); }
+
 .nav-group { display: grid; gap: 1px; }
 .nav-group > .label { margin-bottom: calc(var(--step) * 1.5); }
 
@@ -260,7 +342,7 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: calc(var(--step) * 2.5);
-  padding: 6px calc(var(--step) * 2);
+  padding: 4px calc(var(--step) * 2);
   border-radius: var(--radius);
   text-decoration: none;
   color: var(--text-secondary);
@@ -297,7 +379,7 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: calc(var(--step) * 4);
-  padding: calc(var(--step) * 4) calc(var(--step) * 8);
+  padding: calc(var(--step) * 2.5) var(--space-page);
   border-bottom: 1px solid var(--border);
 }
 .topbar nav { display: flex; gap: calc(var(--step) * 1); margin-left: auto; flex-wrap: wrap; }
@@ -307,7 +389,7 @@ input, textarea, select {
 }
 .topbar nav a[aria-current="page"] { background: var(--surface); color: var(--text-primary); }
 
-.content { padding: calc(var(--step) * 8); max-width: 1120px; width: 100%; }
+.content { padding: var(--space-page); max-width: 1120px; width: 100%; }
 
 /*
  * Phones.
@@ -439,28 +521,28 @@ input, textarea, select {
   background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: calc(var(--step) * 4);
-  margin-bottom: calc(var(--step) * 3.5);
+  padding: var(--space-card);
+  margin-bottom: var(--space-block);
 }
-.row { display: flex; gap: calc(var(--step) * 3); align-items: baseline; flex-wrap: wrap; }
-.stack { display: grid; gap: calc(var(--step) * 3); }
+.row { display: flex; gap: var(--space-block); align-items: baseline; flex-wrap: wrap; }
+.stack { display: grid; gap: var(--space-block); }
 
 .stat-row {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   border: 1px solid var(--border); border-radius: var(--radius-lg);
   overflow: hidden; background: var(--surface-elevated);
 }
-.stat { padding: calc(var(--step) * 4) calc(var(--step) * 5); border-right: 1px solid var(--border); }
+.stat { padding: var(--space-card) calc(var(--step) * 4); border-right: 1px solid var(--border); }
 .stat:last-child { border-right: 0; }
-.stat .label { display: block; margin-bottom: calc(var(--step) * 2); }
+.stat .label { display: block; margin-bottom: calc(var(--step) * 1); }
 
 .empty { border: 1px dashed var(--border-strong); border-radius: var(--radius-lg);
-         padding: calc(var(--step) * 10) calc(var(--step) * 6); text-align: center; }
+         padding: calc(var(--step) * 6) calc(var(--step) * 4); text-align: center; }
 .empty .editorial { margin-bottom: calc(var(--step) * 2); }
-.empty p { max-width: 42ch; margin: 0 auto calc(var(--step) * 4); color: var(--text-muted); }
+.empty p { max-width: 46ch; margin: 0 auto var(--space-block); color: var(--text-muted); }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th, td { text-align: left; padding: var(--row-y) 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-weight: 500; }
 tbody tr:hover { background: var(--surface); }
 
@@ -515,16 +597,16 @@ tbody tr:hover { background: var(--surface); }
   gap: calc(var(--step) * 4);
 }
 .gate-card .editorial { font-size: 26px; margin: 0; }
-.field { display: grid; gap: calc(var(--step) * 1.5); }
+.field { display: grid; gap: calc(var(--step) * 1); }
 
 /* — files ————————————————————————————————————————————————————————— */
 
 .dropzone {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-lg);
-  padding: calc(var(--step) * 8);
+  padding: var(--space-section);
   display: grid;
-  gap: calc(var(--step) * 3);
+  gap: var(--space-block);
   justify-items: center;
   text-align: center;
   transition: border-color 120ms ease, background 120ms ease;
@@ -613,12 +695,36 @@ button.choice.chosen {
 
 /* — brand values ———————————————————————————————————————————————— */
 
-.swatch-chip {
-  height: 4.5rem;
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+/*
+ * A palette is read by comparison, so the swatches have to sit beside each
+ * other. This container had no rule at all, which made every `.swatch` a
+ * full-width block: four colours became four stacked bars taller than the rest
+ * of the client page put together, and no two of them could be seen at once.
+ */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-block);
+  align-items: start;
 }
-.swatch input { margin-top: calc(var(--step) * 2); }
+
+.swatch {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  overflow: hidden;
+}
+.swatch-body { padding: var(--space-card); }
+.swatch .role { margin: 2px 0 0; font-size: 13px; }
+
+.swatch-chip {
+  height: 3.25rem;
+  border-bottom: 1px solid var(--border);
+  /* A near-white swatch on a near-white card is otherwise an empty box, and
+     `paper` is a token every brand has. */
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.swatch input { margin-top: calc(var(--step) * 1.5); }
 .measured { font-size: 12.5px; margin: calc(var(--step) * 2) 0 0; line-height: 1.4; }
 .measured.ok { color: var(--success); }
 .measured.err { color: var(--error); }

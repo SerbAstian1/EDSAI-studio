@@ -39,6 +39,14 @@ export function Sidebar({ current, onOpenPalette }: {
     <aside className="sidebar">
       <a className="wordmark" href="#/">EDS AI</a>
 
+      {/* Under the wordmark rather than pinned to the bottom. Pushed down by
+          `margin-top: auto` it left a column of dead space on every screen,
+          and it is the fastest way to reach anything here — not a footer. */}
+      <button className="search" onClick={onOpenPalette}>
+        Search
+        <span className="kbd" aria-hidden="true">⌘K</span>
+      </button>
+
       {GROUPS.map((group) => (
         <nav className="nav-group" key={group} aria-label={group}>
           <span className="label">{group}</span>
@@ -47,14 +55,6 @@ export function Sidebar({ current, onOpenPalette }: {
           ))}
         </nav>
       ))}
-
-      <button
-        onClick={onOpenPalette}
-        style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}
-      >
-        Search
-        <span className="kbd" aria-hidden="true">⌘K</span>
-      </button>
     </aside>
   );
 }

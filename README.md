@@ -21,7 +21,7 @@ drawing the final mark.
 | 3 · Studio shell | **built here** — `@edsai/api` + `@edsai/studio`, 46 tests, 83.0 KB gz |
 | 4 · Visual critique | **computable half built** — `composition_check` + `checkMindMap`; overlay UI deferred |
 | 5 · Measurement bridges | **built here** — `@edsai/measure`, 108 tests; PSI success path unproven |
-| 6 · Bridges and exports | **built here** — `@edsai/figma` + `@edsai/export` + `@edsai/desktop`, 55 tests; shell mounts in 740 ms |
+| 6 · Bridges and exports | **built here** — `@edsai/figma` + `@edsai/export`, 55 tests |
 | 7 · Brand Hub | **built here** — `@edsai/hub`, 28 tests, 2.8 KB gz against a 40 KB budget |
 
 Every phase now has code here, but this repository is a reconstruction rather
@@ -48,7 +48,6 @@ packages/
   api/           node:http contract over the engine, with SSE run progress
   studio/        the AW studio shell — sidebar, command palette, CSR, route-split
   hub/           the client-facing brand hub, generated from a FINAL run
-  desktop/       the Tauri shell around the Studio, with a launch check
 docs/
   product/       the AW product direction, the audit behind it, and its phases
   discovery/     the client discovery flow that produces a Direction Lock

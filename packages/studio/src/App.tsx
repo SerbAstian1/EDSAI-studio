@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState , type ReactElement } from 'react';
+import { flushSync } from 'react-dom';
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
+import { warmRoute } from './prefetch.js';
 import { api } from './api.js';
 import { useRunStream } from './useRunStream.js';
 import { Sidebar } from './shell/Sidebar.js';
@@ -22,20 +24,45 @@ import Home from './screens/Home.js';
  * is observed rather than anticipated.
  */
 
-const RunView = lazy(() => import('./screens/RunView.js'));
-const Scorecard = lazy(() => import('./screens/Scorecard.js'));
-const Review = lazy(() => import('./screens/Review.js'));
-const Finalize = lazy(() => import('./screens/Finalize.js'));
-const Runs = lazy(() => import('./screens/Runs.js'));
-const Onboard = lazy(() => import('./screens/Onboard.js'));
-const Clients = lazy(() => import('./screens/Clients.js'));
-const ClientDetail = lazy(() => import('./screens/ClientDetail.js'));
-const Brands = lazy(() => import('./screens/Brands.js'));
-const Portals = lazy(() => import('./screens/Portals.js'));
-const FileLibrary = lazy(() => import('./screens/FileLibrary.js'));
-const Activity = lazy(() => import('./screens/Activity.js'));
-const Settings = lazy(() => import('./screens/Settings.js'));
-const Planned = lazy(() => import('./screens/Planned.js'));
+/**
+ * The lazy screens, as loaders rather than components.
+ *
+ * Keeping the import function reachable is what lets a navigation load the next
+ * screen's code *before* the transition starts. Without that, moving between
+ * pages renders the Suspense fallback for a frame or two, and an animation
+ * interrupted by a spinner is worse than no animation.
+ */
+const LOADERS = {
+  run: () => import('./screens/RunView.js'),
+  scorecard: () => import('./screens/Scorecard.js'),
+  review: () => import('./screens/Review.js'),
+  finalize: () => import('./screens/Finalize.js'),
+  runs: () => import('./screens/Runs.js'),
+  onboard: () => import('./screens/Onboard.js'),
+  clients: () => import('./screens/Clients.js'),
+  client: () => import('./screens/ClientDetail.js'),
+  brands: () => import('./screens/Brands.js'),
+  portals: () => import('./screens/Portals.js'),
+  assets: () => import('./screens/FileLibrary.js'),
+  activity: () => import('./screens/Activity.js'),
+  settings: () => import('./screens/Settings.js'),
+  planned: () => import('./screens/Planned.js'),
+} satisfies Partial<Record<Screen, () => Promise<unknown>>>;
+
+const RunView = lazy(LOADERS.run);
+const Scorecard = lazy(LOADERS.scorecard);
+const Review = lazy(LOADERS.review);
+const Finalize = lazy(LOADERS.finalize);
+const Runs = lazy(LOADERS.runs);
+const Onboard = lazy(LOADERS.onboard);
+const Clients = lazy(LOADERS.clients);
+const ClientDetail = lazy(LOADERS.client);
+const Brands = lazy(LOADERS.brands);
+const Portals = lazy(LOADERS.portals);
+const FileLibrary = lazy(LOADERS.assets);
+const Activity = lazy(LOADERS.activity);
+const Settings = lazy(LOADERS.settings);
+const Planned = lazy(LOADERS.planned);
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
@@ -92,13 +119,73 @@ export function activeSection(route: Route): string {
   return route.screen;
 }
 
+/**
+ * Change the page, with a transition where the browser offers one.
+ *
+ * Three things have to be true for this to feel like one surface rather than a
+ * reload, and all three are here rather than in the CSS:
+ *
+ * 1. **The next screen's code is loaded first.** `startViewTransition` snapshots
+ *    the page, runs the callback, then snapshots it again — so if the callback
+ *    renders a Suspense fallback, the fallback is what gets animated to.
+ * 2. **The DOM is updated synchronously inside the callback.** React batches by
+ *    default, which would let the transition snapshot the *old* tree twice and
+ *    animate nothing; `flushSync` is what makes the callback's promise mean
+ *    "the new page exists".
+ * 3. **It degrades to a plain navigation.** Firefox has no View Transitions at
+ *    the time of writing, and a page that only works in Chrome and Safari is a
+ *    page that is broken for a third of the web.
+ */
+async function transitionTo(
+  apply: () => void,
+  route: Route,
+  client: QueryClient,
+): Promise<void> {
+  // Code and data together: the transition should begin only once the next
+  // page can actually paint. `warmRoute` gives up on its own deadline, so a
+  // slow network delays the move by a quarter second rather than stalling it.
+  await Promise.all([
+    LOADERS[route.screen as keyof typeof LOADERS]?.().catch(() => undefined),
+    warmRoute(client, route),
+  ]);
+
+  const start = (document as Document & {
+    startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+  }).startViewTransition;
+
+  if (typeof start !== 'function') {
+    apply();
+    return;
+  }
+  start.call(document, () => { flushSync(apply); });
+}
+
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(location.hash));
+  const client = useQueryClient();
+
   useEffect(() => {
-    const onChange = (): void => setRoute(parseRoute(location.hash));
+    const onChange = (): void => {
+      const next = parseRoute(location.hash);
+      // Same screen, different record — a run id or a client id. That is a
+      // content change inside a page, not a move between pages, and animating
+      // it would put a transition on something a person thinks of as a filter.
+      if (next.screen === route.screen) {
+        setRoute(next);
+        return;
+      }
+      void transitionTo(() => {
+        setRoute(next);
+        // Inside the same update as the route change, so the new page is
+        // snapshotted already at the top rather than animating and then
+        // jumping.
+        scrollTo(0, 0);
+      }, next, client);
+    };
     addEventListener('hashchange', onChange);
     return () => removeEventListener('hashchange', onChange);
-  }, []);
+  }, [route.screen, client]);
+
   return route;
 }
 
