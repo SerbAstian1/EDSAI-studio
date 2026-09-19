@@ -99,27 +99,7 @@ export class Harness {
    * against this department's turn, not by having been computed somewhere.
    */
   callInstrument(runId: string, departmentId: number, name: string, input: unknown): unknown {
-    const fn = INSTRUMENT_FUNCTIONS[name];
-    if (!fn) {
-      throw new Error(
-        `unknown instrument: ${name}. Available: ${instrumentNames().join(', ')}`,
-      );
-    }
-
-    // Harness input arrives as JSON from disk, so it is genuinely unknown until
-    // the tool's own schema has seen it. Validating here rejects a malformed
-    // call the same way the API path would, rather than letting a wrong shape
-    // reach an instrument and produce a number from nonsense.
-    const schema = instruments.ToolInput[name as instruments.ToolName];
-    const parsed = schema.safeParse(input);
-    if (!parsed.success) {
-      throw new Error(
-        `${name} received input its schema rejects: ` +
-        parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'} ${i.message}`).join('; '),
-      );
-    }
-
-    const output = fn(parsed.data);
+    const output = runInstrument(name, input);
     const paths = this.paths(runId, departmentId);
     mkdirSync(paths.root, { recursive: true });
 
@@ -196,3 +176,34 @@ const INSTRUMENT_FUNCTIONS: Record<string, InstrumentFn> = {
 };
 
 export const instrumentNames = (): string[] => Object.keys(INSTRUMENT_FUNCTIONS).sort();
+
+/**
+ * Call an instrument by name, validated, with no side effects.
+ *
+ * Split out of the harness so the model executor can reach the same dispatch
+ * table. Keeping a second copy of "which instruments exist" would be a second
+ * source of truth about the one thing the provenance rule depends on — an
+ * instrument the verifier credits is one reachable from here, and two lists
+ * would eventually disagree about that.
+ *
+ * Input arrives as JSON from a file or from a model's tool call, so it is
+ * genuinely unknown until the tool's own schema has seen it. Validating here
+ * rejects a malformed call rather than letting a wrong shape reach an
+ * instrument and produce a number out of nonsense.
+ */
+export function runInstrument(name: string, input: unknown): unknown {
+  const fn = INSTRUMENT_FUNCTIONS[name];
+  if (!fn) {
+    throw new Error(`unknown instrument: ${name}. Available: ${instrumentNames().join(', ')}`);
+  }
+
+  const schema = instruments.ToolInput[name as instruments.ToolName];
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(
+      `${name} received input its schema rejects: ` +
+      parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'} ${i.message}`).join('; '),
+    );
+  }
+  return fn(parsed.data);
+}

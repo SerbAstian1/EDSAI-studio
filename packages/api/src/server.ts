@@ -9,6 +9,8 @@ import {
   ClientSummaryRefused, clientSummary, handoffPack, internalDocument, type RunBundle,
 } from '@edsai/export';
 import { renderPortal, escapeHtml, STYLE } from '@edsai/hub';
+import type { Executor } from '@edsai/executor';
+import { runPipeline } from './pipeline.js';
 import { RunEvents } from './events.js';
 import {
   ScopedStore, ensureLocalProject, slugify,
@@ -57,6 +59,12 @@ export interface ApiOptions {
    * being told writes nothing to a disk it was not given.
    */
   assets?: AssetStore;
+  /**
+   * The model executor. Absent means runs are created and not executed —
+   * which is what happens with no API key, and is said out loud rather than
+   * looking like a run that stalled.
+   */
+  executor?: Executor;
 }
 
 /** How long a session lasts before it has to be renewed by signing in again. */
@@ -132,6 +140,9 @@ export class ApiServer {
   private readonly routes: Handler[];
   private readonly insecureCookies: boolean;
   readonly assets: AssetStore;
+  readonly executor: Executor | undefined;
+  /** Runs executing right now, so a second request does not start a second loop. */
+  private readonly running = new Set<string>();
   private server?: Server;
 
   constructor(options: ApiOptions = {}) {
@@ -144,6 +155,7 @@ export class ApiServer {
     this.origins = options.origins ?? [];
     this.insecureCookies = options.insecureCookies ?? false;
     this.assets = options.assets ?? new MemoryAssetStore();
+    this.executor = options.executor;
     this.routes = this.buildRoutes();
   }
 
@@ -312,6 +324,38 @@ export class ApiServer {
       conflicts: this.store.getConflicts(runId),
       violations: this.store.getViolations(runId),
     };
+  }
+
+  /**
+   * Begin executing a run in the background, if there is anything to execute
+   * with and it is not already going.
+   *
+   * Returns whether it started. A caller that assumed it did would show a
+   * progress bar for a run nobody is running.
+   */
+  startPipeline(runId: string): boolean {
+    if (!this.executor || this.running.has(runId)) return false;
+    this.running.add(runId);
+
+    void runPipeline({
+      context: this.context,
+      executor: this.executor,
+      events: this.events,
+      runId,
+    })
+      .catch((error: unknown) => {
+        // The loop reports its own halts; this is for the failure that escapes
+        // it entirely, which would otherwise be an unhandled rejection and a
+        // run that simply stops with nothing said.
+        this.events.emit(runId, 'pipeline.halted', {
+          reason: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          completed: [],
+        });
+      })
+      .finally(() => { this.running.delete(runId); });
+
+    return true;
   }
 
   /** The onboarding an invite token opens, or nothing. */
@@ -1678,7 +1722,12 @@ export class ApiServer {
             ...(input.tracks ? { tracks: input.tracks } : {}),
           });
           this.events.emit(run.id, 'run.started', run);
-          send(res, 201, run);
+
+          // "Start run" means start it. The pipeline runs in the background and
+          // reports over SSE, because twenty-four departments outlive any
+          // request and the run has to survive a closed tab.
+          const executing = this.startPipeline(run.id);
+          send(res, 201, { ...run, executing });
         },
       },
 
@@ -1745,6 +1794,35 @@ export class ApiServer {
             rejected: result.rejected.length,
           });
           send(res, result.rejected.length > 0 ? 422 : 200, result);
+        },
+      },
+
+      /**
+       * Resume a run that halted, or start one that was created before an
+       * executor was configured.
+       *
+       * Resuming is safe because `prepare` reads only from the store: the
+       * departments that completed are persisted, so the loop picks up at the
+       * first one without an output rather than repeating work already paid
+       * for.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/execute$/,
+        run: ({ res, params, scoped, run }) => {
+          if (!scoped || !run) return;
+          if (!this.executor) {
+            send(res, 503, {
+              error: 'no_executor',
+              message: 'This server has no model configured, so it cannot run a pipeline. '
+                + 'Set ANTHROPIC_API_KEY and restart it.',
+            });
+            return;
+          }
+          const started = this.startPipeline(run.id);
+          send(res, started ? 202 : 409, {
+            started,
+            ...(started ? {} : { message: 'That run is already executing.' }),
+          });
         },
       },
 

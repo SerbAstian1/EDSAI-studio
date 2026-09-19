@@ -1,6 +1,7 @@
 {
-  "name": "@edsai/api",
+  "name": "@edsai/executor",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "exports": {
     ".": {
@@ -8,12 +9,8 @@
       "default": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
-  "bin": {
-    "edsai-api": "./dist/bin/serve.js"
-  },
+  "files": ["dist"],
+  "bin": { "edsai-execute": "./dist/bin/execute.js" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -21,11 +18,8 @@
   },
   "dependencies": {
     "@edsai/engine": "workspace:*",
-    "@edsai/export": "workspace:*",
-    "@edsai/rubric": "workspace:*",
     "@edsai/instruments": "workspace:*",
-    "@edsai/auth": "workspace:*",
-    "@edsai/hub": "workspace:*",
-    "@edsai/executor": "workspace:*"
+    "@edsai/rubric": "workspace:*",
+    "@anthropic-ai/sdk": "^0.127.0"
   }
 }

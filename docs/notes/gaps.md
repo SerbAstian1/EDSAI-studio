@@ -957,13 +957,90 @@ The general form, worth keeping: **the condition that blocks an action and the
 explanation of that condition should be the same expression.** Anything else
 eventually lies.
 
+## 4y. The executor: the motor this machine never had
+
+Until now nothing in this repository called a model. The rubric decided which
+departments run, the prompt assembly built the request, the verifier checked
+provenance, the gate decided FINAL — and between "here is the prompt" and "here
+is the output" was a person with a clipboard, twenty-four times for a Level 1
+run. `@edsai/executor` is that carrier.
+
+**It decides nothing.** Which department runs is the rubric's, what the prompt
+says is the prompt assembly's, whether the result is acceptable is the engine's.
+It sends, runs the instruments the model asks for, and hands back a submission.
+Its own package because the engine is deliberately free of network code — a
+model call inside it would make the rules untestable offline and the seam
+invisible.
+
+Decisions worth recording:
+
+- **A department finishes by calling a tool**, not by writing prose somebody
+  parses. `strict: true` makes the API guarantee the arguments validate before
+  the engine sees them. The engine still validates, because the API's guarantee
+  is about JSON and the engine's rules are about meaning — a target claiming an
+  instrument produced it is refused there, not here.
+- **Instrument calls are collected per department and handed to `accept`
+  together.** The verifier credits a measurement only against the calls made in
+  that department's own turn, so this list is what turns a claimed number into a
+  checked one. The executor takes `callInstrument` as a parameter rather than
+  importing one, which makes it awkward to bypass that.
+- **`runInstrument` moved out of the harness and into the engine's exports.**
+  The harness had the dispatch table and wrote to disk; the executor needed the
+  same table without the disk. A second copy would be a second source of truth
+  about which instruments exist — the one thing the provenance rule depends on.
+- **The whole assistant turn goes back, thinking blocks included**, and all tool
+  results go in one message. Splitting results across messages quietly teaches
+  the model to stop asking for instruments in parallel.
+- **The stable prefix is cached and the volatile blocks are not.** The prompt
+  assembly was built for this; nothing had ever used it. A test asserts the
+  breakpoint lands on the last stable block, because a mistake there costs the
+  corpus prefix twenty-four times instead of once and is invisible without
+  checking.
+
+**Cost is now measured rather than estimated** — for the call that happened, at
+published rates recorded alongside the figure. `costOf` returns nothing for a
+model it has no rate for rather than guessing: a fabricated cost is
+indistinguishable from a real one, which is the failure that matters in a
+document full of estimates.
+
+### What running it for real found
+
+No credentials exist in this sandbox, so the happy path is **still unproven
+live** — it joins PageSpeed and axe in §5. What could be proven was proven:
+
+A run with a deliberately invalid key reached `api.anthropic.com`, prepared
+Department 1 with the full corpus prefix, and came back `401 authentication_error`.
+That establishes the request is well-formed enough to be routed and rejected
+structurally, and that the failure surfaces readably instead of crashing.
+
+It also found a real defect. The advice printed under the error said **"This
+looks retryable — run the same command again to resume."** For an invalid API
+key that is simply wrong; it would fail identically forever. The classification
+was one question — "was it a refusal?" — where the useful distinction is *retry
+or change something*. `diagnose()` now separates them by the SDK's typed errors,
+most specific first, and knows the case this project actually hits: an empty
+credit balance, which reads as a 400 and is not retryable until somebody tops it
+up.
+
+The general form: **an error message that tells you what to do is a claim, and
+claims need checking.** This one was written from reasoning and was wrong within
+a minute of meeting a real API.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:
 
-- **API cost and wall-clock (§10).** Every figure is an estimate. Run `5bac36cb`
-  failed at Department 1 with $0.000 spent; the account has no credit. The
-  estimate is ≈ $3.4 per Level 1 run before thinking tokens.
+- **API cost and wall-clock (§10).** Every figure is still an estimate, but the
+  machinery to stop estimating now exists: the executor records what each call
+  actually used and prices it. Nothing has been measured because no credential
+  has ever been available to this project. The estimate remains ≈ $3.4 per
+  Level 1 run before thinking tokens.
+- **The executor's happy path.** A real model call has never succeeded here. An
+  invalid key was proven to reach Anthropic and come back `401`, so the request
+  is routable and the failure paths are real; whether a department's output
+  comes back and passes the verifier is untested against a live API. Needs
+  credit on the account, and it is the single most valuable untested thing in
+  this repository.
 - **PageSpeed against a live URL.** Still true after the Phase 5 rebuild, and
   for the same reason. The parser is fixture-proven, including CrUX's CLS×100
   and page-versus-origin precedence; the request reaches Google and the failure

@@ -47,6 +47,7 @@ packages/
   measure/       probes and instruments for Departments 8, 40 and 43
   api/           node:http contract over the engine, with SSE run progress
   studio/        the AW studio shell — sidebar, command palette, CSR, route-split
+  executor/      calls the model and runs a run, department by department
   hub/           the client-facing brand hub, generated from a FINAL run
 docs/
   product/       the AW product direction, the audit behind it, and its phases
