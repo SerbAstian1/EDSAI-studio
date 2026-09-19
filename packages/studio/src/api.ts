@@ -298,6 +298,39 @@ export interface PortalKey {
   uses: number;
 }
 
+export interface Axis {
+  id: string;
+  label: string;
+  low: string;
+  high: string;
+  questionId: string;
+}
+
+export interface Plotted {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  source: 'computed' | 'placed';
+  note?: string;
+}
+
+export interface Matrix {
+  x: Axis;
+  y: Axis;
+  points: Plotted[];
+  unanswered: string[];
+}
+
+export interface Comparator {
+  id: string;
+  clientId: string;
+  name: string;
+  note?: string;
+  positions: Record<string, number>;
+  createdAt: string;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
@@ -366,6 +399,17 @@ export const api = {
   revokePortalKey: (clientId: string, keyId: string) =>
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
+
+  positioning: (clientId: string, x: string, y: string) =>
+    call<{ matrix: Matrix; axes: Axis[]; answersFrom: 'submitted' | 'in-progress' | 'none' }>(
+      `/api/clients/${clientId}/positioning?x=${x}&y=${y}`),
+  addComparator: (clientId: string, input: {
+    name: string; note?: string; positions: Record<string, number>;
+  }) => call<{ comparator: Comparator }>(`/api/clients/${clientId}/comparators`, {
+    method: 'POST', body: JSON.stringify(input),
+  }).then((r) => r.comparator),
+  removeComparator: (id: string) =>
+    call<{ removed: string }>(`/api/comparators/${id}`, { method: 'DELETE' }),
 
   projects: () =>
     call<{ projects: Project[] }>('/api/projects').then((r) => r.projects),

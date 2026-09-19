@@ -4,7 +4,7 @@ import type { Conflict, DepartmentOutput, Issue, Run } from '@edsai/engine';
 import {
   buildModel, generateHub, isStale, HubRefused, renderHub, HUB_BUDGET_BYTES,
   collections, renderPortal, readableSize,
-  type PortalFile, type PortalModel,
+  type PortalFile, type PortalModel, type PortalMatrix, type PortalPoint,
 } from '../src/index.js';
 import type { HubBundle } from '../src/model.js';
 
@@ -487,5 +487,68 @@ describe('the client portal', () => {
     expect(readableSize(512)).toBe('512 B');
     expect(readableSize(2048)).toBe('2 KB');
     expect(readableSize(3 * 1024 * 1024)).toBe('3.0 MB');
+  });
+});
+
+describe('the positioning chart on a client’s page', () => {
+  const matrix = (points: PortalPoint[]): PortalMatrix => ({
+    x: { label: 'How much is on show', low: 'Minimal', high: 'Expressive' },
+    y: { label: 'Who it answers to', low: 'Corporate', high: 'Artistic' },
+    points,
+  });
+
+  const withChart = (points: PortalPoint[]): string => renderPortal({
+    clientName: 'Morrow', files: [], brandValues: [],
+    generatedAt: '2026-09-19T00:00:00.000Z',
+    matrix: matrix(points),
+  });
+
+  const own: PortalPoint = { id: 'brand', label: 'Morrow', x: 15, y: 70, source: 'computed' };
+  const rival: PortalPoint = { id: 'c1', label: 'Rival', x: 80, y: 30, source: 'placed' };
+
+  it('draws a computed point filled and a placed one hollow', () => {
+    // The distinction has to survive to the client's copy above all: they are
+    // the person most likely to read a judgement as a finding.
+    const html = withChart([own, rival]);
+    expect(html).toContain('fill="var(--mark)"');
+    expect(html).toContain('fill="var(--bg)"');
+    expect(html).toContain('From your own answers');
+    expect(html).toContain('Placed by the studio');
+  });
+
+  it('never paints a chart mark with a status colour', () => {
+    // --fail and --pass mean something on this page. A series wearing one
+    // would say a brand is broken.
+    const chart = withChart([own, rival]);
+    const figure = chart.slice(chart.indexOf('<figure class="matrix"'), chart.indexOf('</figure>'));
+    expect(figure).not.toContain('var(--fail)');
+    expect(figure).not.toContain('var(--pass)');
+  });
+
+  it('carries the numbers as well as the picture', () => {
+    const html = withChart([own, rival]);
+    expect(html).toContain('<table class="matrix-table">');
+    expect(html).toContain('Your own answers');
+  });
+
+  it('names both ends of both axes', () => {
+    const html = withChart([own, rival]);
+    for (const pole of ['Minimal', 'Expressive', 'Corporate', 'Artistic']) {
+      expect(html).toContain(pole);
+    }
+  });
+
+  it('escapes a brand name rather than rendering it', () => {
+    const html = withChart([own, { ...rival, label: '<img src=x onerror=alert(1)>' }]);
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('shows no chart at all when there is nothing to compare against', () => {
+    const html = renderPortal({
+      clientName: 'Morrow', files: [], brandValues: [],
+      generatedAt: '2026-09-19T00:00:00.000Z',
+    });
+    expect(html).not.toContain('Where you sit');
   });
 });

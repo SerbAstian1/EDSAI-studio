@@ -16,6 +16,7 @@ import {
   measure, applyEdit, seedFromRun, forClient, EditRefused,
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
+  AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   type AssetStore,
   type Run, type Onboarding, type PortalKey,
 } from '@edsai/engine';
@@ -690,6 +691,160 @@ export class ApiServer {
         },
       },
 
+      /* --------------------------------------------------------- positioning */
+
+      /**
+       * One positioning chart.
+       *
+       * The client's own point is computed here from their discovery answers
+       * and cannot be supplied by the caller — which is the whole claim. A
+       * request can choose which two axes to look at; it cannot choose where
+       * the brand lands on them.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/positioning$/,
+        run: ({ res, params, url, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const client = scoped.getClient(clientId);
+          if (!client) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+
+          const xAxis = url.searchParams.get('x') ?? AXES[0]?.id ?? '';
+          const yAxis = url.searchParams.get('y') ?? AXES[2]?.id ?? '';
+
+          // The most recent discovery, preferring a submitted one.
+          //
+          // An earlier version read submitted flows only, which left the chart
+          // blank for a client halfway through answering — and that gate buys
+          // nothing, because a missing answer already drops its axis rather
+          // than inventing a position. Withholding what has been decided so far
+          // hides real information; the honest move is to show it and say it is
+          // not final.
+          const onboardings = [...scoped.listOnboardings(clientId)].sort((a, b) => {
+            if (Boolean(a.submittedAt) !== Boolean(b.submittedAt)) return a.submittedAt ? -1 : 1;
+            return (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt);
+          });
+          const latest = onboardings[0];
+          const answers = latest ? this.store.getAnswers(latest.id) : [];
+          const answersFrom = !latest ? 'none' : latest.submittedAt ? 'submitted' : 'in-progress';
+
+          const matrix = matrixFor({
+            xAxis,
+            yAxis,
+            brandName: client.name,
+            answers,
+            comparators: scoped.listComparators(clientId),
+          });
+
+          if (!matrix) {
+            send(res, 400, {
+              error: 'bad_axes',
+              message: 'A chart needs two different axes, both of them real ones.',
+            });
+            return;
+          }
+
+          send(res, 200, { matrix, axes: AXES, answersFrom });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/comparators$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { comparators: scoped.listComparators(clientId) });
+        },
+      },
+
+      /**
+       * Place a brand on the chart.
+       *
+       * Positions are partial by design: this sets the two axes whoever placed
+       * it was actually looking at, and says nothing about the rest. The
+       * comparator then appears on the comparisons someone made a judgement
+       * about and is absent from the ones they did not.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/comparators$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          if (!scoped.canWrite('brand', clientId)) {
+            send(res, 403, {
+              error: 'forbidden',
+              message: 'This session cannot place brands on that client’s chart.',
+            });
+            return;
+          }
+
+          const input = body as {
+            name?: string; note?: string; positions?: Record<string, unknown>;
+          };
+          const name = (input?.name ?? '').trim();
+          if (!name) {
+            send(res, 400, { error: 'bad_request', message: 'A brand on the chart needs a name.' });
+            return;
+          }
+
+          // Only real axes, only real numbers, only inside the scale. A caller
+          // that could write an unknown axis or a position off the chart would
+          // decide what the chart renders, which is not theirs to decide.
+          const positions: Record<string, number> = {};
+          for (const [id, value] of Object.entries(input?.positions ?? {})) {
+            if (!axis(id) || typeof value !== 'number' || !Number.isFinite(value)) continue;
+            positions[id] = Math.min(AXIS_MAX, Math.max(AXIS_MIN, Math.round(value)));
+          }
+          if (Object.keys(positions).length < 2) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A brand needs a position on at least two axes to appear anywhere.',
+            });
+            return;
+          }
+
+          const comparator = {
+            id: newId('cmp'),
+            clientId,
+            name: name.slice(0, 80),
+            ...(input?.note?.trim() ? { note: input.note.trim().slice(0, 400) } : {}),
+            positions,
+            createdAt: new Date().toISOString(),
+          };
+          scoped.saveComparator(comparator);
+          send(res, 201, { comparator });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/comparators\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getComparator(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such brand on any chart here.' });
+            return;
+          }
+          if (!scoped.canWrite('brand', existing.clientId)) {
+            send(res, 403, { error: 'forbidden', message: 'This session cannot change that chart.' });
+            return;
+          }
+          scoped.deleteComparator(existing.id);
+          send(res, 200, { removed: existing.name });
+        },
+      },
+
       /* --------------------------------------------------------- portal keys */
 
       /**
@@ -917,6 +1072,22 @@ export class ApiServer {
           const files = scoped.listAssets(client.id);
           const brandValues = forClient(scoped.listBrandValues(client.id));
 
+          // The same chart the studio sees, built the same way, through the
+          // same scope. A client is shown where they sit only once somebody has
+          // put something beside them — one dot alone in a square says nothing.
+          const answers = (() => {
+            const latest = [...scoped.listOnboardings(client.id)].sort((a, b) =>
+              (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt))[0];
+            return latest ? this.store.getAnswers(latest.id) : [];
+          })();
+          const matrix = matrixFor({
+            xAxis: 'E4',
+            yAxis: 'E6',
+            brandName: client.name,
+            answers,
+            comparators: scoped.listComparators(client.id),
+          });
+
           sendHtml(res, 200, renderPortal({
             clientName: client.name,
             files: files.map((asset) => ({
@@ -928,6 +1099,11 @@ export class ApiServer {
               ...(asset.description ? { description: asset.description } : {}),
             })),
             brandValues,
+            ...(matrix && matrix.points.length > 1 ? { matrix: {
+              x: { label: matrix.x.label, low: matrix.x.low, high: matrix.x.high },
+              y: { label: matrix.y.label, low: matrix.y.low, high: matrix.y.high },
+              points: matrix.points,
+            } } : {}),
             ...(principal.role === 'limited' && principal.collections
               ? { limitedTo: principal.collections } : {}),
             generatedAt: new Date().toISOString(),

@@ -11,3 +11,4 @@ export * from './scoped.js';
 export * from './onboarding.js';
 export * from './brand.js';
 export * from './assets.js';
+export * from './positioning.js';

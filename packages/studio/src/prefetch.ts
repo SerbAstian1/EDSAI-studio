@@ -54,6 +54,7 @@ function forRoute(route: Route): Warm[] {
         { queryKey: ['assets', id], queryFn: () => api.assets(id) },
         { queryKey: ['portal-keys', id], queryFn: () => api.portalKeys(id) },
         { queryKey: ['onboardings', id], queryFn: () => api.onboardings(id) },
+        { queryKey: ['positioning', id, 'E4', 'E6'], queryFn: () => api.positioning(id, 'E4', 'E6') },
       ];
     }
 

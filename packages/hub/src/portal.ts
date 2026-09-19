@@ -32,11 +32,29 @@ export interface PortalFile {
   description?: string;
 }
 
+/** One brand on the positioning chart, already filtered to this session. */
+export interface PortalPoint {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  source: 'computed' | 'placed';
+  note?: string;
+}
+
+export interface PortalMatrix {
+  x: { label: string; low: string; high: string };
+  y: { label: string; low: string; high: string };
+  points: PortalPoint[];
+}
+
 export interface PortalModel {
   clientName: string;
   /** What this session may see, already filtered. Never the whole library. */
   files: PortalFile[];
   brandValues: ClientFacingValue[];
+  /** Where they sit against the brands the studio compared them to. */
+  matrix?: PortalMatrix;
   /** Set when the session is limited to particular collections. */
   limitedTo?: readonly string[];
   generatedAt: string;
@@ -79,6 +97,74 @@ export function collections(files: readonly PortalFile[]): [string, PortalFile[]
   });
 }
 
+/**
+ * The positioning chart, as static SVG.
+ *
+ * The same distinction the studio sees, kept intact on the way to the client:
+ * a **filled** dot was computed from their own answers, a **hollow** one was
+ * placed by the studio. Dropping that on the client's copy would be the worst
+ * place to drop it — they are the person most likely to mistake a judgement for
+ * a finding, and least able to check.
+ *
+ * No script. The labels are on the chart and the numbers are in the table
+ * beneath it, so there is nothing to hover for.
+ */
+const CHART = 360;
+const CHART_PAD = 40;
+const CHART_PLOT = CHART - CHART_PAD * 2;
+
+const chartX = (value: number): number => CHART_PAD + (value / 100) * CHART_PLOT;
+const chartY = (value: number): number => CHART_PAD + ((100 - value) / 100) * CHART_PLOT;
+
+function renderMatrix(matrix: PortalMatrix): string {
+  const points = matrix.points.map((point) => {
+    const cx = chartX(point.x);
+    const cy = chartY(point.y);
+    const computed = point.source === 'computed';
+    const flip = point.x > 62;
+    return `<circle cx="${cx}" cy="${cy}" r="5"
+      fill="${computed ? 'var(--mark)' : 'var(--bg)'}"
+      stroke="${computed ? 'var(--bg)' : 'var(--muted)'}" stroke-width="2" />
+<text x="${flip ? cx - 11 : cx + 11}" y="${cy + 4}" class="pt"
+      text-anchor="${flip ? 'end' : 'start'}">${escapeHtml(point.label)}</text>`;
+  }).join('');
+
+  const rows = matrix.points.map((point) => `<tr>
+  <td>${escapeHtml(point.label)}</td>
+  <td>${Math.round(point.x)}</td>
+  <td>${Math.round(point.y)}</td>
+  <td>${point.source === 'computed' ? 'Your own answers' : 'Placed by the studio'}</td>
+</tr>`).join('');
+
+  return `<figure class="matrix">
+<svg viewBox="0 0 ${CHART} ${CHART}" role="img"
+     aria-label="${escapeHtml(matrix.x.label)} against ${escapeHtml(matrix.y.label)}">
+  <rect x="${CHART_PAD}" y="${CHART_PAD}" width="${CHART_PLOT}" height="${CHART_PLOT}"
+        fill="none" stroke="var(--line)" stroke-width="1" />
+  <line x1="${chartX(50)}" y1="${CHART_PAD}" x2="${chartX(50)}" y2="${CHART_PAD + CHART_PLOT}"
+        stroke="var(--line)" stroke-width="1" />
+  <line x1="${CHART_PAD}" y1="${chartY(50)}" x2="${CHART_PAD + CHART_PLOT}" y2="${chartY(50)}"
+        stroke="var(--line)" stroke-width="1" />
+  <text x="${CHART_PAD}" y="${CHART - 14}" class="pole" text-anchor="start">${escapeHtml(matrix.x.low)}</text>
+  <text x="${CHART_PAD + CHART_PLOT}" y="${CHART - 14}" class="pole" text-anchor="end">${escapeHtml(matrix.x.high)}</text>
+  <text x="${-(CHART_PAD + CHART_PLOT)}" y="16" class="pole" text-anchor="start" transform="rotate(-90)">${escapeHtml(matrix.y.low)}</text>
+  <text x="${-CHART_PAD}" y="16" class="pole" text-anchor="end" transform="rotate(-90)">${escapeHtml(matrix.y.high)}</text>
+  ${points}
+</svg>
+<figcaption>
+  <span class="legend"><i class="key computed"></i> From your own answers</span>
+  <span class="legend"><i class="key placed"></i> Placed by the studio</span>
+</figcaption>
+</figure>
+<table class="matrix-table">
+<thead><tr>
+  <th>Brand</th><th>${escapeHtml(matrix.x.label)}</th>
+  <th>${escapeHtml(matrix.y.label)}</th><th>Where this came from</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+</table>`;
+}
+
 /** Extra portal-only rules, appended to the hub's own stylesheet. */
 const PORTAL_STYLE = `
 .files{border:1px solid var(--line);border-radius:.5rem;overflow:hidden;margin:.6rem 0 1.4rem}
@@ -91,6 +177,18 @@ a.get{font-size:.9rem;padding:.3rem .7rem;border:1px solid var(--control-line);b
 a.get:hover{border-color:var(--ink)}
 a.get:focus-visible{outline:3px solid #16181d;outline-offset:2px}
 .note{color:var(--muted);font-size:.9rem}
+.matrix{margin:0 0 1rem;max-width:26rem}
+.matrix svg{width:100%;height:auto;display:block}
+.matrix .pole{font-size:11px;letter-spacing:.06em;text-transform:uppercase;fill:var(--muted)}
+.matrix .pt{font-size:12px;fill:var(--ink)}
+.matrix figcaption{display:flex;flex-wrap:wrap;gap:1rem;margin-top:.6rem;font-size:.85rem;color:var(--muted)}
+.legend{display:inline-flex;align-items:center;gap:.4rem}
+.key{width:10px;height:10px;border-radius:50%;flex:none}
+.key.computed{background:var(--mark)}
+.key.placed{background:var(--bg);box-shadow:inset 0 0 0 2px var(--muted)}
+.matrix-table{width:100%;border-collapse:collapse;font-size:.9rem;margin-bottom:1rem}
+.matrix-table th,.matrix-table td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line)}
+.matrix-table th{font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:500}
 /* The hub opens with a brief, so its first heading needs the breathing room.
    This page opens straight onto the files, and that space reads as an error. */
 main{padding-top:.5rem}
@@ -173,6 +271,8 @@ export function renderPortal(model: PortalModel): string {
 ${section('files', 'Files', files || (fileCount === 0
   ? '<p class="note">Nothing has been shared with you yet. It will appear here when it is ready — there is no other place to look.</p>'
   : ''))}
+${section('position', 'Where you sit', model.matrix && model.matrix.points.length > 0
+  ? renderMatrix(model.matrix) : '')}
 ${section('colour', 'Colour', colours ? `<div class="swatches">${colours}</div>` : '')}
 ${section('type', 'Typography', type ? `<ul>${type}</ul>` : '')}
 <footer>

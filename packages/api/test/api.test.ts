@@ -1892,3 +1892,153 @@ describe('listing projects', () => {
     expect(status).toBe(201);
   });
 });
+
+describe('the positioning chart', () => {
+  /** A client who has been through discovery, with real answers stored. */
+  const answered = async (name = 'Plotted Co') => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    const clientId = body['id'] as unknown as string;
+    const invited = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    const token = (invited.body['invite'] as unknown as { token: string }).token;
+
+    const saved = cookie;
+    cookie = '';
+    // Answered as the client would: through the public capability link.
+    for (const [questionId, value] of [
+      ['e2', 4], ['e3', 2],
+      ['e4', { side: 'a', strength: 'overwhelmingly' }],
+      ['e6', { side: 'b', strength: 'clearly' }],
+    ] as const) {
+      await json(`/api/onboard/${token}`, {
+        method: 'POST', body: JSON.stringify({ questionId, value }),
+      });
+    }
+    cookie = saved;
+    return clientId;
+  };
+
+  it('computes the client’s own point from their answers, not from the caller', async () => {
+    const clientId = await answered();
+    const { status, body } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6`);
+    expect(status).toBe(200);
+    const matrix = body['matrix'] as unknown as {
+      points: { label: string; x: number; y: number; source: string }[];
+    };
+    expect(matrix.points).toEqual([
+      { id: 'brand', label: 'Plotted Co', x: 15, y: 70, source: 'computed' },
+    ]);
+  });
+
+  it('will not take a position for the client from the request', async () => {
+    // The whole claim is that this point is computed. A caller who could pass
+    // it would be drawing the chart themselves.
+    const clientId = await answered();
+    const { body } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6&brandX=99&brandY=1`);
+    const matrix = body['matrix'] as unknown as { points: { x: number; y: number }[] };
+    expect(matrix.points[0]).toMatchObject({ x: 15, y: 70 });
+  });
+
+  it('places a comparator and marks it as placed rather than computed', async () => {
+    const clientId = await answered();
+    const created = await json(`/api/clients/${clientId}/comparators`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Rival', note: 'The one they hate', positions: { E4: 80, E6: 20 } }),
+    });
+    expect(created.status).toBe(201);
+
+    const { body } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6`);
+    const matrix = body['matrix'] as unknown as { points: { label: string; source: string }[] };
+    expect(matrix.points.map((p) => [p.label, p.source])).toEqual([
+      ['Plotted Co', 'computed'], ['Rival', 'placed'],
+    ]);
+  });
+
+  it('refuses an axis it does not have, rather than inventing one', async () => {
+    const clientId = await answered();
+    const { status } = await json(`/api/clients/${clientId}/comparators`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Nowhere', positions: { E4: 50, MADE_UP: 50 } }),
+    });
+    // Only one usable axis survived, and one position is not a point.
+    expect(status).toBe(400);
+  });
+
+  it('clamps a position that would sit off the chart', async () => {
+    const clientId = await answered();
+    const { body } = await json(`/api/clients/${clientId}/comparators`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Extreme', positions: { E4: 900, E6: -40 } }),
+    });
+    expect((body['comparator'] as unknown as { positions: Record<string, number> }).positions)
+      .toEqual({ E4: 100, E6: 0 });
+  });
+
+  it('refuses two of the same axis', async () => {
+    const clientId = await answered();
+    const { status } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E4`);
+    expect(status).toBe(400);
+  });
+
+  it('leaves a client with no answers off their own chart', async () => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Never Asked' }),
+    });
+    const clientId = body['id'] as unknown as string;
+    await json(`/api/clients/${clientId}/comparators`, {
+      method: 'POST', body: JSON.stringify({ name: 'Rival', positions: { E4: 30, E6: 70 } }),
+    });
+
+    const chart = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6`);
+    const matrix = chart.body['matrix'] as unknown as { points: { label: string }[] };
+    // The competitor is there; the client is not, because nothing measured them.
+    expect(matrix.points.map((p) => p.label)).toEqual(['Rival']);
+    expect(chart.body['answersFrom']).toBe('none');
+  });
+
+  it('charts a client who is still answering, and says the answers are not final', async () => {
+    // A gate on submission would leave this chart blank until the last
+    // question, which hides decisions that have already been made. A missing
+    // answer already drops its own axis, so nothing here is invented.
+    const clientId = await answered('Mid Flow');
+    const { body } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6`);
+    expect(body['answersFrom']).toBe('in-progress');
+    const matrix = body['matrix'] as unknown as { points: { label: string }[] };
+    expect(matrix.points.map((p) => p.label)).toEqual(['Mid Flow']);
+  });
+
+  it('leaves out an axis the client has not reached yet', async () => {
+    const clientId = await answered('Mid Flow');
+    // E5 and E7 were never answered, so nobody appears on that chart.
+    const { body } = await json(`/api/clients/${clientId}/positioning?x=E5&y=E7`);
+    const matrix = body['matrix'] as unknown as {
+      points: unknown[]; unanswered: string[];
+    };
+    expect(matrix.points).toEqual([]);
+    expect(matrix.unanswered).toEqual(['E5', 'E7']);
+  });
+
+  it('removes a placed brand', async () => {
+    const clientId = await answered();
+    const created = await json(`/api/clients/${clientId}/comparators`, {
+      method: 'POST', body: JSON.stringify({ name: 'Gone Soon', positions: { E4: 10, E6: 90 } }),
+    });
+    const id = (created.body['comparator'] as unknown as { id: string }).id;
+    expect((await json(`/api/comparators/${id}`, { method: 'DELETE' })).status).toBe(200);
+
+    const { body } = await json(`/api/clients/${clientId}/comparators`);
+    expect(body['comparators']).toEqual([]);
+  });
+
+  it('keeps one client’s comparators away from another client', async () => {
+    const mine = await answered('Mine');
+    const theirs = await answered('Theirs');
+    await json(`/api/clients/${theirs}/comparators`, {
+      method: 'POST', body: JSON.stringify({ name: 'Secret', positions: { E4: 10, E6: 90 } }),
+    });
+
+    const { body } = await json(`/api/clients/${mine}/comparators`);
+    expect(body['comparators']).toEqual([]);
+  });
+});

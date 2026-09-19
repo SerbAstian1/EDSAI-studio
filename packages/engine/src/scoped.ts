@@ -6,6 +6,7 @@ import type { RunStore } from './store.js';
 import type { Client, Contact, Project } from './entities.js';
 import type { Onboarding } from './onboarding.js';
 import type { BrandValue } from './brand.js';
+import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 
@@ -177,6 +178,32 @@ export class ScopedStore {
   saveAsset(asset: Asset): void {
     this.mustWrite('asset', asset.clientId);
     this.store.saveAsset(asset);
+  }
+
+  /* ------------------------------------------------------------ comparators */
+
+  /**
+   * The brands placed beside this client's on a positioning chart.
+   *
+   * Read through `brand`, because that is what a comparator is about — it exists
+   * only to sit next to this client's own position, and a session that may not
+   * see the brand has no business seeing what it was compared against.
+   */
+  listComparators(clientId: string): Comparator[] {
+    if (!this.mayRead('brand', clientId)) return [];
+    return this.store.listComparators(clientId);
+  }
+
+  saveComparator(comparator: Comparator): void {
+    this.mustWrite('brand', comparator.clientId);
+    this.store.saveComparator(comparator);
+  }
+
+  deleteComparator(id: string): void {
+    const existing = this.store.getComparator(id);
+    if (!existing) return;
+    this.mustWrite('brand', existing.clientId);
+    this.store.deleteComparator(id);
   }
 
   /* ----------------------------------------------------------- brand values */

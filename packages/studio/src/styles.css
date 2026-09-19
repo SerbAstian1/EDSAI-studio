@@ -693,6 +693,66 @@ button.choice.chosen {
   .onboard-card { padding: calc(var(--step) * 5); }
 }
 
+/* — the positioning matrix ——————————————————————————————————————— */
+
+.matrix { margin: 0; max-width: 420px; }
+/* Capped rather than fluid: the SVG's text scales with its box, so a chart
+   stretched across a desktop column would render 20px axis labels. A square
+   plot at a readable size is the right shape for this anyway. */
+.matrix svg { width: 100%; height: auto; display: block; }
+
+.matrix .pole {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--text-muted);
+}
+.matrix .point-label {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  /* Text never wears the data colour: the dot carries identity, the label
+     carries the name. */
+  fill: var(--text-secondary);
+}
+.matrix .point { cursor: default; }
+.matrix .point.active .point-label,
+.matrix .point:focus-visible .point-label { fill: var(--text-primary); font-weight: 500; }
+.matrix .point:focus { outline: none; }
+.matrix .point:focus-visible circle:nth-of-type(2) { stroke: var(--accent); }
+
+.matrix figcaption {
+  margin-top: calc(var(--step) * 2);
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 2.6em;
+}
+.matrix figcaption .note { display: block; color: var(--text-muted); }
+
+.matrix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-block);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.matrix-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.matrix-legend .key {
+  width: 10px; height: 10px; border-radius: 50%; flex: none;
+}
+.matrix-legend .key.computed { background: var(--accent); }
+/* The table is the chart's keyboard path, so a focused row has to be as
+   obvious as a hovered dot. */
+.matrix-table tr:focus { outline: none; }
+.matrix-table tr.active,
+.matrix-table tr:focus-visible { background: var(--surface); }
+.matrix-table tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.matrix-legend .key.placed {
+  background: var(--surface-elevated);
+  box-shadow: inset 0 0 0 2px var(--text-muted);
+}
+
 /* — brand values ———————————————————————————————————————————————— */
 
 /*

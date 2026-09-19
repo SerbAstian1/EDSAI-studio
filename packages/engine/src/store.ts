@@ -7,6 +7,7 @@ import {
   type Issue as IssueType, type Run as RunType,
 } from './types.js';
 import { slugify } from './entities.js';
+import { Comparator, type Comparator as ComparatorType } from './positioning.js';
 import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import { Asset, type Asset as AssetType } from './assets.js';
 import {
@@ -157,6 +158,17 @@ CREATE TABLE IF NOT EXISTS portal_keys (
 );
 
 CREATE INDEX IF NOT EXISTS portal_keys_by_client ON portal_keys (client_id);
+
+CREATE TABLE IF NOT EXISTS comparators (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  note TEXT,
+  positions TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS comparators_by_client ON comparators (client_id);
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -639,6 +651,45 @@ export class RunStore {
     this.db.prepare('DELETE FROM onboarding_invites WHERE onboarding_id = ?').run(onboardingId);
   }
 
+  /* ------------------------------------------------------------- comparators */
+
+  /**
+   * A brand the studio placed on a positioning chart.
+   *
+   * Stored apart from `brand_values` deliberately. A brand value is the
+   * client's own and carries a measurement; a comparator is somebody else's
+   * brand carrying the studio's judgement about where it sits. Putting them in
+   * one table would be the first step toward rendering them the same way.
+   */
+  saveComparator(comparator: ComparatorType): void {
+    Comparator.parse(comparator);
+    this.db.prepare(`
+      INSERT INTO comparators (id, client_id, name, note, positions, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, note = excluded.note, positions = excluded.positions
+    `).run(
+      comparator.id, comparator.clientId, comparator.name, comparator.note ?? null,
+      JSON.stringify(comparator.positions), comparator.createdAt,
+    );
+  }
+
+  listComparators(clientId: string): ComparatorType[] {
+    return (this.db.prepare(
+      'SELECT * FROM comparators WHERE client_id = ? ORDER BY name',
+    ).all(clientId) as Record<string, unknown>[]).map(hydrateComparator);
+  }
+
+  getComparator(id: string): ComparatorType | undefined {
+    const row = this.db.prepare('SELECT * FROM comparators WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateComparator(row) : undefined;
+  }
+
+  deleteComparator(id: string): void {
+    this.db.prepare('DELETE FROM comparators WHERE id = ?').run(id);
+  }
+
   /* ------------------------------------------------------------- portal keys */
 
   /**
@@ -1094,6 +1145,17 @@ function hydrateOnboarding(row: Record<string, unknown>): OnboardingType {
  */
 export function portalUserId(digest: string): string {
   return `portal-${digest.slice(0, 12)}`;
+}
+
+function hydrateComparator(row: Record<string, unknown>): ComparatorType {
+  return Comparator.parse({
+    id: row['id'],
+    clientId: row['client_id'],
+    name: row['name'],
+    ...(row['note'] ? { note: row['note'] } : {}),
+    positions: JSON.parse(String(row['positions'])) as Record<string, number>,
+    createdAt: row['created_at'],
+  });
 }
 
 function hydratePortalKey(row: Record<string, unknown>): PortalKey {

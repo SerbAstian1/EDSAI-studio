@@ -822,6 +822,77 @@ guidance as placeholder text, which disappears the moment someone starts typing
 — which is when they are using it. Guidance now sits beside the field and the
 placeholder holds an example answer.
 
+## 4v. A positioning matrix that can say where its dots came from
+
+A 2×2 brand map is normally the most assertion-heavy artefact in a deck:
+somebody draws two axes, puts the client in the good quadrant, and scatters the
+competition around them. Nothing about it is checkable. Building one here meant
+deciding what would make it not that.
+
+**The client's own point is computed.** It comes from their discovery answers
+through `positionOf` and nothing else — the API will not accept a position for
+the client from the request, and there is a test that tries. The four ratio
+axes ask "pick a side" then "how strongly", which is stored as 60/40, 70/30 or
+85/15; the position is the share that went to the high pole. One consequence is
+worth stating: **50 is unreachable**, because the questionnaire never offers the
+fence. That property is tested across every side and strength, so a future
+change to the strengths cannot quietly reintroduce a midpoint the flow refuses.
+
+**Every other point is placed by the studio, and the chart says so.** A filled
+accent dot was measured; a hollow grey one is a judgement. That distinction is
+`instrument` versus `stated-target` applied to a picture, and it is carried
+into the client's portal as well — that is the copy where it matters most,
+because the client is the person most likely to read a judgement as a finding
+and least able to check.
+
+**A missing answer drops its axis rather than defaulting to the middle.** A
+brand at 50 because nobody asked is indistinguishable from a brand that really
+sits at 50. A point needs both coordinates or it is not a point.
+
+Comparators are placed by clicking the chart, which sets the two axes on screen
+and says nothing about the other four. That is faster than six sliders and more
+honest about what was recorded: a comparator appears on the comparisons somebody
+actually thought about.
+
+### What the visualization rules changed
+
+- **The mark colour was originally `--fail`,** the hub's failure red, because it
+  was the only saturated token in that stylesheet. Status colours are reserved —
+  a series wearing one says the brand is broken. The hub now has its own
+  `--mark` token.
+- **The palette validator fails one check, deliberately.** The grey for placed
+  brands is below the chroma floor: it reads as grey. That is the point — this
+  is emphasis (one subject, the rest recessive), not two peer series. Every
+  separation check passes, and identity is carried by fill-versus-hollow and a
+  direct label on every point, so nothing is encoded by colour alone. Recorded
+  rather than silently ignored.
+- **Labels step out of each other's way.** Two brands close together is the
+  normal case on a positioning chart, and overlapping text is the fastest way to
+  make one look broken.
+
+### A probe that failed for the wrong reason
+
+Keyboard focus appeared not to work: focusing a mark set `document.activeElement`
+and fired no `focusin`, so the read-out never updated. I concluded that a
+focusable SVG group is not a focusable control, wrote that in a comment, and
+rebuilt the interaction around table rows.
+
+Then a plain `<tr>` behaved identically — which is not plausible. The cause was
+the probe: headless Chrome does not dispatch focus events while the page itself
+is unfocused, and `Emulation.setFocusEmulationEnabled` fixes it. With that on,
+both the table rows **and** the SVG groups fire focus correctly.
+
+The §4g family is a check that passes for the wrong reason. This is the third
+time in this session it has appeared inverted — a check that *fails* for the
+wrong reason — and that direction is more dangerous than it looks: the first
+one nearly sent me rewriting a working data layer, and this one put a false
+claim about browsers into a source comment. The comment now says why the table
+is the better keyboard path, which is true, instead of why the alternative is
+impossible, which was not.
+
+The table rows stayed, on their merits: predictable tab order, an ordinary focus
+ring, and the numbers are right there next to the name.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

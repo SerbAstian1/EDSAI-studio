@@ -6,6 +6,7 @@ import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
 import PortalAccess from './PortalAccess.js';
+import Positioning from './Positioning.js';
 import type { Run } from '../api.js';
 
 /**
@@ -137,6 +138,8 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
       <OnboardingPanel clientId={clientId} />
 
       <Brand clientId={clientId} />
+
+      <Positioning clientId={clientId} />
 
       <Assets clientId={clientId} />
 

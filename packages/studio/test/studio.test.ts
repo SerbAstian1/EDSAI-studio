@@ -7,10 +7,11 @@ import { parseRoute, activeSection } from '../src/App.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
-import type { Asset, Client, DepartmentOutput, Issue, Project } from '../src/api.js';
+import type { Asset, Client, DepartmentOutput, Issue, Plotted, Project } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
 import { briefFrom, byClient } from '../src/screens/NewRun.js';
+import { layOutLabels } from '../src/components/QuadrantChart.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
   runId: 'r1', departmentId, body: 'x',
@@ -495,5 +496,46 @@ describe('choosing a project for a run', () => {
   it('never attaches a project to a client that does not own it', () => {
     const groups = byClient([client('a', 'Acme')], [project('p1', 'other', 'Not theirs')]);
     expect(groups).toEqual([]);
+  });
+});
+
+describe('laying out the chart’s labels', () => {
+  const point = (id: string, x: number, y: number, label = id): Plotted => ({
+    id, label, x, y, source: 'placed',
+  });
+
+  it('flips a label inward near the right edge so it stays on the chart', () => {
+    const layout = layOutLabels([point('a', 90, 50, 'Somebody')]);
+    expect(layout.get('a')?.flip).toBe(true);
+    expect(layOutLabels([point('b', 10, 50, 'Somebody')]).get('b')?.flip).toBe(false);
+  });
+
+  it('leaves a lone label where it belongs', () => {
+    expect(layOutLabels([point('a', 20, 50)]).get('a')?.dy).toBe(0);
+  });
+
+  it('nudges a label that would sit on top of another', () => {
+    // Two brands close together is the normal case on a positioning chart, and
+    // overlapping text is the fastest way to make one look broken.
+    const layout = layOutLabels([
+      point('a', 20, 50, 'Morrow Studio'),
+      point('b', 24, 52, 'Dims.'),
+    ]);
+    expect(layout.get('a')?.dy).toBe(0);
+    expect(layout.get('b')?.dy).not.toBe(0);
+  });
+
+  it('keeps nudging when three land in the same place', () => {
+    const layout = layOutLabels([
+      point('a', 20, 50, 'One'), point('b', 21, 50, 'Two'), point('c', 22, 50, 'Three'),
+    ]);
+    const offsets = ['a', 'b', 'c'].map((id) => layout.get(id)?.dy);
+    expect(new Set(offsets).size).toBe(3);
+  });
+
+  it('does not nudge brands that are far apart', () => {
+    const layout = layOutLabels([point('a', 10, 90, 'One'), point('b', 10, 20, 'Two')]);
+    expect(layout.get('a')?.dy).toBe(0);
+    expect(layout.get('b')?.dy).toBe(0);
   });
 });

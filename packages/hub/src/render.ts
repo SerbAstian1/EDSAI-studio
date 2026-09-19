@@ -67,7 +67,7 @@ export function section(id: string, title: string, body: string): string {
 </section>`;
 }
 
-export const STYLE = `:root{--ink:#16181d;--muted:#666c78;--line:#e3e5ea;--bg:#fff;--pass:#0f6b3f;--fail:#9a2617;--stated:#7a5a10;--control-line:#828996}
+export const STYLE = `:root{--ink:#16181d;--muted:#666c78;--line:#e3e5ea;--bg:#fff;--pass:#0f6b3f;--fail:#9a2617;--stated:#7a5a10;--control-line:#828996;--mark:#EB5E28}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:56rem;margin:0 auto;padding:2rem 1rem 6rem}
