@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-09-18T16:14:06.449Z",
-  "from": "http://localhost:4330",
+  "capturedAt": "2026-09-19T13:19:36.980Z",
+  "from": "http://localhost:4340",
   "responses": {
     "/api/health": {
       "status": 200,
@@ -15,7 +15,7 @@
       "body": {
         "principal": {
           "kind": "studio",
-          "userId": "user-mu75rva4-2b0eadff",
+          "userId": "user-mu8eonto-58f25235",
           "role": "owner"
         }
       }
@@ -557,7 +557,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu75rvjx-f07cf9ab",
+            "id": "asset-mu8eoo75-9b8f3f65",
             "clientId": "client-disan-footwear",
             "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
             "filename": "ss26-lookbook.pdf",
@@ -565,10 +565,10 @@
             "contentType": "application/pdf",
             "bytes": 212,
             "approved": false,
-            "uploadedAt": "2026-09-18T16:14:02.109Z"
+            "uploadedAt": "2026-09-19T13:11:15.329Z"
           },
           {
-            "id": "asset-mu75rvjc-57df84f4",
+            "id": "asset-mu8eoo6d-fb35b5b4",
             "clientId": "client-disan-footwear",
             "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
             "filename": "disan-logo.png",
@@ -577,10 +577,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.088Z"
+            "uploadedAt": "2026-09-19T13:11:15.301Z"
           },
           {
-            "id": "asset-mu75rvit-a0e3e62d",
+            "id": "asset-mu8eoo5d-dfd8fd72",
             "clientId": "client-morrow-studio",
             "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
             "filename": "wordmark-draft.png",
@@ -589,10 +589,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": false,
-            "uploadedAt": "2026-09-18T16:14:02.069Z"
+            "uploadedAt": "2026-09-19T13:11:15.266Z"
           },
           {
-            "id": "asset-mu75rvic-210ad410",
+            "id": "asset-mu8eoo4m-6d7d7b56",
             "clientId": "client-morrow-studio",
             "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
             "filename": "showroom-01.jpg",
@@ -601,10 +601,10 @@
             "bytes": 212,
             "collection": "Photography",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.052Z"
+            "uploadedAt": "2026-09-19T13:11:15.238Z"
           },
           {
-            "id": "asset-mu75rvhq-3b8e392e",
+            "id": "asset-mu8eoo3x-5c4cac0f",
             "clientId": "client-morrow-studio",
             "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
             "filename": "brand-guidelines.pdf",
@@ -614,10 +614,10 @@
             "collection": "Documents",
             "description": "Everything below, in one document.",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.030Z"
+            "uploadedAt": "2026-09-19T13:11:15.213Z"
           },
           {
-            "id": "asset-mu75rvh4-98cd89b0",
+            "id": "asset-mu8eoo33-5aa4ddec",
             "clientId": "client-morrow-studio",
             "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
             "filename": "morrow-logo-mono.png",
@@ -626,10 +626,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.008Z"
+            "uploadedAt": "2026-09-19T13:11:15.183Z"
           },
           {
-            "id": "asset-mu75rvgm-9ac6a7b9",
+            "id": "asset-mu8eoo29-dae7c553",
             "clientId": "client-morrow-studio",
             "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
             "filename": "morrow-logo-primary.png",
@@ -639,7 +639,7 @@
             "collection": "Logos",
             "description": "The primary mark. Use this unless there is a reason not to.",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:01.990Z"
+            "uploadedAt": "2026-09-19T13:11:15.153Z"
           }
         ]
       }
@@ -660,8 +660,8 @@
             "slug": "disan-footwear",
             "industry": "Footwear",
             "status": "prospect",
-            "createdAt": "2026-09-18T16:14:01.792Z",
-            "updatedAt": "2026-09-18T16:14:01.792Z",
+            "createdAt": "2026-09-19T13:11:14.893Z",
+            "updatedAt": "2026-09-19T13:11:14.893Z",
             "projects": 1,
             "contacts": 1
           },
@@ -671,8 +671,8 @@
             "slug": "morrow-studio",
             "industry": "Interiors",
             "status": "prospect",
-            "createdAt": "2026-09-18T16:14:01.769Z",
-            "updatedAt": "2026-09-18T16:14:01.769Z",
+            "createdAt": "2026-09-19T13:11:14.863Z",
+            "updatedAt": "2026-09-19T13:11:14.863Z",
             "projects": 2,
             "contacts": 2
           }
@@ -688,28 +688,28 @@
           "slug": "disan-footwear",
           "industry": "Footwear",
           "status": "prospect",
-          "createdAt": "2026-09-18T16:14:01.792Z",
-          "updatedAt": "2026-09-18T16:14:01.792Z"
+          "createdAt": "2026-09-19T13:11:14.893Z",
+          "updatedAt": "2026-09-19T13:11:14.893Z"
         },
         "contacts": [
           {
-            "id": "contact-mu75rvc1-b77ec855",
+            "id": "contact-mu8eonwd-feac1d83",
             "clientId": "client-disan-footwear",
             "name": "Ife Adeyemi",
             "title": "Brand manager",
             "decisionMaker": true,
-            "createdAt": "2026-09-18T16:14:01.825Z"
+            "createdAt": "2026-09-19T13:11:14.941Z"
           }
         ],
         "projects": [
           {
-            "id": "project-ss26-campaign-909341",
+            "id": "project-ss26-campaign-e002c4",
             "clientId": "client-disan-footwear",
             "name": "SS26 campaign",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-18T16:14:01.848Z",
-            "updatedAt": "2026-09-18T16:14:01.848Z"
+            "createdAt": "2026-09-19T13:11:14.976Z",
+            "updatedAt": "2026-09-19T13:11:14.976Z"
           }
         ],
         "runs": []
@@ -720,7 +720,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu75rvjx-f07cf9ab",
+            "id": "asset-mu8eoo75-9b8f3f65",
             "clientId": "client-disan-footwear",
             "digest": "7f9d8b24587e9221494b4142c9a263ad570e1a9234cc70796f85d12da0119aa4",
             "filename": "ss26-lookbook.pdf",
@@ -728,10 +728,10 @@
             "contentType": "application/pdf",
             "bytes": 212,
             "approved": false,
-            "uploadedAt": "2026-09-18T16:14:02.109Z"
+            "uploadedAt": "2026-09-19T13:11:15.329Z"
           },
           {
-            "id": "asset-mu75rvjc-57df84f4",
+            "id": "asset-mu8eoo6d-fb35b5b4",
             "clientId": "client-disan-footwear",
             "digest": "7c5ef7e803d321c0a9003253beb706e66dc64c74721c16139b92328bf411cfdc",
             "filename": "disan-logo.png",
@@ -740,7 +740,7 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.088Z"
+            "uploadedAt": "2026-09-19T13:11:15.301Z"
           }
         ]
       }
@@ -756,7 +756,7 @@
             "value": "#111111",
             "role": "Body text",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.235Z",
+            "updatedAt": "2026-09-19T13:11:15.510Z",
             "measured": {
               "ratio": 18.88,
               "required": 4.5,
@@ -772,7 +772,7 @@
             "value": "#FFFFFF",
             "role": "Page background",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.227Z",
+            "updatedAt": "2026-09-19T13:11:15.499Z",
             "measured": {}
           }
         ]
@@ -792,10 +792,10 @@
             "clientId": "client-disan-footwear",
             "label": "Ife Adeyemi",
             "role": "viewer",
-            "createdAt": "2026-09-18T16:14:02.278Z",
-            "expiresAt": "2026-12-17T16:14:02.278Z",
+            "createdAt": "2026-09-19T13:11:15.568Z",
+            "expiresAt": "2026-12-18T13:11:15.568Z",
             "uses": 0,
-            "id": "980a037436fa"
+            "id": "342b0c6d8cb2"
           }
         ]
       }
@@ -809,45 +809,45 @@
           "slug": "morrow-studio",
           "industry": "Interiors",
           "status": "prospect",
-          "createdAt": "2026-09-18T16:14:01.769Z",
-          "updatedAt": "2026-09-18T16:14:01.769Z"
+          "createdAt": "2026-09-19T13:11:14.863Z",
+          "updatedAt": "2026-09-19T13:11:14.863Z"
         },
         "contacts": [
           {
-            "id": "contact-mu75rvbl-c2d5874f",
+            "id": "contact-mu8eonvq-1cf5399b",
             "clientId": "client-morrow-studio",
             "name": "Ada Obi",
             "title": "Founder",
             "decisionMaker": true,
-            "createdAt": "2026-09-18T16:14:01.809Z"
+            "createdAt": "2026-09-19T13:11:14.918Z"
           },
           {
-            "id": "contact-mu75rvbt-15bbacc2",
+            "id": "contact-mu8eonw2-8803bf88",
             "clientId": "client-morrow-studio",
             "name": "Bram Neel",
             "title": "Marketing lead",
             "decisionMaker": false,
-            "createdAt": "2026-09-18T16:14:01.817Z"
+            "createdAt": "2026-09-19T13:11:14.930Z"
           }
         ],
         "projects": [
           {
-            "id": "project-showroom-site-344562",
+            "id": "project-showroom-site-a069fc",
             "clientId": "client-morrow-studio",
             "name": "Showroom site",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-18T16:14:01.840Z",
-            "updatedAt": "2026-09-18T16:14:01.840Z"
+            "createdAt": "2026-09-19T13:11:14.964Z",
+            "updatedAt": "2026-09-19T13:11:14.964Z"
           },
           {
-            "id": "project-identity-refresh-2e61de",
+            "id": "project-identity-refresh-fdaa0a",
             "clientId": "client-morrow-studio",
             "name": "Identity refresh",
             "kind": "brand-identity",
             "phase": "discovery",
-            "createdAt": "2026-09-18T16:14:01.832Z",
-            "updatedAt": "2026-09-18T16:14:01.832Z"
+            "createdAt": "2026-09-19T13:11:14.953Z",
+            "updatedAt": "2026-09-19T13:11:14.953Z"
           }
         ],
         "runs": []
@@ -858,7 +858,7 @@
       "body": {
         "assets": [
           {
-            "id": "asset-mu75rvit-a0e3e62d",
+            "id": "asset-mu8eoo5d-dfd8fd72",
             "clientId": "client-morrow-studio",
             "digest": "3a92e17d6223cac3acb1d51ec804a43d8e97573134a81c76e039f79d2ed16a66",
             "filename": "wordmark-draft.png",
@@ -867,10 +867,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": false,
-            "uploadedAt": "2026-09-18T16:14:02.069Z"
+            "uploadedAt": "2026-09-19T13:11:15.266Z"
           },
           {
-            "id": "asset-mu75rvic-210ad410",
+            "id": "asset-mu8eoo4m-6d7d7b56",
             "clientId": "client-morrow-studio",
             "digest": "9bd5959f07a055cb049985e5c668ffb1159d77ed261a72a562fbb543d5e51a6d",
             "filename": "showroom-01.jpg",
@@ -879,10 +879,10 @@
             "bytes": 212,
             "collection": "Photography",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.052Z"
+            "uploadedAt": "2026-09-19T13:11:15.238Z"
           },
           {
-            "id": "asset-mu75rvhq-3b8e392e",
+            "id": "asset-mu8eoo3x-5c4cac0f",
             "clientId": "client-morrow-studio",
             "digest": "30480ece864dd383bdca49430eff41af9c73ac13b1b622303f7f0d382d149d5d",
             "filename": "brand-guidelines.pdf",
@@ -892,10 +892,10 @@
             "collection": "Documents",
             "description": "Everything below, in one document.",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.030Z"
+            "uploadedAt": "2026-09-19T13:11:15.213Z"
           },
           {
-            "id": "asset-mu75rvh4-98cd89b0",
+            "id": "asset-mu8eoo33-5aa4ddec",
             "clientId": "client-morrow-studio",
             "digest": "44b68cae86624107e1625812e444ba61a5ea1bffb49b29e30b4e7be45e4498e3",
             "filename": "morrow-logo-mono.png",
@@ -904,10 +904,10 @@
             "bytes": 212,
             "collection": "Logos",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:02.008Z"
+            "uploadedAt": "2026-09-19T13:11:15.183Z"
           },
           {
-            "id": "asset-mu75rvgm-9ac6a7b9",
+            "id": "asset-mu8eoo29-dae7c553",
             "clientId": "client-morrow-studio",
             "digest": "6c9e327a83abac02d9943d11db07b6f2ffe7ae36d87654f7cc1dd41f1289a61b",
             "filename": "morrow-logo-primary.png",
@@ -917,7 +917,7 @@
             "collection": "Logos",
             "description": "The primary mark. Use this unless there is a reason not to.",
             "approved": true,
-            "uploadedAt": "2026-09-18T16:14:01.990Z"
+            "uploadedAt": "2026-09-19T13:11:15.153Z"
           }
         ]
       }
@@ -933,7 +933,7 @@
             "value": "#EB5E28",
             "role": "Calls to action",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.199Z",
+            "updatedAt": "2026-09-19T13:11:15.455Z",
             "measured": {
               "ratio": 3.19,
               "required": 4.5,
@@ -949,7 +949,7 @@
             "value": "#1A1A1A",
             "role": "Body text",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.192Z",
+            "updatedAt": "2026-09-19T13:11:15.444Z",
             "measured": {
               "ratio": 16.29,
               "required": 4.5,
@@ -965,7 +965,7 @@
             "value": "#6B6257",
             "role": "Secondary text",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.206Z",
+            "updatedAt": "2026-09-19T13:11:15.467Z",
             "measured": {
               "ratio": 5.6,
               "required": 4.5,
@@ -981,7 +981,7 @@
             "value": "#FAF7F2",
             "role": "Page background",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.184Z",
+            "updatedAt": "2026-09-19T13:11:15.433Z",
             "measured": {}
           },
           {
@@ -991,7 +991,7 @@
             "value": "Inter",
             "role": "Everything else",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.219Z",
+            "updatedAt": "2026-09-19T13:11:15.488Z",
             "measured": {}
           },
           {
@@ -1001,7 +1001,7 @@
             "value": "Space Grotesk",
             "role": "Headings",
             "origin": "studio",
-            "updatedAt": "2026-09-18T16:14:02.212Z",
+            "updatedAt": "2026-09-19T13:11:15.478Z",
             "measured": {}
           }
         ]
@@ -1012,11 +1012,11 @@
       "body": {
         "onboardings": [
           {
-            "id": "onb-mu75rvnm-50b84345",
+            "id": "onb-mu8eooch-b3d325b7",
             "clientId": "client-morrow-studio",
             "status": "sent",
-            "createdAt": "2026-09-18T16:14:02.242Z",
-            "sentAt": "2026-09-18T16:14:02.242Z",
+            "createdAt": "2026-09-19T13:11:15.521Z",
+            "sentAt": "2026-09-19T13:11:15.521Z",
             "progress": {
               "answered": 0,
               "required": 14,
@@ -1059,20 +1059,20 @@
             "collections": [
               "Logos"
             ],
-            "createdAt": "2026-09-18T16:14:02.270Z",
-            "expiresAt": "2026-12-17T16:14:02.270Z",
+            "createdAt": "2026-09-19T13:11:15.558Z",
+            "expiresAt": "2026-12-18T13:11:15.558Z",
             "uses": 0,
-            "id": "a46ea77e88f3"
+            "id": "efdd61967619"
           },
           {
             "clientId": "client-morrow-studio",
             "label": "Ada Obi",
             "role": "viewer",
-            "createdAt": "2026-09-18T16:14:02.250Z",
-            "expiresAt": "2026-12-17T16:14:02.250Z",
-            "lastUsedAt": "2026-09-18T16:14:02.298Z",
+            "createdAt": "2026-09-19T13:11:15.533Z",
+            "expiresAt": "2026-12-18T13:11:15.533Z",
+            "lastUsedAt": "2026-09-19T13:11:15.599Z",
             "uses": 3,
-            "id": "ca319252d308"
+            "id": "4365f4b0b395"
           }
         ]
       }
