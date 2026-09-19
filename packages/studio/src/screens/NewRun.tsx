@@ -25,7 +25,10 @@ import { api, type Client, type Project } from '../api.js';
 
 interface Level {
   value: number;
+  /** How the option reads in a list of choices. */
   label: string;
+  /** How it reads in the sentence "Building …". */
+  sentence: string;
   detail: string;
 }
 
@@ -37,27 +40,29 @@ interface Level {
  */
 const LEVELS: Level[] = [
   {
-    value: 0, label: 'It shows things',
+    value: 0, label: 'It shows things', sentence: 'something people read',
     detail: 'A page people read. Nothing to sign into, nothing they change.',
   },
   {
-    value: 1, label: 'People do things on it',
+    value: 1, label: 'People do things on it', sentence: 'something people use',
     detail: 'Forms, a basket, an account, settings they can change.',
   },
   {
     value: 2, label: 'It handles a lot of information',
+    sentence: 'something that handles a lot of information',
     detail: 'Searching, filtering, long lists, reports, dashboards.',
   },
   {
-    value: 3, label: 'It updates while you watch',
+    value: 3, label: 'It updates while you watch', sentence: 'something that updates live',
     detail: 'Messages, live figures, notifications arriving without a refresh.',
   },
   {
-    value: 4, label: 'It works without internet',
+    value: 4, label: 'It works without internet', sentence: 'something that works offline',
     detail: 'People use it offline and it catches up when they reconnect.',
   },
   {
     value: 5, label: 'Several teams build on it at once',
+    sentence: 'a platform other teams build on',
     detail: 'A platform other teams ship their own pieces into.',
   },
 ];
@@ -174,6 +179,8 @@ export default function NewRun(): ReactElement {
   const [level, setLevel] = useState(1);
   const [why, setWhy] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [pickingKind, setPickingKind] = useState(false);
+  const [addingContext, setAddingContext] = useState(false);
 
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
@@ -206,21 +213,15 @@ export default function NewRun(): ReactElement {
       <div>
         <h2>Start a run</h2>
         <p className="muted" style={{ maxWidth: '58ch' }}>
-          A run takes what you know about a job and walks it through the departments,
-          measuring what can be measured. Answer in plain words — nothing here needs
-          to be written in a particular way.
+          Two things get a run going. Everything else is here if you want it, and
+          skipping it costs nothing — a department that was told less says so
+          rather than guessing.
         </p>
       </div>
 
       <div className="card stack">
         <label className="field">
           <span className="label">Which project is this for?</span>
-          {/*
-            A list, not a text box. This used to ask you to type a project, and
-            the server needs the project's id — so whatever you typed was
-            refused, and no run could be started from this screen at all. The
-            question was unanswerable rather than merely unclear.
-          */}
           <select
             value={projectId} id="project"
             onChange={(e) => setProjectId(e.target.value)}
@@ -251,51 +252,37 @@ export default function NewRun(): ReactElement {
         <label className="field">
           <span className="label">What did they ask for?</span>
           <textarea
-            rows={4} value={asked} id="explicit"
+            rows={5} value={asked} id="explicit"
             onChange={(e) => setAsked(e.target.value)}
             placeholder="A new identity and a site to launch it on, by March."
           />
-          <span className="muted">
-            In their words, as far as you have them: what they want, who it is for,
-            what they need made, anything they have ruled out.
-          </span>
-        </label>
-
-        <label className="field">
-          <span className="label">What are you assuming?</span>
-          <textarea
-            rows={3} value={assumed} id="implicit"
-            onChange={(e) => setAssumed(e.target.value)}
-            placeholder="They want to look more expensive than they are now. Nobody said so."
-          />
-          <span className="muted">
-            Things you believe but nobody actually said. Writing them here is what
-            stops them being treated as facts for the rest of the run.
-          </span>
-        </label>
-
-        <label className="field">
-          <span className="label">What do you still not know?</span>
-          <textarea
-            rows={2} value={unknown} id="missing"
-            onChange={(e) => setUnknown(e.target.value)}
-            placeholder="Budget. Whether the current stockists stay."
-          />
-          <span className="muted">
-            Gaps that would change the work if the answer surprised you. Leave it
-            empty if there are none.
-          </span>
         </label>
       </div>
 
-      <div className="card stack">
-        <span className="label">What kind of thing are you building?</span>
-        <p className="muted" style={{ margin: 0 }}>
-          Pick the first one that is true. This decides how much of the pipeline runs,
-          so choosing a bigger answer than you need makes the work bigger too.
-        </p>
+      {/*
+        The build type is a sentence, not a question.
 
-        {LEVELS.map((option) => (
+        It decides how much of the pipeline runs, so it cannot be hidden — but
+        most work is something people do things on, and making everyone answer
+        that every time is a question asked for the sake of the form. Stated as
+        a fact with a way to change it: visible, and not a decision to make.
+      */}
+      <div className="card stack">
+        <div className="row">
+          <span>
+            Building <strong>{LEVELS.find((l) => l.value === level)?.sentence}</strong>
+            {' — '}
+            <span className="muted">{LEVELS.find((l) => l.value === level)?.detail}</span>
+          </span>
+          <button
+            type="button" className="link" style={{ marginLeft: 'auto' }}
+            onClick={() => setPickingKind((open) => !open)}
+          >
+            {pickingKind ? 'Done' : 'Change'}
+          </button>
+        </div>
+
+        {pickingKind && LEVELS.map((option) => (
           <label key={option.value} className="choice">
             <input
               type="radio" name="level" value={option.value}
@@ -310,26 +297,54 @@ export default function NewRun(): ReactElement {
         ))}
       </div>
 
-      {!needsJustification ? (
-        <div className="card stack">
-          <label className="field">
-            <span className="label">Why that one?</span>
-            <textarea
-              rows={2} value={why} id="defence"
-              onChange={(e) => setWhy(e.target.value)}
-              placeholder="A brochure site with a contact form. Nothing to log into."
-            />
-            <span className="muted">One sentence is enough.</span>
-          </label>
-        </div>
+      {/*
+        The two questions that separate a fact from an assumption are still two
+        questions, because filing an assumption as a fact is what makes a run
+        wrong. They are just not in the way of starting one.
+      */}
+      {!addingContext ? (
+        <button type="button" className="link" onClick={() => setAddingContext(true)}>
+          Add what you are assuming, or what you still do not know
+        </button>
       ) : (
         <div className="card stack">
+          <label className="field">
+            <span className="label">What are you assuming?</span>
+            <textarea
+              rows={2} value={assumed} id="implicit"
+              onChange={(e) => setAssumed(e.target.value)}
+              placeholder="They want to look more expensive than they do now. Nobody said so."
+            />
+            <span className="muted">
+              Things you believe but nobody said. Written here, they stay assumptions
+              for the rest of the run instead of quietly becoming facts.
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="label">What do you still not know?</span>
+            <textarea
+              rows={2} value={unknown} id="missing"
+              onChange={(e) => setUnknown(e.target.value)}
+              placeholder="Budget. Whether the current stockists stay."
+            />
+          </label>
+        </div>
+      )}
+
+      {/*
+        Level 2 and above owes six answers before anything is built, and that is
+        the method's rule rather than this form's. It only appears when somebody
+        deliberately chooses a bigger build, which is exactly when a wall of
+        questions is the right amount of friction.
+      */}
+      {needsJustification && (
+        <div className="card stack">
           <div>
-            <span className="label">Six questions before we build something bigger</span>
+            <span className="label">Six questions, because this is a bigger build</span>
             <p className="muted" style={{ margin: '4px 0 0', maxWidth: '58ch' }}>
-              Choosing a bigger build costs nothing on this screen and costs a great
-              deal for the next year. These are the check on that — and the answers
-              are kept with the run, so the decision can be read back later.
+              Choosing this costs nothing here and a great deal for the next year.
+              The answers are kept with the run, so the decision can be read back.
             </p>
           </div>
 
@@ -342,9 +357,6 @@ export default function NewRun(): ReactElement {
                 onChange={(e) => setAnswers((a) => ({ ...a, [question.id]: e.target.value }))}
                 placeholder={question.example}
               />
-              {/* Beside the field rather than inside it. Guidance in a
-                  placeholder disappears the moment someone starts typing,
-                  which is the moment they are using it. */}
               <span className="muted">{question.help}</span>
             </label>
           ))}
@@ -356,6 +368,17 @@ export default function NewRun(): ReactElement {
             </p>
           )}
         </div>
+      )}
+
+      {!needsJustification && pickingKind && (
+        <label className="field">
+          <span className="label">Why that one?</span>
+          <input
+            value={why} id="defence"
+            onChange={(e) => setWhy(e.target.value)}
+            placeholder="A brochure site with a contact form. Nothing to log into."
+          />
+        </label>
       )}
 
       {start.error && <p className="err">{(start.error as Error).message}</p>}

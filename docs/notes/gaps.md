@@ -893,6 +893,42 @@ impossible, which was not.
 The table rows stayed, on their merits: predictable tab order, an ordinary focus
 ring, and the numbers are right there next to the name.
 
+## 4w. Plain words were not the problem; the number of questions was
+
+§4u rewrote the run form's vocabulary and left its shape alone: eight fields to
+start a run, eleven if the build was a large one. The owner's reaction to the
+result was that it still asks too much — which is fair, and a useful correction
+to what "straightforward" had been taken to mean. A form can be perfectly
+readable and still be a wall.
+
+**The default path is now two questions**: which project, and what they asked
+for. Measured in a browser rather than counted in the source — two labelled
+fields, two inputs, 569px of page.
+
+Three things moved, and each is a different kind of reduction:
+
+- **The classification became a sentence instead of a question.** "Building
+  something people use — forms, a basket, an account, settings they can
+  change," with a Change control beside it. It still decides how much of the
+  pipeline runs, so it cannot be hidden; but most work is that, and asking
+  everyone to confirm it every time is a question asked for the form's sake.
+  Stated as a fact with a way to disagree: visible, and not a decision.
+- **Assumptions and gaps moved behind one line.** They stay two separate fields
+  when opened, because filing an assumption as a fact is what makes a run wrong
+  — that was never about how many boxes are on screen, and merging them to save
+  space would have traded the point for the appearance of concision.
+- **The six justification questions stayed six, and stayed where they were.**
+  They appear only when somebody deliberately picks a bigger build, which is
+  exactly the moment a wall of questions is the right amount of friction. That
+  is the method's rule, not this form's, and shortening it would be editing the
+  method through the UI.
+
+The generalisable bit: **"make it simpler" and "make it shorter" are different
+instructions, and the first does not imply the second.** The first pass did the
+first and reported it as done. What was needed was to ask less, not to ask the
+same amount more clearly — and the way to tell the difference was to put the
+screen in front of the person who has to use it.
+
 ## 5. Unproven claims
 
 Things asserted somewhere that nothing has actually verified:

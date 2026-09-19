@@ -626,6 +626,9 @@ tbody tr:hover { background: var(--surface); }
   cursor: pointer;
 }
 .link:hover { color: var(--text-primary); }
+/* A link that is a direct child of a stack would otherwise be stretched by the
+   grid and read as centred. */
+.stack > .link { justify-self: start; }
 
 /* A radio and its explanation. `.row` cannot do this: the explanation is a
    block, so it takes the full line and pushes the control onto its own row —
