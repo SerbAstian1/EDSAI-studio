@@ -63,6 +63,7 @@ await record('/api/rubric');
 await record('/api/assets');
 const runs = await record('/api/runs');
 const clients = await record('/api/clients');
+await record('/api/projects');
 
 for (const client of clients?.clients ?? []) {
   await record(`/api/clients/${client.id}`);
