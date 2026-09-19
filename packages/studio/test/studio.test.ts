@@ -10,7 +10,8 @@ import {
 import type { Asset, Client, DepartmentOutput, Issue, Plotted, Project } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
-import { briefFrom, byClient } from '../src/screens/NewRun.js';
+import { briefFrom } from '../src/screens/NewRun.js';
+import { matchProjects, resolveProject } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
@@ -467,37 +468,6 @@ describe('the brief a run is started with', () => {
   });
 });
 
-describe('choosing a project for a run', () => {
-  const client = (id: string, name: string): Client => ({
-    id, name, slug: id, status: 'active',
-    createdAt: '2026-09-19T00:00:00Z', updatedAt: '2026-09-19T00:00:00Z',
-  });
-  const project = (id: string, clientId: string, name: string): Project => ({
-    id, clientId, name, kind: 'brand-identity', phase: 'discovery',
-  });
-
-  it('files each project under the client it belongs to', () => {
-    const groups = byClient(
-      [client('a', 'Acme'), client('m', 'Morrow')],
-      [project('p1', 'a', 'Rebrand'), project('p2', 'm', 'Site'), project('p3', 'a', 'Packaging')],
-    );
-    expect(groups.map((g) => g.client.name)).toEqual(['Acme', 'Morrow']);
-    expect(groups[0]?.projects.map((p) => p.name)).toEqual(['Rebrand', 'Packaging']);
-  });
-
-  it('leaves out a client with no projects rather than showing an empty group', () => {
-    const groups = byClient(
-      [client('a', 'Acme'), client('empty', 'Nothing Yet')],
-      [project('p1', 'a', 'Rebrand')],
-    );
-    expect(groups.map((g) => g.client.id)).toEqual(['a']);
-  });
-
-  it('never attaches a project to a client that does not own it', () => {
-    const groups = byClient([client('a', 'Acme')], [project('p1', 'other', 'Not theirs')]);
-    expect(groups).toEqual([]);
-  });
-});
 
 describe('laying out the chart’s labels', () => {
   const point = (id: string, x: number, y: number, label = id): Plotted => ({
@@ -537,5 +507,69 @@ describe('laying out the chart’s labels', () => {
     const layout = layOutLabels([point('a', 10, 90, 'One'), point('b', 10, 20, 'Two')]);
     expect(layout.get('a')?.dy).toBe(0);
     expect(layout.get('b')?.dy).toBe(0);
+  });
+});
+
+describe('typing a project name', () => {
+  const client = (id: string, name: string): Client => ({
+    id, name, slug: id, status: 'active',
+    createdAt: '2026-09-19T00:00:00Z', updatedAt: '2026-09-19T00:00:00Z',
+  });
+  const project = (id: string, clientId: string, name: string): Project => ({
+    id, clientId, name, kind: 'brand-identity', phase: 'discovery',
+  });
+
+  const clients = [client('m', 'Morrow Studio'), client('d', 'Disan Footwear')];
+  const projects = [
+    project('p1', 'm', 'Showroom site'),
+    project('p2', 'm', 'Identity refresh'),
+    project('p3', 'd', 'SS26 campaign'),
+  ];
+
+  it('offers everything before anything is typed', () => {
+    expect(matchProjects(projects, clients, '')).toHaveLength(3);
+  });
+
+  it('matches on the client’s name too', () => {
+    // "morrow" is how you think of it when two clients both have a rebrand.
+    const found = matchProjects(projects, clients, 'morrow').map((m) => m.project.name);
+    expect(found.sort()).toEqual(['Identity refresh', 'Showroom site']);
+  });
+
+  it('puts a project whose own name starts with the query first', () => {
+    const found = matchProjects(projects, clients, 'ss').map((m) => m.project.name);
+    expect(found[0]).toBe('SS26 campaign');
+  });
+
+  it('ignores case and surrounding space', () => {
+    expect(matchProjects(projects, clients, '  SHOWROOM ')).toHaveLength(1);
+  });
+
+  it('resolves a single match without needing a keypress', () => {
+    const matches = matchProjects(projects, clients, 'show');
+    expect(resolveProject(matches, 'show')?.id).toBe('p1');
+  });
+
+  it('resolves an exact name even when others also match', () => {
+    const wide = [...projects, project('p4', 'd', 'Showroom site extras')];
+    const matches = matchProjects(wide, clients, 'Showroom site');
+    expect(resolveProject(matches, 'Showroom site')?.id).toBe('p1');
+  });
+
+  it('resolves nothing while the text is ambiguous', () => {
+    // Two candidates is not an answer, and guessing one would start a run
+    // against the wrong client.
+    const matches = matchProjects(projects, clients, 'morrow');
+    expect(resolveProject(matches, 'morrow')).toBeUndefined();
+  });
+
+  it('resolves nothing for an empty field', () => {
+    expect(resolveProject(matchProjects(projects, clients, ''), '')).toBeUndefined();
+  });
+
+  it('resolves nothing for a name no project has', () => {
+    const matches = matchProjects(projects, clients, 'nonsense');
+    expect(matches).toEqual([]);
+    expect(resolveProject(matches, 'nonsense')).toBeUndefined();
   });
 });

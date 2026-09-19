@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Client, type Project } from '../api.js';
+import { api } from '../api.js';
+import ProjectField from '../components/ProjectField.js';
 
 /**
  * Starting a run.
@@ -160,16 +161,6 @@ export function briefFrom(input: {
   return lines.join('\n');
 }
 
-/** Projects under the client they belong to, so one list answers one question. */
-export function byClient(
-  clients: readonly Client[],
-  projects: readonly Project[],
-): { client: Client; projects: Project[] }[] {
-  return clients
-    .map((c) => ({ client: c, projects: projects.filter((p) => p.clientId === c.id) }))
-    .filter((group) => group.projects.length > 0);
-}
-
 export default function NewRun(): ReactElement {
   const client = useQueryClient();
   const [projectId, setProjectId] = useState('');
@@ -185,7 +176,6 @@ export default function NewRun(): ReactElement {
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
 
-  const groups = byClient(clients.data ?? [], projects.data ?? []);
   const nothingToRunAgainst = projects.isSuccess && (projects.data?.length ?? 0) === 0;
 
   const needsJustification = level >= 2;
@@ -222,22 +212,14 @@ export default function NewRun(): ReactElement {
       <div className="card stack">
         <label className="field">
           <span className="label">Which project is this for?</span>
-          <select
-            value={projectId} id="project"
-            onChange={(e) => setProjectId(e.target.value)}
+          <ProjectField
+            projects={projects.data ?? []}
+            clients={clients.data ?? []}
+            value={projectId}
+            onChange={setProjectId}
             disabled={projects.isPending || nothingToRunAgainst}
-          >
-            <option value="">
-              {projects.isPending ? 'Loading projects…' : 'Choose a project'}
-            </option>
-            {groups.map(({ client: owner, projects: theirs }) => (
-              <optgroup key={owner.id} label={owner.name}>
-                {theirs.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            {...(projects.isPending ? { placeholder: 'Loading projects…' } : {})}
+          />
           {nothingToRunAgainst && (
             <span className="muted">
               There are no projects yet. A run belongs to one, so start there —
