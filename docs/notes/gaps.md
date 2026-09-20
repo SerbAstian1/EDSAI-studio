@@ -1112,3 +1112,84 @@ And one new question this rebuild raises:
 6. **Who decides QA-2?** Whether a client's failing palette is published,
    corrected or blocked is a studio policy question, not an engineering one, and
    it should be answered before the generator is built rather than after.
+
+## 4z. Hosting: one process, one origin, one volume
+
+Everything the studio does now comes out of a single Node process — the API,
+the client portal, the uploaded files and the Studio interface itself, all on
+one port.
+
+That is a decision, not a convenience. The session cookie is `SameSite=Lax`.
+Putting the interface on a static host and the API somewhere else would mean
+`SameSite=None`, a CORS configuration, and two deployments to keep in step, in
+exchange for nothing this product needs. And a client's portal link is built
+from the browser's own origin, so whatever host this runs on is the address in
+the link, with nothing to configure and nothing to drift.
+
+Four things were wrong, and three of them would have looked like a working
+deploy:
+
+- **Uploaded files were held in memory.** `ApiServer` defaults its asset store
+  to `MemoryAssetStore`, which is right for a library whose caller said nothing
+  — it writes to no disk it was not given. It is wrong for a server, and
+  `serve.ts` never passed one. Every client file would have survived until the
+  first restart and then been gone, leaving database rows pointing at bytes
+  that no longer existed. The server binary now always names a path. Verified
+  by uploading, restarting the process, and downloading the same bytes back.
+
+- **A write from the studio's own page was refused.** `isCsrfSafe` takes the
+  browser's `Origin` as authoritative and checks it against the configured
+  list; with `EDSAI_ORIGINS` unset that list is empty, so every POST answered
+  403 — while the interface itself loaded perfectly. The comment above the
+  option already said "empty means same-origin only"; the code allowed nothing
+  at all. The server now always counts its own `Host` as an allowed origin, in
+  both schemes, because TLS is terminated in front of it and the browser
+  correctly says `https` while this process only ever sees `http`. A deploy
+  that forgets a variable and then silently refuses to save anything is the
+  worst kind of broken.
+
+- **No hashed asset was ever cached.** The cache rule matched `app.hash.js`.
+  Vite writes `index-C_lsOoT-.js`. Every asset came back `no-cache`, which is
+  slow and not dangerous — but the obvious fix is the dangerous one: a pattern
+  loose enough to match that name also matches `use-media-query.js`, and
+  caching an unhashed file for a year outlives the deploy that caused it. So
+  the rule is no longer a guess about names. The build writes a manifest of
+  exactly what it emitted; a file in that list has its content in its name by
+  construction. Found by running the real server against the real build and
+  reading the headers — the unit test had been passing against a filename I
+  invented.
+
+- **969 MB of Rust build output was committed.** Left from the desktop shell
+  that is no longer built. Every clone and every image build context carried
+  it. Untracked and ignored; the objects remain in history, which only a
+  rewrite would change and which is not worth doing to a published branch.
+
+Smaller, recorded because each is a rule rather than a fix:
+
+- **`/api` and `/portal` never fall through to the interface.** The single-page
+  fallback answers an unknown path with the entry document, which is right for
+  a bookmarked route and wrong for a misspelled endpoint: it would turn a
+  missing API route into something that looks like it loaded.
+- **Nothing whose name begins with a dot is served.** A build directory is
+  where files arrive by accident, and the accident that matters is a `.env`
+  next to the bundle. A rule about the shape of the name does not depend on
+  anyone noticing the file.
+- **The corpus ships in the image.** The rubric reads it at runtime, because
+  the corpus is the only source for what the rubric says. An image without it
+  starts and then fails on the first request that needs a reference.
+- **The dev proxy pointed at a port nothing listened on** — 4390, against a
+  server whose default is 4317. It now matches, and proxies `/portal` too, so
+  development has the same one-origin shape as production.
+
+**Not verified: the image itself.** There is no container daemon in this
+environment, so `docker build` has never run. What was verified is the thing
+the image contains: the runtime stage's file list was assembled by hand,
+installed with `--prod --frozen-lockfile`, and booted — which is how the
+missing `@edsai/measure` build output was found, since `@edsai/hub` links its
+binary. Signing in, creating a client, minting a portal link and opening the
+portal all work from that tree. The layering, the base image and the
+healthcheck are still unproven.
+
+**Still open:** a bad `level` on `POST /api/runs` answers 500 with a raw Zod
+union dump. Not reachable from the Studio, which sends a valid one, but a
+malformed request deserves a 400 and a sentence.

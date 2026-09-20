@@ -1,0 +1,52 @@
+# Deploying EDSAI Studio to Fly.io.
+#
+#   fly launch --no-deploy --copy-config
+#   fly volumes create edsai_data --size 3
+#   fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   fly deploy
+#
+# Fly terminates TLS in front of the machine, so the session cookie keeps its
+# `Secure` attribute and `EDSAI_INSECURE_COOKIES` stays unset.
+
+app = 'edsai-studio'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '4317'
+
+# The database is a file and the uploads are files, so this is a single machine
+# with a disk — not a scaled-out service. `auto_stop_machines` is off for the
+# same reason: a stopped machine is a studio that is not reachable, and the
+# thing it would save is a few dollars a month.
+[[mounts]]
+  source = 'edsai_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 4317
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.http_options.response.headers]
+    # The interface already sets these per-response; stating them at the edge
+    # covers anything served another way.
+    X-Content-Type-Options = 'nosniff'
+    Referrer-Policy = 'same-origin'
+
+[[http_service.checks]]
+  grace_period = '10s'
+  interval = '30s'
+  method = 'GET'
+  timeout = '5s'
+  path = '/api/health'
+
+[[vm]]
+  # The model calls are network waits, not local work; the memory is for the
+  # Node process and SQLite.
+  size = 'shared-cpu-1x'
+  memory = '1gb'

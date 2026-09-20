@@ -1,0 +1,34 @@
+# Self-hosting EDSAI Studio.
+#
+#   docker compose up -d --build
+#
+# One service, one volume. The volume is the whole of the state: the database,
+# every uploaded client file, and nothing else. Back that up and the studio can
+# be rebuilt from this repository.
+
+services:
+  edsai:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Left side is the host port. Behind a reverse proxy that terminates TLS,
+      # bind it to the loopback — `127.0.0.1:4317:4317` — so the plain-http
+      # port is not reachable from outside the machine.
+      - '4317:4317'
+    volumes:
+      - edsai-data:/data
+    environment:
+      # Without this the studio serves the interface and refuses to execute a
+      # run, saying so. With it, runs cost money on this key.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Only needed for a browser on a different origin than this server —
+      # which the one-process layout is designed to avoid. Same-origin writes
+      # are allowed without it.
+      EDSAI_ORIGINS: ${EDSAI_ORIGINS:-}
+      # Set this only when reaching the studio over plain http, which means
+      # over localhost. The session cookie drops `Secure`, and a cookie without
+      # it can be read off any network the traffic crosses.
+      EDSAI_INSECURE_COOKIES: ${EDSAI_INSECURE_COOKIES:-}
+
+volumes:
+  edsai-data:

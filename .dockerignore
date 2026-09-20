@@ -1,0 +1,21 @@
+# The build context is sent to the daemon before anything runs, so everything
+# large and rebuildable is kept out of it.
+node_modules
+**/node_modules
+**/dist
+**/dist-preview
+packages/desktop
+packages/figma/plugin/dist
+.git
+.github
+*.tsbuildinfo
+measurements.json
+
+# Local state and secrets never belong in an image.
+.edsai
+.env
+.env.*
+*.db
+*.db-journal
+*.sqlite
+data/runs

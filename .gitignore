@@ -25,3 +25,6 @@ packages/figma/plugin/dist/
 packages/studio/dist/
 packages/studio/dist-preview/
 measurements.json
+
+# Rust build output from the desktop shell that is no longer built.
+packages/desktop/src-tauri/target/

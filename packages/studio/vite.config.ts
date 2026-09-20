@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    server: { proxy: { '/api': 'http://localhost:4390' } },
+    // In development the API is a second process, so its routes are proxied
+    // through Vite's server to keep one origin and a working session cookie.
+    // The port is the API's own default: a mismatch here looks like a server
+    // that is down. In production there is no proxy — the API process serves
+    // this build itself, from `packages/studio/dist`.
+    server: { proxy: { '/api': 'http://localhost:4317', '/portal': 'http://localhost:4317' } },
   };
 });

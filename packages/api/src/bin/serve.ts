@@ -1,7 +1,19 @@
 #!/usr/bin/env node
-import { RunStore } from '@edsai/engine';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { DiskAssetStore, RunStore } from '@edsai/engine';
 import { Executor } from '@edsai/executor';
 import { ApiServer } from '../server.js';
+
+/**
+ * One process serves everything: the API, the client portal, the uploaded
+ * files, and the Studio itself. There is nothing to deploy twice and nothing
+ * to keep in sync between two hosts.
+ *
+ * Everything it needs comes from the environment, because a deployment target
+ * — a container, a service, a machine someone ssh'd into — can always set
+ * environment variables and cannot always be given a config file.
+ */
 
 /**
  * The model, where there is one.
@@ -20,8 +32,31 @@ const executor = process.env['ANTHROPIC_API_KEY']
 const port = Number.parseInt(process.env['PORT'] ?? '4317', 10);
 const db = process.env['EDSAI_DB'] ?? '.edsai/runs.db';
 
+/**
+ * Uploaded files, on a disk.
+ *
+ * The default asset store is in memory, which is correct for a library whose
+ * caller said nothing — it writes nothing to a disk it was not given. It is
+ * wrong for a server: a restart would lose every file a client had uploaded,
+ * leaving rows in the database pointing at bytes that no longer exist. So this
+ * process always names a path.
+ */
+const assetRoot = process.env['EDSAI_ASSETS'] ?? '.edsai/assets';
+
+/**
+ * The built Studio, if it has been built.
+ *
+ * Serving it is optional so that `pnpm dev` can keep using Vite's own server
+ * with hot reload, and so a build that has not run yet produces a working API
+ * rather than a crash on boot.
+ */
+const appRoot = resolve(process.env['EDSAI_APP'] ?? 'packages/studio/dist');
+const app = existsSync(appRoot) ? appRoot : undefined;
+
 const server = new ApiServer({
   store: new RunStore(db),
+  assets: new DiskAssetStore(assetRoot),
+  ...(app ? { app } : {}),
   ...(process.env['EDSAI_SCOPE'] ? { scopeId: process.env['EDSAI_SCOPE'] } : {}),
   origins: (process.env['EDSAI_ORIGINS'] ?? '').split(',').filter(Boolean),
   // Opt-in and loud: a `Secure` cookie is never sent over plain http, so a
@@ -32,10 +67,15 @@ const server = new ApiServer({
 });
 
 const actual = await server.listen(port);
-process.stdout.write(`edsai-api listening on http://localhost:${actual} (db ${db})\n`);
+process.stdout.write(`edsai listening on port ${actual}\n`);
+process.stdout.write(`  database ${resolve(db)}\n`);
+process.stdout.write(`  files    ${resolve(assetRoot)}\n`);
+process.stdout.write(app
+  ? `  studio   ${app}\n`
+  : `  studio   not built (${appRoot} is missing), so this serves the API only\n`);
 process.stdout.write(executor
-  ? `runs execute on ${executor.model}\n`
-  : 'no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
+  ? `  runs execute on ${executor.model}\n`
+  : '  no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => void server.close().then(() => process.exit(0)));

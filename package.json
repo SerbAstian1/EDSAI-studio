@@ -5,6 +5,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "pnpm -r build",
+    "start": "node packages/api/dist/bin/serve.js",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "corpus:diff": "pnpm --filter @edsai/rubric corpus:diff"

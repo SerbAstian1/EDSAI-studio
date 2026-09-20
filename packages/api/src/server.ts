@@ -11,6 +11,7 @@ import {
 import { renderPortal, escapeHtml, STYLE } from '@edsai/hub';
 import type { Executor } from '@edsai/executor';
 import { runPipeline } from './pipeline.js';
+import { StaticApp } from './static.js';
 import { RunEvents } from './events.js';
 import {
   ScopedStore, ensureLocalProject, slugify,
@@ -59,6 +60,12 @@ export interface ApiOptions {
    * being told writes nothing to a disk it was not given.
    */
   assets?: AssetStore;
+  /**
+   * The directory of the built Studio, served on every path the API does not
+   * claim. Absent means this process answers the API and nothing else, which
+   * is what the tests want and what a split deployment would want.
+   */
+  app?: string;
   /**
    * The model executor. Absent means runs are created and not executed —
    * which is what happens with no API key, and is said out loud rather than
@@ -140,6 +147,7 @@ export class ApiServer {
   private readonly routes: Handler[];
   private readonly insecureCookies: boolean;
   readonly assets: AssetStore;
+  private readonly app: StaticApp | undefined;
   readonly executor: Executor | undefined;
   /** Runs executing right now, so a second request does not start a second loop. */
   private readonly running = new Set<string>();
@@ -155,6 +163,7 @@ export class ApiServer {
     this.origins = options.origins ?? [];
     this.insecureCookies = options.insecureCookies ?? false;
     this.assets = options.assets ?? new MemoryAssetStore();
+    this.app = options.app === undefined ? undefined : new StaticApp(options.app);
     this.executor = options.executor;
     this.routes = this.buildRoutes();
   }
@@ -204,7 +213,13 @@ export class ApiServer {
       origin,
       method: req.method ?? 'GET',
       contentType: req.headers['content-type'],
-      allowedOrigins: this.origins,
+      // This server's own origin, always, plus whatever else was configured.
+      // A request from the page this server itself served is same-origin and
+      // is not what CSRF means; leaving it out made `EDSAI_ORIGINS` a required
+      // setting, and forgetting it produced a Studio that loaded and then
+      // refused every write with a 403 — the worst kind of broken deploy,
+      // because nothing looks wrong until someone tries to save.
+      allowedOrigins: [...this.origins, ...this.selfOrigins(req)],
     })) {
       send(res, 403, {
         error: 'bad_origin',
@@ -270,7 +285,36 @@ export class ApiServer {
       return;
     }
 
+    // The interface, last. Only reads, and only paths this server has not
+    // claimed: answering `/api/typo` with an HTML document would turn a
+    // misspelled endpoint into something that looks like it worked, and a
+    // client following a stale portal link deserves the portal's own refusal
+    // rather than the Studio's sign-in screen.
+    if (this.app && req.method === 'GET'
+      && !url.pathname.startsWith('/api') && !url.pathname.startsWith('/portal')
+      && this.app.serve(res, url.pathname)) {
+      return;
+    }
+
     send(res, 404, { error: 'not_found', message: `No route for ${req.method} ${url.pathname}.` });
+  }
+
+  /**
+   * The origins that are this server.
+   *
+   * A browser sets `Origin` and cannot be made to lie about it, so comparing
+   * it against the `Host` the request arrived at is the standard same-origin
+   * test. The scheme cannot be read off the socket: in production TLS is
+   * terminated by something in front, so the connection here is plain http
+   * while the browser correctly says `https`. Both are offered rather than
+   * trusting `X-Forwarded-Proto`, which any client may send.
+   *
+   * Nothing is granted by this beyond writing: the CORS headers above still
+   * come only from the configured list, and a cross-origin caller needs those.
+   */
+  private selfOrigins(req: IncomingMessage): string[] {
+    const host = req.headers.host;
+    return host ? [`https://${host}`, `http://${host}`] : [];
   }
 
   /**
