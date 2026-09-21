@@ -367,9 +367,18 @@ export class ScopedStore {
 
   /* ------------------------------------------------------------- onboarding */
 
-  listOnboardings(clientId: string): Onboarding[] {
-    if (!this.mayRead('client', clientId)) return [];
-    return this.store.listOnboardings(clientId);
+  listOnboardings(clientId?: string): Onboarding[] {
+    if (clientId !== undefined) {
+      if (!this.mayRead('client', clientId)) return [];
+      return this.store.listOnboardings(clientId);
+    }
+    // A studio-wide read, same shape as `listProjects()` with no client named:
+    // everything the session's scope actually covers, nothing beyond it.
+    const scope = this.visibleClientIds();
+    const onboardings = scope === 'all'
+      ? this.store.listOnboardings()
+      : scope.flatMap((id) => this.store.listOnboardings(id));
+    return onboardings.filter((onboarding) => this.mayRead('client', onboarding.clientId));
   }
 
   getOnboarding(id: string): Onboarding | undefined {

@@ -46,6 +46,7 @@ const LOADERS = {
   clients: () => import('./screens/Clients.js'),
   client: () => import('./screens/ClientDetail.js'),
   projects: () => import('./screens/Projects.js'),
+  discovery: () => import('./screens/Discovery.js'),
   brands: () => import('./screens/Brands.js'),
   portals: () => import('./screens/Portals.js'),
   assets: () => import('./screens/FileLibrary.js'),
@@ -65,6 +66,7 @@ const ClientPortalApp = lazy(LOADERS.clientPortal);
 const Clients = lazy(LOADERS.clients);
 const ClientDetail = lazy(LOADERS.client);
 const Projects = lazy(LOADERS.projects);
+const Discovery = lazy(LOADERS.discovery);
 const Brands = lazy(LOADERS.brands);
 const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
@@ -75,7 +77,7 @@ const Planned = lazy(LOADERS.planned);
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'planned'
-  | 'clients' | 'client' | 'onboard' | 'projects' | 'clientPortal';
+  | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'clientPortal';
 
 export interface Route {
   screen: Screen;
@@ -92,6 +94,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   runs: 'runs',
   clients: 'clients',
   projects: 'projects',
+  discovery: 'discovery',
   brands: 'brands',
   portals: 'portals',
   assets: 'assets',
@@ -210,6 +213,7 @@ const TITLES: Record<Screen, string> = {
   clients: 'Clients',
   client: 'Client',
   projects: 'Projects',
+  discovery: 'Discovery',
   onboard: 'Discovery',
   clientPortal: 'Client Portal',
   intake: 'New run',
@@ -269,6 +273,7 @@ function Shell(): ReactElement {
             {route.screen === 'clients' && <Clients />}
             {route.screen === 'client' && route.clientId && <ClientDetail clientId={route.clientId} />}
             {route.screen === 'projects' && <Projects />}
+            {route.screen === 'discovery' && <Discovery />}
             {route.screen === 'brands' && <Brands />}
             {route.screen === 'portals' && <Portals />}
             {route.screen === 'assets' && <FileLibrary />}

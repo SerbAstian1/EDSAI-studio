@@ -402,7 +402,7 @@ input, textarea, select {
 }
 .topbar nav a[aria-current="page"] { background: var(--surface); color: var(--text-primary); }
 
-.content { padding: var(--space-page); max-width: 1120px; width: 100%; }
+.content { padding: var(--space-page); max-width: 1440px; width: 100%; }
 
 /*
  * Phones.

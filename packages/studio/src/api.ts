@@ -215,6 +215,8 @@ export interface Project {
 export interface OnboardingSummary {
   id: string;
   clientId: string;
+  /** Only present on the studio-wide read — the per-client one has no need to repeat it. */
+  clientName?: string;
   status: 'draft' | 'sent' | 'in-progress' | 'submitted' | 'accepted';
   createdAt: string;
   submittedAt?: string;
@@ -507,6 +509,9 @@ export const api = {
   onboardings: (clientId: string) =>
     call<{ onboardings: OnboardingSummary[] }>(`/api/clients/${clientId}/onboarding`)
       .then((r) => r.onboardings),
+  /** Every onboarding across every client, for the studio-wide Discovery view. */
+  allOnboardings: () =>
+    call<{ onboardings: OnboardingSummary[] }>('/api/onboardings').then((r) => r.onboardings),
   startOnboarding: (clientId: string) =>
     call<{ onboarding: OnboardingSummary; invite: { token: string; path: string; expiresAt: string } }>(
       `/api/clients/${clientId}/onboarding`, { method: 'POST' }),

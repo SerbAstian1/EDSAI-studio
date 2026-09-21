@@ -845,9 +845,12 @@ export class RunStore {
     return row ? hydrateOnboarding(row) : undefined;
   }
 
-  listOnboardings(clientId: string): OnboardingType[] {
-    return (this.db.prepare('SELECT * FROM onboardings WHERE client_id = ? ORDER BY created_at DESC')
-      .all(clientId) as Record<string, unknown>[]).map(hydrateOnboarding);
+  listOnboardings(clientId?: string): OnboardingType[] {
+    const rows = (clientId === undefined
+      ? this.db.prepare('SELECT * FROM onboardings ORDER BY created_at DESC').all()
+      : this.db.prepare('SELECT * FROM onboardings WHERE client_id = ? ORDER BY created_at DESC')
+        .all(clientId)) as Record<string, unknown>[];
+    return rows.map(hydrateOnboarding);
   }
 
   saveAnswer(answer: AnswerType): void {

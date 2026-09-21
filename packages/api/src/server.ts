@@ -1999,6 +1999,25 @@ body { max-width: 640px; margin: 48px auto; }
       },
 
       /**
+       * Every onboarding, across every client visible to this session — the
+       * studio-wide read the per-client route above cannot give, since it
+       * needs a client picked first. A client's own discovery still lives on
+       * their own page; this is the index across all of them at once.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/onboardings$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          const onboardings = scoped.listOnboardings().map((onboarding) => ({
+            ...onboarding,
+            clientName: scoped.getClient(onboarding.clientId)?.name ?? onboarding.clientId,
+            progress: progressOf(this.store.getAnswers(onboarding.id)),
+          }));
+          send(res, 200, { onboardings });
+        },
+      },
+
+      /**
        * Accept a submitted onboarding and become the project it describes.
        *
        * §14: the studio should not retype the answers. What is derived is the

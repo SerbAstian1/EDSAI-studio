@@ -909,6 +909,46 @@ describe('onboarding', () => {
       .toBe(404);
     cookie = saved;
   });
+
+  describe('the studio-wide index', () => {
+    it('lists every client’s onboarding in one read, with progress and a client name', async () => {
+      const a = await newClient('Client A');
+      const b = await newClient('Client B');
+      await invite(a);
+      await invite(b);
+
+      const { body } = await json('/api/onboardings');
+      const onboardings = body['onboardings'] as unknown as
+        { clientId: string; clientName: string; progress?: { percent: number } }[];
+      const names = onboardings.map((o) => o.clientName);
+      expect(names).toContain('Client A');
+      expect(names).toContain('Client B');
+      expect(onboardings.every((o) => o.progress)).toBe(true);
+    });
+
+    it('shows a portal session only its own client’s onboarding, never another’s', async () => {
+      const a = await newClient('Client A');
+      const b = await newClient('Client B');
+      await invite(a);
+      await invite(b);
+
+      const saved = cookie;
+      const token = 'portal-a-only';
+      const { createHash } = await import('node:crypto');
+      store.saveSession({
+        digest: createHash('sha256').update(token).digest('hex'),
+        userId: 'p', kind: 'portal', clientId: a, role: 'owner',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      });
+      cookie = `edsai_session=${token}`;
+      const { body } = await json('/api/onboardings');
+      const onboardings = body['onboardings'] as unknown as { clientId: string }[];
+      expect(onboardings.every((o) => o.clientId === a)).toBe(true);
+      expect(onboardings.length).toBeGreaterThan(0);
+      cookie = saved;
+    });
+  });
 });
 
 describe('an onboarding closes when it is submitted', () => {

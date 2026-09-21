@@ -43,9 +43,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'discovery', label: 'Discovery', glyph: '◐', group: 'Workspace',
-    status: 'planned', phase: 'P10',
-    intent: 'A studio-wide view of every onboarding in flight. Today a client’s '
-      + 'discovery lives on their own client page, one at a time.',
+    status: 'built', href: '#/discovery',
   },
   {
     id: 'runs', label: 'Pipeline', glyph: '▣', group: 'Workspace',

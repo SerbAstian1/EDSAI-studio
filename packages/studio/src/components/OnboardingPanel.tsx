@@ -72,7 +72,11 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
   const [answering, setAnswering] = useState<string | undefined>();
 
   const invalidate = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ['onboardings', clientId] });
+    // The bare key, not `['onboardings', clientId]` — invalidation only
+    // reaches queries whose key the given key is a *prefix* of, so the
+    // narrower key would leave the studio-wide Discovery view's `['onboardings']`
+    // cache entry stale after an answer, a submit or an accept.
+    void queryClient.invalidateQueries({ queryKey: ['onboardings'] });
     void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
   };
 
