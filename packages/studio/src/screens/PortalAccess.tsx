@@ -50,6 +50,59 @@ export function describeKey(key: PortalKey, now = Date.now()): string {
   return `${times} · ${life}`;
 }
 
+function KeyRow({ clientId, keyRecord, onChanged }: {
+  clientId: string; keyRecord: PortalKey; onChanged: () => void;
+}): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(keyRecord.label);
+
+  const rename = useMutation({
+    mutationFn: () => api.relabelPortalKey(clientId, keyRecord.id, label.trim()),
+    onSuccess: () => { setEditing(false); onChanged(); },
+  });
+
+  const revoke = useMutation({
+    mutationFn: () => api.revokePortalKey(clientId, keyRecord.id),
+    onSuccess: onChanged,
+  });
+
+  const onRevoke = (): void => {
+    if (!confirm(`Revoke the link for ${keyRecord.label}? Whoever holds it loses access immediately.`)) return;
+    revoke.mutate();
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td colSpan={2} className="row">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Given to" />
+        </td>
+        <td colSpan={2} className="row" style={{ gap: 6 }}>
+          <button type="button" className="primary" disabled={!label.trim() || rename.isPending}
+                  onClick={() => rename.mutate()}>Save</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td data-label="Given to"><strong>{keyRecord.label}</strong></td>
+      <td className="muted" data-label="Opens">
+        {keyRecord.role === 'limited'
+          ? (keyRecord.collections ?? []).join(', ') || 'nothing'
+          : 'Everything approved'}
+      </td>
+      <td className="muted" data-label="Use">{describeKey(keyRecord)}</td>
+      <td className="row" style={{ gap: 6 }}>
+        <button type="button" onClick={() => setEditing(true)}>Rename</button>
+        <button type="button" disabled={revoke.isPending} onClick={onRevoke}>Revoke</button>
+      </td>
+    </tr>
+  );
+}
+
 export default function PortalAccess({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState('');
@@ -80,11 +133,6 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
       setLabel(''); setCollections('');
       invalidate();
     },
-  });
-
-  const revoke = useMutation({
-    mutationFn: (keyId: string) => api.revokePortalKey(clientId, keyId),
-    onSuccess: invalidate,
   });
 
   const needsCollections = role === 'limited' && collections.trim() === '';
@@ -187,28 +235,11 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
           <thead><tr><th>Given to</th><th>Opens</th><th>Use</th><th /></tr></thead>
           <tbody>
             {keys.map((key) => (
-              <tr key={key.id}>
-                <td data-label="Given to"><strong>{key.label}</strong></td>
-                <td className="muted" data-label="Opens">
-                  {key.role === 'limited'
-                    ? (key.collections ?? []).join(', ') || 'nothing'
-                    : 'Everything approved'}
-                </td>
-                <td className="muted" data-label="Use">{describeKey(key)}</td>
-                <td>
-                  <button
-                    type="button" disabled={revoke.isPending}
-                    onClick={() => revoke.mutate(key.id)}
-                  >
-                    Revoke
-                  </button>
-                </td>
-              </tr>
+              <KeyRow key={key.id} clientId={clientId} keyRecord={key} onChanged={invalidate} />
             ))}
           </tbody>
         </table>
       )}
-      {revoke.error && <p className="err">{(revoke.error as Error).message}</p>}
     </section>
   );
 }

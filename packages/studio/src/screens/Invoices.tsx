@@ -14,6 +14,69 @@ import { api, type Invoice } from '../api.js';
 
 const STATUS_TONE: Record<Invoice['status'], string> = { paid: 'pass', pending: 'minor', overdue: 'Blocker' };
 
+function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () => void }): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const [description, setDescription] = useState(invoice.description);
+  const [dueDate, setDueDate] = useState(invoice.dueDate);
+
+  const setPaid = useMutation({
+    mutationFn: (paid: boolean) => api.updateInvoice(invoice.id, { paid }),
+    onSuccess: onChanged,
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.updateInvoice(invoice.id, { description: description.trim(), dueDate }),
+    onSuccess: () => { setEditing(false); onChanged(); },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteInvoice(invoice.id),
+    onSuccess: onChanged,
+  });
+
+  const onDelete = (): void => {
+    if (!confirm(`Remove invoice ${invoice.number}?`)) return;
+    remove.mutate();
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td className="mono">{invoice.number}</td>
+        <td><input value={description} onChange={(e) => setDescription(e.target.value)}
+                   aria-label="Description" /></td>
+        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td className="mono muted">{formatCents(invoice.amountCents, invoice.currency)}</td>
+        <td colSpan={2} className="row" style={{ gap: 6 }}>
+          <button type="button" className="primary" disabled={!description.trim() || save.isPending}
+                  onClick={() => save.mutate()}>Save</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td className="mono">{invoice.number}</td>
+      <td>{invoice.description}</td>
+      <td className="muted">{invoice.dueDate}</td>
+      <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
+      <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
+      <td className="row" style={{ gap: 6 }}>
+        <button type="button" onClick={() => setPaid.mutate(!invoice.paid)}>
+          {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
+        </button>
+        <button type="button" onClick={() => setEditing(true)}>Edit</button>
+        <a href={api.invoiceDocumentUrl(invoice.id)} target="_blank" rel="noreferrer">
+          <button type="button">View</button>
+        </a>
+        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
+      </td>
+    </tr>
+  );
+}
+
 /** Dollars a person types in, as the integer cents the record actually stores. */
 export function dollarsToCents(input: string): number | undefined {
   const trimmed = input.trim().replace(/^\$/, '');
@@ -52,17 +115,6 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
     onSuccess: () => {
       setDescription(''); setAmount(''); setDueDate(''); setAdding(false); invalidate();
     },
-  });
-
-  const setPaid = useMutation({
-    mutationFn: (input: { id: string; paid: boolean }) =>
-      api.updateInvoice(input.id, { paid: input.paid }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteInvoice(id),
-    onSuccess: invalidate,
   });
 
   const totals = data?.totals;
@@ -134,24 +186,7 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
           </thead>
           <tbody>
             {data.invoices.map((invoice) => (
-              <tr key={invoice.id}>
-                <td className="mono">{invoice.number}</td>
-                <td>{invoice.description}</td>
-                <td className="muted">{invoice.dueDate}</td>
-                <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
-                <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
-                <td className="row" style={{ gap: 6 }}>
-                  <button type="button" onClick={() => setPaid.mutate({
-                    id: invoice.id, paid: !invoice.paid,
-                  })}>
-                    {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
-                  </button>
-                  <a href={api.invoiceDocumentUrl(invoice.id)} target="_blank" rel="noreferrer">
-                    <button type="button">View</button>
-                  </a>
-                  <button type="button" onClick={() => remove.mutate(invoice.id)}>Remove</button>
-                </td>
-              </tr>
+              <InvoiceRow key={invoice.id} invoice={invoice} onChanged={invalidate} />
             ))}
           </tbody>
         </table>

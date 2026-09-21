@@ -22,7 +22,9 @@ export const RESOURCES = [
 export type ResourceKind = typeof RESOURCES[number];
 
 /** Studio-only writes: a client portal reads its own status, never sets it. */
-const STUDIO_MANAGED: readonly ResourceKind[] = ['deliverable', 'milestone', 'invoice'];
+const STUDIO_MANAGED: readonly ResourceKind[] = [
+  'deliverable', 'milestone', 'invoice', 'contact', 'project',
+];
 
 export interface Resource {
   kind: ResourceKind;

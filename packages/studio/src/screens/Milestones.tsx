@@ -15,6 +15,85 @@ const STATUS_TONE: Record<Milestone['status'], string> = {
   upcoming: 'minor', 'in-progress': 'minor', completed: 'pass',
 };
 
+function MilestoneRow({ m, index, count, onChanged, onMove }: {
+  m: Milestone; index: number; count: number; onChanged: () => void;
+  onMove: (delta: number) => void;
+}): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(m.title);
+  const [description, setDescription] = useState(m.description ?? '');
+  const [dueDate, setDueDate] = useState(m.dueDate ?? '');
+
+  const setStatus = useMutation({
+    mutationFn: (status: Milestone['status']) => api.updateMilestone(m.id, { status }),
+    onSuccess: onChanged,
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.updateMilestone(m.id, { title: title.trim(), description, dueDate }),
+    onSuccess: () => { setEditing(false); onChanged(); },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteMilestone(m.id),
+    onSuccess: onChanged,
+  });
+
+  const onDelete = (): void => {
+    if (!confirm(`Remove "${m.title}"?`)) return;
+    remove.mutate();
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td />
+        <td>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)}
+                 aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
+        </td>
+        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td colSpan={2} className="row" style={{ gap: 6 }}>
+          <button type="button" className="primary" disabled={!title.trim() || save.isPending}
+                  onClick={() => save.mutate()}>Save</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td className="mono muted" style={{ whiteSpace: 'nowrap' }}>
+        <button type="button" disabled={index === 0} onClick={() => onMove(-1)}
+                aria-label="Move up" title="Move up">↑</button>
+        <button type="button" disabled={index === count - 1} onClick={() => onMove(1)}
+                aria-label="Move down" title="Move down">↓</button>
+      </td>
+      <td>
+        <strong>{m.title}</strong>
+        {m.description && <div className="muted" style={{ fontSize: 13 }}>{m.description}</div>}
+      </td>
+      <td className="muted">{m.dueDate ?? '—'}</td>
+      <td>
+        <select
+          value={m.status} className={`pill ${STATUS_TONE[m.status]}`}
+          onChange={(e) => setStatus.mutate(e.target.value as Milestone['status'])}
+        >
+          <option value="upcoming">Upcoming</option>
+          <option value="in-progress">In progress</option>
+          <option value="completed">Completed</option>
+        </select>
+      </td>
+      <td className="row" style={{ gap: 6 }}>
+        <button type="button" onClick={() => setEditing(true)}>Edit</button>
+        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
+      </td>
+    </tr>
+  );
+}
+
 export default function Milestones({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -37,17 +116,6 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
       ...(dueDate ? { dueDate } : {}),
     }),
     onSuccess: () => { setTitle(''); setDescription(''); setDueDate(''); setAdding(false); invalidate(); },
-  });
-
-  const setStatus = useMutation({
-    mutationFn: (input: { id: string; status: Milestone['status'] }) =>
-      api.updateMilestone(input.id, { status: input.status }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteMilestone(id),
-    onSuccess: invalidate,
   });
 
   const move = useMutation({
@@ -110,34 +178,10 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
           <thead><tr><th /><th>Title</th><th>Due</th><th>Status</th><th /></tr></thead>
           <tbody>
             {data.map((m, i) => (
-              <tr key={m.id}>
-                <td className="mono muted" style={{ whiteSpace: 'nowrap' }}>
-                  <button type="button" disabled={i === 0} onClick={() => swap(i, -1)}
-                          aria-label="Move up" title="Move up">↑</button>
-                  <button type="button" disabled={i === data.length - 1} onClick={() => swap(i, 1)}
-                          aria-label="Move down" title="Move down">↓</button>
-                </td>
-                <td>
-                  <strong>{m.title}</strong>
-                  {m.description && <div className="muted" style={{ fontSize: 13 }}>{m.description}</div>}
-                </td>
-                <td className="muted">{m.dueDate ?? '—'}</td>
-                <td>
-                  <select
-                    value={m.status} className={`pill ${STATUS_TONE[m.status]}`}
-                    onChange={(e) => setStatus.mutate({
-                      id: m.id, status: e.target.value as Milestone['status'],
-                    })}
-                  >
-                    <option value="upcoming">Upcoming</option>
-                    <option value="in-progress">In progress</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </td>
-                <td>
-                  <button type="button" onClick={() => remove.mutate(m.id)}>Remove</button>
-                </td>
-              </tr>
+              <MilestoneRow
+                key={m.id} m={m} index={i} count={data.length} onChanged={invalidate}
+                onMove={(delta) => swap(i, delta)}
+              />
             ))}
           </tbody>
         </table>

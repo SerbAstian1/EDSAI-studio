@@ -48,7 +48,7 @@ export default function Projects(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Project</th><th>Client</th><th>Kind</th><th>Phase</th><th>Deadline</th></tr>
+            <tr><th>Project</th><th>Client</th><th>Kind</th><th>Phase</th><th>Deadline</th><th>Figma</th></tr>
           </thead>
           <tbody>
             {projects.data.map((project) => (
@@ -62,6 +62,11 @@ export default function Projects(): ReactElement {
                 <td className="muted">{project.kind}</td>
                 <td><span className={`pill ${PHASE_TONE[project.phase] ?? 'minor'}`}>{project.phase}</span></td>
                 <td className="muted">{project.deadline ?? '—'}</td>
+                <td>
+                  {project.figmaUrl
+                    ? <a href={project.figmaUrl} target="_blank" rel="noreferrer">Open ↗</a>
+                    : <span className="muted">—</span>}
+                </td>
               </tr>
             ))}
           </tbody>

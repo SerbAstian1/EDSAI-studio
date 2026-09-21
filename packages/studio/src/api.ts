@@ -180,6 +180,10 @@ export interface Client {
   industry?: string;
   location?: string;
   notes?: string;
+  /** This client's ongoing Slack channel, opened in a new tab. */
+  slackUrl?: string;
+  /** This client's standing Google Meet room, opened in a new tab. */
+  meetUrl?: string;
   status: 'prospect' | 'active' | 'dormant' | 'archived';
   createdAt: string;
   updatedAt: string;
@@ -204,6 +208,8 @@ export interface Project {
   kind: string;
   phase: string;
   deadline?: string;
+  /** The Figma file this project's design work lives in, opened in a new tab. */
+  figmaUrl?: string;
 }
 
 export interface OnboardingSummary {
@@ -441,7 +447,7 @@ export interface Feedback {
 }
 
 export const api = {
-  health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
+  health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean }>('/api/health'),
 
   session: () => call<{ principal: Principal; user?: { name: string; email: string } }>('/api/session'),
   signIn: (email: string, password: string) =>
@@ -453,6 +459,10 @@ export const api = {
     call<Principal>('/api/setup', {
       method: 'POST', body: JSON.stringify({ name, email, password }),
     }),
+  updateAccount: (input: { name?: string; currentPassword?: string; newPassword?: string }) =>
+    call<{ name: string; email: string }>('/api/session', {
+      method: 'PATCH', body: JSON.stringify(input),
+    }),
 
   clients: () => call<{ clients: Client[] }>('/api/clients').then((r) => r.clients),
   client: (id: string) => call<{
@@ -460,11 +470,23 @@ export const api = {
   }>(`/api/clients/${id}`),
   createClient: (input: Partial<Client> & { name: string }) =>
     call<Client>('/api/clients', { method: 'POST', body: JSON.stringify(input) }),
+  updateClient: (id: string, input: { name?: string; website?: string; industry?: string;
+    location?: string; notes?: string; slackUrl?: string; meetUrl?: string;
+    status?: Client['status'] }) =>
+    call<Client>(`/api/clients/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  /** Refused with a 409 and `reasons` when the client still has anything
+   * hanging off it — archive it instead (`status: 'archived'`). */
+  deleteClient: (id: string) => call<{ removed: string }>(`/api/clients/${id}`, { method: 'DELETE' }),
+
   createContact: (clientId: string, input: { name: string; email?: string; title?: string;
     decisionMaker?: boolean }) =>
     call<Contact>(`/api/clients/${clientId}/contacts`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+  updateContact: (id: string, input: { name?: string; email?: string; phone?: string;
+    title?: string; decisionMaker?: boolean }) =>
+    call<Contact>(`/api/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteContact: (id: string) => call<{ removed: string }>(`/api/contacts/${id}`, { method: 'DELETE' }),
   brand: (clientId: string) =>
     call<{ values: BrandValue[] }>(`/api/clients/${clientId}/brand`).then((r) => r.values),
   editBrandValue: (clientId: string, name: string,
@@ -507,9 +529,18 @@ export const api = {
     call<Project>(`/api/clients/${clientId}/projects`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+  updateProject: (id: string, input: { name?: string; kind?: string; phase?: string;
+    deadline?: string; notes?: string; figmaUrl?: string }) =>
+    call<Project>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  /** Refused with a 409 when a run has ever been started against it. */
+  deleteProject: (id: string) => call<{ removed: string }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   portalKeys: (clientId: string) =>
     call<{ keys: PortalKey[] }>(`/api/clients/${clientId}/portal-keys`).then((r) => r.keys),
+  relabelPortalKey: (clientId: string, keyId: string, label: string) =>
+    call<{ id: string; label: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`, {
+      method: 'PATCH', body: JSON.stringify({ label }),
+    }),
   /** The token comes back once and is never retrievable again. */
   issuePortalKey: (clientId: string, input: {
     label: string; role?: string; collections?: string[]; days?: number;
@@ -544,6 +575,8 @@ export const api = {
   }) => call<{ asset: Asset }>(`/api/assets/${assetId}`, {
     method: 'PATCH', body: JSON.stringify(input),
   }).then((r) => r.asset),
+  deleteAsset: (assetId: string) =>
+    call<{ removed: string }>(`/api/assets/${assetId}`, { method: 'DELETE' }),
   downloadPath: (assetId: string) => `/api/assets/${assetId}/download`,
 
   rubric: () => call<RubricSummary>('/api/rubric'),

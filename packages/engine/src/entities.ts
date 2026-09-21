@@ -42,6 +42,10 @@ export const Client = z.object({
   industry: z.string().optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
+  /** A Slack channel to open for this client's ongoing communication. */
+  slackUrl: z.string().optional(),
+  /** A standing Google Meet room for this client. */
+  meetUrl: z.string().optional(),
   status: ClientStatus.default('prospect'),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -85,6 +89,8 @@ export const Project = z.object({
   phase: ProjectPhase.default('discovery'),
   deadline: z.string().optional(),
   notes: z.string().optional(),
+  /** The Figma file this project's design work lives in. */
+  figmaUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

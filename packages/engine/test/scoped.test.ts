@@ -128,10 +128,23 @@ describe('a portal session cannot write outside its scope', () => {
 describe('a viewer cannot write within its own scope', () => {
   const viewer: Principal = { kind: 'portal', userId: 'v', clientId: 'acme', role: 'viewer' };
 
-  it('reads its own client but cannot write its project', () => {
+  it('reads its own client but cannot write its brand', () => {
+    // `brand` rather than `project`: a project is studio-managed regardless
+    // of role (see below), so it would not isolate what this test is about —
+    // a role that is simply too weak, on a resource an editor could write.
     const scoped = new ScopedStore(fixture(), viewer);
     expect(scoped.getClient('acme')?.id).toBe('acme');
-    expect(() => scoped.saveProject(project('p2', 'acme'))).toThrow(/needs at least editor/);
+    expect(() => scoped.saveBrandValue({
+      clientId: 'acme', name: 'primary', kind: 'color', value: '#000',
+      origin: 'studio', updatedAt: NOW,
+    })).toThrow(/needs at least editor/);
+  });
+
+  it('cannot write its project even as an editor — that is studio-managed', () => {
+    const editor: Principal = { kind: 'portal', userId: 'e', clientId: 'acme', role: 'editor' };
+    const scoped = new ScopedStore(fixture(), editor);
+    expect(() => scoped.saveProject(project('p2', 'acme')))
+      .toThrow(/set by the studio, not from a client portal/);
   });
 });
 
@@ -163,8 +176,11 @@ describe('scope helpers', () => {
   it('reports write capability without performing the write', () => {
     const store = fixture();
     const scoped = new ScopedStore(store, acmePortal);
-    expect(scoped.canWrite('project', 'acme')).toBe(true);
+    // Projects moved to the studio-managed list — a portal reads its own
+    // project's phase and deadline, but only the studio sets them.
+    expect(scoped.canWrite('project', 'acme')).toBe(false);
     expect(scoped.canWrite('project', 'morrow')).toBe(false);
+    expect(new ScopedStore(store, studio).canWrite('project', 'acme')).toBe(true);
     expect(store.listProjects()).toHaveLength(2);
   });
 });

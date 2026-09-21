@@ -82,6 +82,18 @@ export class ScopedStore {
     this.store.saveClient(client);
   }
 
+  /**
+   * Only when the record is empty. A client with a project, a run, a file, an
+   * invoice — anything hanging off it — is not something a single click
+   * should be able to erase; `status: 'archived'` (set through `saveClient`)
+   * is the reversible way to put one out of the way. This is for the record
+   * created by mistake five minutes ago, nothing else.
+   */
+  deleteClient(id: string): void {
+    this.mustWrite('client', id);
+    this.store.deleteClient(id);
+  }
+
   /* ---------------------------------------------------------------- contacts */
 
   listContacts(clientId: string): Contact[] {
@@ -89,9 +101,22 @@ export class ScopedStore {
     return this.store.listContacts(clientId);
   }
 
+  getContact(id: string): Contact | undefined {
+    const contact = this.store.getContact(id);
+    if (!contact || !this.mayRead('contact', contact.clientId)) return undefined;
+    return contact;
+  }
+
   saveContact(contact: Contact): void {
     this.mustWrite('contact', contact.clientId);
     this.store.saveContact(contact);
+  }
+
+  deleteContact(id: string): void {
+    const existing = this.store.getContact(id);
+    if (!existing) return;
+    this.mustWrite('contact', existing.clientId);
+    this.store.deleteContact(id);
   }
 
   /* ---------------------------------------------------------------- projects */
@@ -117,6 +142,15 @@ export class ScopedStore {
   saveProject(project: Project): void {
     this.mustWrite('project', project.clientId);
     this.store.saveProject(project);
+  }
+
+  /** Only when no run has ever been started against it — a run is the
+   * project's own history, and this is not where that gets erased. */
+  deleteProject(id: string): void {
+    const existing = this.store.getProject(id);
+    if (!existing) return;
+    this.mustWrite('project', existing.clientId);
+    this.store.deleteProject(id);
   }
 
   /* -------------------------------------------------------------------- runs */
@@ -183,6 +217,13 @@ export class ScopedStore {
   saveAsset(asset: Asset): void {
     this.mustWrite('asset', asset.clientId);
     this.store.saveAsset(asset);
+  }
+
+  deleteAsset(id: string): void {
+    const existing = this.store.getAsset(id);
+    if (!existing) return;
+    this.mustWrite('asset', existing.clientId);
+    this.store.deleteAsset(id);
   }
 
   /* ------------------------------------------------------------ comparators */

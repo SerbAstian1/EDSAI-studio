@@ -18,6 +18,12 @@ import { api, type Asset } from '../api.js';
  * Collections are free text on purpose. They are what a `limited` portal session
  * is scoped to, so a client's agency can be given "logos" and nothing else —
  * which is a per-person answer, not a taxonomy the studio can fix in advance.
+ *
+ * Renaming a file or moving it between collections was previously only
+ * possible through the API directly — the fields existed, nothing on this
+ * screen wrote to them. Delete had the same gap the other way: the store
+ * could remove a row, but nothing between it and this screen could reach
+ * that method at all. Both are wired up now.
  */
 
 const KIND_GLYPH: Record<Asset['kind'], string> = {
@@ -56,6 +62,93 @@ export function groupByCollection(assets: readonly Asset[]): [string, Asset[]][]
   });
 }
 
+function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void }): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const [filename, setFilename] = useState(asset.filename);
+  const [description, setDescription] = useState(asset.description ?? '');
+  const [collection, setCollection] = useState(asset.collection ?? '');
+
+  const setApproved = useMutation({
+    mutationFn: (approved: boolean) => api.updateAsset(asset.id, { approved }),
+    onSuccess: onChanged,
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.updateAsset(asset.id, {
+      filename: filename.trim(), description, collection,
+    }),
+    onSuccess: () => { setEditing(false); onChanged(); },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteAsset(asset.id),
+    onSuccess: onChanged,
+  });
+
+  const onDelete = (): void => {
+    if (!confirm(`Delete "${asset.filename}"? This removes it from the studio and the client's portal.`)) return;
+    remove.mutate();
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td colSpan={2}>
+          <input value={filename} onChange={(e) => setFilename(e.target.value)}
+                 aria-label="Filename" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)}
+                 aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
+        </td>
+        <td>
+          <input value={collection} onChange={(e) => setCollection(e.target.value)}
+                 aria-label="Collection" placeholder="Unfiled" style={{ maxWidth: 140 }} />
+        </td>
+        <td colSpan={2} className="row" style={{ gap: 6 }}>
+          <button type="button" className="primary" disabled={!filename.trim() || save.isPending}
+                  onClick={() => save.mutate()}>Save</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td data-label="File">
+        <span>
+          <span aria-hidden="true" style={{ marginRight: 8 }}>{KIND_GLYPH[asset.kind]}</span>
+          <strong>{asset.filename}</strong>
+        </span>
+        {asset.description && <div className="muted" style={{ fontSize: 13 }}>{asset.description}</div>}
+      </td>
+      <td className="muted" data-label="Kind">{asset.kind}</td>
+      <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
+      <td data-label="In the portal">
+        {asset.approved
+          ? <span className="pill pass">Visible</span>
+          : <span className="pill major">Not yet</span>}
+      </td>
+      <td>
+        <div className="row" style={{ gap: 'calc(var(--step) * 2)' }}>
+          <button
+            type="button"
+            className={asset.approved ? '' : 'primary'}
+            disabled={setApproved.isPending}
+            onClick={() => setApproved.mutate(!asset.approved)}
+          >
+            {asset.approved ? 'Withdraw' : 'Approve'}
+          </button>
+          <button type="button" onClick={() => setEditing(true)}>Edit</button>
+          <a href={api.downloadPath(asset.id)} download={asset.filename}>
+            <button type="button">Download</button>
+          </a>
+          <button type="button" onClick={onDelete} disabled={remove.isPending}>Delete</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function Assets({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
@@ -67,7 +160,12 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
   });
 
   const invalidate = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ['assets', clientId] });
+    // The bare ['assets'] prefix also catches this screen's own
+    // ['assets', clientId] key (a query key matches by prefix), and reaches
+    // the cross-client Files overview besides — invalidating only the
+    // narrower key would leave that overview showing a file this screen just
+    // deleted, renamed or newly approved.
+    void queryClient.invalidateQueries({ queryKey: ['assets'] });
   };
 
   const upload = useMutation({
@@ -83,12 +181,6 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
       }
       return done;
     },
-    onSuccess: invalidate,
-  });
-
-  const update = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof api.updateAsset>[1] }) =>
-      api.updateAsset(id, patch),
     onSuccess: invalidate,
   });
 
@@ -163,50 +255,13 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
               </thead>
               <tbody>
                 {group.map((asset) => (
-                  <tr key={asset.id}>
-                    <td data-label="File">
-                      {/* One child, not two: a stacked row spreads its cell
-                          contents apart, which put the glyph adrift from the
-                          name it belongs to. */}
-                      <span>
-                        <span aria-hidden="true" style={{ marginRight: 8 }}>
-                          {KIND_GLYPH[asset.kind]}
-                        </span>
-                        <strong>{asset.filename}</strong>
-                      </span>
-                    </td>
-                    <td className="muted" data-label="Kind">{asset.kind}</td>
-                    <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
-                    <td data-label="In the portal">
-                      {asset.approved
-                        ? <span className="pill pass">Visible</span>
-                        : <span className="pill major">Not yet</span>}
-                    </td>
-                    <td>
-                      <div className="row" style={{ gap: 'calc(var(--step) * 2)' }}>
-                        <button
-                          type="button"
-                          className={asset.approved ? '' : 'primary'}
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({
-                            id: asset.id, patch: { approved: !asset.approved },
-                          })}
-                        >
-                          {asset.approved ? 'Withdraw' : 'Approve'}
-                        </button>
-                        <a href={api.downloadPath(asset.id)} download={asset.filename}>
-                          <button type="button">Download</button>
-                        </a>
-                      </div>
-                    </td>
-                  </tr>
+                  <AssetRow key={asset.id} asset={asset} onChanged={invalidate} />
                 ))}
               </tbody>
             </table>
           </div>
         ))
       )}
-      {update.error && <p className="err">{(update.error as Error).message}</p>}
     </section>
   );
 }

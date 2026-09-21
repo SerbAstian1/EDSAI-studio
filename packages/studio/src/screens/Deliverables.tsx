@@ -25,6 +25,77 @@ const STATUS_TONE: Record<Deliverable['status'], string> = {
   pending: 'minor', 'in-progress': 'minor', delivered: 'pass',
 };
 
+function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => void }): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(d.title);
+  const [description, setDescription] = useState(d.description ?? '');
+  const [dueDate, setDueDate] = useState(d.dueDate ?? '');
+
+  const setStatus = useMutation({
+    mutationFn: (status: Deliverable['status']) => api.updateDeliverable(d.id, { status }),
+    onSuccess: onChanged,
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.updateDeliverable(d.id, { title: title.trim(), description, dueDate }),
+    onSuccess: () => { setEditing(false); onChanged(); },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteDeliverable(d.id),
+    onSuccess: onChanged,
+  });
+
+  const onDelete = (): void => {
+    if (!confirm(`Remove "${d.title}"?`)) return;
+    remove.mutate();
+  };
+
+  if (editing) {
+    return (
+      <tr>
+        <td>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)}
+                 aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
+        </td>
+        <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
+        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td colSpan={2} className="row" style={{ gap: 6 }}>
+          <button type="button" className="primary" disabled={!title.trim() || save.isPending}
+                  onClick={() => save.mutate()}>Save</button>
+          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td>
+        <strong>{d.title}</strong>
+        {d.description && <div className="muted" style={{ fontSize: 13 }}>{d.description}</div>}
+      </td>
+      <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
+      <td className="muted">{d.dueDate ?? '—'}</td>
+      <td>
+        <select
+          value={d.status} className={`pill ${STATUS_TONE[d.status]}`}
+          onChange={(e) => setStatus.mutate(e.target.value as Deliverable['status'])}
+        >
+          <option value="pending">Pending</option>
+          <option value="in-progress">In progress</option>
+          <option value="delivered">Delivered</option>
+        </select>
+      </td>
+      <td className="row" style={{ gap: 6 }}>
+        <button type="button" onClick={() => setEditing(true)}>Edit</button>
+        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
+      </td>
+    </tr>
+  );
+}
+
 export default function Deliverables({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -45,17 +116,6 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
       kind, title: title.trim(), ...(dueDate ? { dueDate } : {}),
     }),
     onSuccess: () => { setTitle(''); setDueDate(''); setAdding(false); invalidate(); },
-  });
-
-  const setStatus = useMutation({
-    mutationFn: (input: { id: string; status: Deliverable['status'] }) =>
-      api.updateDeliverable(input.id, { status: input.status }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteDeliverable(id),
-    onSuccess: invalidate,
   });
 
   return (
@@ -103,28 +163,7 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
         <table>
           <thead><tr><th>Title</th><th>Kind</th><th>Due</th><th>Status</th><th /></tr></thead>
           <tbody>
-            {data.map((d) => (
-              <tr key={d.id}>
-                <td><strong>{d.title}</strong></td>
-                <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
-                <td className="muted">{d.dueDate ?? '—'}</td>
-                <td>
-                  <select
-                    value={d.status} className={`pill ${STATUS_TONE[d.status]}`}
-                    onChange={(e) => setStatus.mutate({
-                      id: d.id, status: e.target.value as Deliverable['status'],
-                    })}
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="in-progress">In progress</option>
-                    <option value="delivered">Delivered</option>
-                  </select>
-                </td>
-                <td>
-                  <button type="button" onClick={() => remove.mutate(d.id)}>Remove</button>
-                </td>
-              </tr>
-            ))}
+            {data.map((d) => <DeliverableRow key={d.id} d={d} onChanged={invalidate} />)}
           </tbody>
         </table>
       )}

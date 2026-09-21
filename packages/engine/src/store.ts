@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS clients (
   industry TEXT,
   location TEXT,
   notes TEXT,
+  slack_url TEXT,
+  meet_url TEXT,
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -89,6 +91,7 @@ CREATE TABLE IF NOT EXISTS projects (
   phase TEXT NOT NULL,
   deadline TEXT,
   notes TEXT,
+  figma_url TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -420,6 +423,15 @@ export class RunStore {
       // would be a second source for the one fact isolation depends on.
       this.db.exec('ALTER TABLE sessions ADD COLUMN collections TEXT');
     }
+    if (!columns('clients').includes('slack_url')) {
+      this.db.exec('ALTER TABLE clients ADD COLUMN slack_url TEXT');
+    }
+    if (!columns('clients').includes('meet_url')) {
+      this.db.exec('ALTER TABLE clients ADD COLUMN meet_url TEXT');
+    }
+    if (!columns('projects').includes('figma_url')) {
+      this.db.exec('ALTER TABLE projects ADD COLUMN figma_url TEXT');
+    }
     this.attachOrphanedRuns();
   }
 
@@ -480,16 +492,18 @@ export class RunStore {
   saveClient(client: ClientType): void {
     Client.parse(client);
     this.db.prepare(`
-      INSERT INTO clients (id, name, slug, website, industry, location, notes, status,
-                           created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (id, name, slug, website, industry, location, notes, slack_url,
+                           meet_url, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name, slug = excluded.slug, website = excluded.website,
         industry = excluded.industry, location = excluded.location, notes = excluded.notes,
+        slack_url = excluded.slack_url, meet_url = excluded.meet_url,
         status = excluded.status, updated_at = excluded.updated_at
     `).run(
       client.id, client.name, client.slug, client.website ?? null, client.industry ?? null,
-      client.location ?? null, client.notes ?? null, client.status,
+      client.location ?? null, client.notes ?? null, client.slackUrl ?? null,
+      client.meetUrl ?? null, client.status,
       client.createdAt, client.updatedAt,
     );
   }
@@ -538,14 +552,25 @@ export class RunStore {
     const rows = this.db
       .prepare('SELECT * FROM contacts WHERE client_id = ? ORDER BY decision_maker DESC, name')
       .all(clientId) as Record<string, unknown>[];
-    return rows.map((row) => Contact.parse({
-      id: row['id'], clientId: row['client_id'], name: row['name'],
-      ...(row['email'] ? { email: row['email'] } : {}),
-      ...(row['phone'] ? { phone: row['phone'] } : {}),
-      ...(row['title'] ? { title: row['title'] } : {}),
-      decisionMaker: row['decision_maker'] === 1,
-      createdAt: row['created_at'],
-    }));
+    return rows.map(hydrateContact);
+  }
+
+  getContact(id: string): ContactType | undefined {
+    const row = this.db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as
+      Record<string, unknown> | undefined;
+    return row ? hydrateContact(row) : undefined;
+  }
+
+  deleteContact(id: string): void {
+    this.db.prepare('DELETE FROM contacts WHERE id = ?').run(id);
+  }
+
+  deleteClient(id: string): void {
+    this.db.prepare('DELETE FROM clients WHERE id = ?').run(id);
+  }
+
+  deleteProject(id: string): void {
+    this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
   }
 
   /* ---------------------------------------------------------------- projects */
@@ -553,15 +578,17 @@ export class RunStore {
   saveProject(project: ProjectType): void {
     Project.parse(project);
     this.db.prepare(`
-      INSERT INTO projects (id, client_id, name, kind, phase, deadline, notes,
+      INSERT INTO projects (id, client_id, name, kind, phase, deadline, notes, figma_url,
                             created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name, kind = excluded.kind, phase = excluded.phase,
-        deadline = excluded.deadline, notes = excluded.notes, updated_at = excluded.updated_at
+        deadline = excluded.deadline, notes = excluded.notes, figma_url = excluded.figma_url,
+        updated_at = excluded.updated_at
     `).run(
       project.id, project.clientId, project.name, project.kind, project.phase,
-      project.deadline ?? null, project.notes ?? null, project.createdAt, project.updatedAt,
+      project.deadline ?? null, project.notes ?? null, project.figmaUrl ?? null,
+      project.createdAt, project.updatedAt,
     );
   }
 
@@ -958,6 +985,17 @@ export class RunStore {
       key.collections && key.collections.length > 0 ? JSON.stringify(key.collections) : null,
       key.createdAt, key.expiresAt,
     );
+  }
+
+  /**
+   * Relabelling a key, and only the label — role and collections stay what
+   * they were issued as, on purpose: the same reason `savePortalKey`'s own
+   * upsert never touches them on a re-save. Renaming who a link was given to
+   * is bookkeeping; widening what it opens is a different action entirely,
+   * and this method cannot be used for it even by a caller that wanted to.
+   */
+  relabelPortalKey(digest: string, label: string): void {
+    this.db.prepare('UPDATE portal_keys SET label = ? WHERE digest = ?').run(label, digest);
   }
 
   /**
@@ -1361,7 +1399,20 @@ function hydrateClient(row: Record<string, unknown>): ClientType {
     ...(row['industry'] ? { industry: row['industry'] } : {}),
     ...(row['location'] ? { location: row['location'] } : {}),
     ...(row['notes'] ? { notes: row['notes'] } : {}),
+    ...(row['slack_url'] ? { slackUrl: row['slack_url'] } : {}),
+    ...(row['meet_url'] ? { meetUrl: row['meet_url'] } : {}),
     status: row['status'], createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateContact(row: Record<string, unknown>): ContactType {
+  return Contact.parse({
+    id: row['id'], clientId: row['client_id'], name: row['name'],
+    ...(row['email'] ? { email: row['email'] } : {}),
+    ...(row['phone'] ? { phone: row['phone'] } : {}),
+    ...(row['title'] ? { title: row['title'] } : {}),
+    decisionMaker: row['decision_maker'] === 1,
+    createdAt: row['created_at'],
   });
 }
 
@@ -1371,6 +1422,7 @@ function hydrateProject(row: Record<string, unknown>): ProjectType {
     kind: row['kind'], phase: row['phase'],
     ...(row['deadline'] ? { deadline: row['deadline'] } : {}),
     ...(row['notes'] ? { notes: row['notes'] } : {}),
+    ...(row['figma_url'] ? { figmaUrl: row['figma_url'] } : {}),
     createdAt: row['created_at'], updatedAt: row['updated_at'],
   });
 }

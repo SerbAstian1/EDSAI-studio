@@ -22,7 +22,7 @@ import {
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   orderMilestones, invoiceStatus, invoiceTotals,
   type AssetStore,
-  type Run, type Onboarding, type PortalKey, type Answer,
+  type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
 } from '@edsai/engine';
 import {
@@ -542,6 +542,10 @@ export class ApiServer {
           // The first-run experience needs to know whether anyone exists yet
           // without being able to enumerate who. A boolean is the whole answer.
           needsSetup: this.store.countUsers() === 0,
+          // Settings reads this to say the true thing about the running
+          // process, rather than a static paragraph that drifts the first
+          // time someone flips the flag.
+          authDisabled: this.disableAuth,
         }),
       },
 
@@ -657,6 +661,64 @@ export class ApiServer {
           if (token) this.store.deleteSession(digestToken(token));
           res.setHeader('Set-Cookie', serializeLogout({ secure: !this.insecureCookies }));
           send(res, 200, { ok: true });
+        },
+      },
+
+      /**
+       * Editing your own account — the one record `saveUser`'s upsert could
+       * always technically overwrite, and the one nothing before this route
+       * would let a signed-in person reach. A name change needs nothing; a
+       * password change needs the current one first, the same as any account
+       * settings page — a session left open on a shared machine should not be
+       * enough on its own to lock everyone else out of it.
+       */
+      {
+        method: 'PATCH', pattern: /^\/api\/session$/,
+        run: async ({ res, body, principal }) => {
+          if (!principal || principal.kind !== 'studio') {
+            send(res, 401, { error: 'unauthenticated', message: 'Sign in first.' });
+            return;
+          }
+          const user = this.store.getUserById(principal.userId);
+          if (!user) {
+            send(res, 404, { error: 'not_found', message: 'That account no longer exists.' });
+            return;
+          }
+          const input = body as { name?: string; currentPassword?: string; newPassword?: string };
+
+          if (input?.newPassword !== undefined) {
+            const ok = await verifyAgainstAccount(input.currentPassword ?? '',
+              { salt: user.passwordSalt, hash: user.passwordHash });
+            if (!ok) {
+              send(res, 401, {
+                error: 'bad_credentials', message: 'That is not your current password.',
+              });
+              return;
+            }
+          }
+          if (input?.name !== undefined && input.name.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A name cannot be blank.' });
+            return;
+          }
+
+          let record: { salt: string; hash: string } = {
+            salt: user.passwordSalt, hash: user.passwordHash,
+          };
+          if (input?.newPassword) {
+            try {
+              record = await hashPassword(input.newPassword);
+            } catch (error) {
+              send(res, 400, { error: 'weak_password', message: (error as Error).message });
+              return;
+            }
+          }
+
+          this.store.saveUser({
+            ...user,
+            ...(input?.name?.trim() ? { name: input.name.trim() } : {}),
+            passwordSalt: record.salt, passwordHash: record.hash,
+          });
+          send(res, 200, { name: input?.name?.trim() || user.name, email: user.email });
         },
       },
 
@@ -809,6 +871,20 @@ export class ApiServer {
           };
           scoped.saveAsset(updated);
           send(res, 200, { asset: updated });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/assets\/(?<assetId>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getAsset(params['assetId'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such file for this session.' });
+            return;
+          }
+          scoped.deleteAsset(existing.id);
+          send(res, 200, { removed: existing.id });
         },
       },
 
@@ -1136,6 +1212,37 @@ export class ApiServer {
           }
           this.store.revokePortalKey(match.digest);
           send(res, 200, { revoked: match.label });
+        },
+      },
+
+      /**
+       * Relabelling a link — "Ada" left, it's "Priya" now. The token itself
+       * is unrecoverable on purpose (see the issue route above); the label
+       * carries no such reason to be frozen.
+       */
+      {
+        method: 'PATCH', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/portal-keys\/(?<keyId>[0-9a-f]{12})$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId) || !scoped.canManageAccess(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const keyId = params['keyId'] ?? '';
+          const match = this.store.listPortalKeys(clientId)
+            .find((key) => key.digest.startsWith(keyId));
+          if (!match) {
+            send(res, 404, { error: 'not_found', message: 'No such link.' });
+            return;
+          }
+          const label = (body as { label?: string })?.label?.trim();
+          if (!label) {
+            send(res, 400, { error: 'bad_request', message: 'A link needs a label.' });
+            return;
+          }
+          this.store.relabelPortalKey(match.digest, label);
+          send(res, 200, { id: keyId, label });
         },
       },
 
@@ -2151,7 +2258,8 @@ body { max-width: 640px; margin: 48px auto; }
         run: ({ res, body, scoped }) => {
           if (!scoped) return;
           const input = body as { name?: string; website?: string; industry?: string;
-            location?: string; notes?: string; status?: string };
+            location?: string; notes?: string; slackUrl?: string; meetUrl?: string;
+            status?: string };
           if (!input?.name?.trim()) {
             send(res, 400, { error: 'bad_request', message: 'A client needs a name.' });
             return;
@@ -2180,6 +2288,8 @@ body { max-width: 640px; margin: 48px auto; }
             ...(input.industry?.trim() ? { industry: input.industry.trim() } : {}),
             ...(input.location?.trim() ? { location: input.location.trim() } : {}),
             ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+            ...(input.slackUrl?.trim() ? { slackUrl: input.slackUrl.trim() } : {}),
+            ...(input.meetUrl?.trim() ? { meetUrl: input.meetUrl.trim() } : {}),
             status: (input.status ?? 'prospect') as 'prospect',
             createdAt: now,
             updatedAt: now,
@@ -2206,6 +2316,140 @@ body { max-width: 640px; margin: 48px auto; }
             projects: scoped?.listProjects(client.id) ?? [],
             runs: (scoped?.listRuns() ?? []).filter((run) => run.clientId === client.id),
           });
+        },
+      },
+
+      /**
+       * Editing a client. The slug stays fixed even when the name changes —
+       * it is what a portal address is built from, and a link that stopped
+       * resolving the day someone fixed a typo in the display name would be
+       * a strange thing for "edit" to have done.
+       */
+      {
+        method: 'PATCH', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getClient(params['clientId'] ?? '');
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+          const input = body as { name?: string; website?: string; industry?: string;
+            location?: string; notes?: string; slackUrl?: string; meetUrl?: string;
+            status?: string };
+          if (input?.name !== undefined && input.name.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A client needs a name.' });
+            return;
+          }
+          const client = {
+            ...existing,
+            ...(input?.name?.trim() ? { name: input.name.trim() } : {}),
+            ...(input?.website !== undefined ? { website: input.website } : {}),
+            ...(input?.industry !== undefined ? { industry: input.industry } : {}),
+            ...(input?.location !== undefined ? { location: input.location } : {}),
+            ...(input?.notes !== undefined ? { notes: input.notes } : {}),
+            ...(input?.slackUrl !== undefined ? { slackUrl: input.slackUrl } : {}),
+            ...(input?.meetUrl !== undefined ? { meetUrl: input.meetUrl } : {}),
+            ...(input?.status ? { status: input.status as Client['status'] } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveClient(client);
+          send(res, 200, client);
+        },
+      },
+
+      /**
+       * Deleting a client — only when there is nothing hanging off it. A
+       * client with a project, a run, a file, an invoice, anything, does not
+       * go away on one click; `PATCH .../status = 'archived'` is the
+       * reversible way to put one out of sight. This is for the record
+       * created five minutes ago by mistake, and nothing wider.
+       */
+      {
+        method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const existing = scoped.getClient(clientId);
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: 'No client by that id is visible to this session.',
+            });
+            return;
+          }
+          const blockers: string[] = [];
+          if (scoped.listContacts(clientId).length > 0) blockers.push('a contact');
+          if (scoped.listProjects(clientId).length > 0) blockers.push('a project');
+          if (scoped.listRuns().some((run) => run.clientId === clientId)) blockers.push('a run');
+          if (scoped.listAssets(clientId).length > 0) blockers.push('a file');
+          if (scoped.listDeliverables(clientId).length > 0) blockers.push('a deliverable');
+          if (scoped.listMilestones(clientId).length > 0) blockers.push('a milestone');
+          if (scoped.listInvoices(clientId).length > 0) blockers.push('an invoice');
+          if (scoped.listMessages(clientId).length > 0) blockers.push('a message');
+          if (scoped.listFeedback(clientId).length > 0) blockers.push('feedback');
+          if (scoped.listBrandValues(clientId).length > 0) blockers.push('a brand value');
+          if (scoped.listComparators(clientId).length > 0) blockers.push('a positioning comparator');
+          if (this.store.listPortalKeys(clientId).length > 0) blockers.push('a portal link');
+          if (scoped.listOnboardings(clientId).length > 0) blockers.push('an onboarding');
+          if (blockers.length > 0) {
+            send(res, 409, {
+              error: 'not_empty',
+              message: `This client still has ${blockers[0]}. Archive it instead of deleting, `
+                + 'or remove everything under it first.',
+              reasons: blockers,
+            });
+            return;
+          }
+          scoped.deleteClient(clientId);
+          send(res, 200, { removed: clientId });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/contacts\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getContact(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: 'No contact by that id is visible to this session.',
+            });
+            return;
+          }
+          const input = body as { name?: string; email?: string; phone?: string;
+            title?: string; decisionMaker?: boolean };
+          if (input?.name !== undefined && input.name.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A contact needs a name.' });
+            return;
+          }
+          const contact = {
+            ...existing,
+            ...(input?.name?.trim() ? { name: input.name.trim() } : {}),
+            ...(input?.email !== undefined ? { email: input.email } : {}),
+            ...(input?.phone !== undefined ? { phone: input.phone } : {}),
+            ...(input?.title !== undefined ? { title: input.title } : {}),
+            ...(typeof input?.decisionMaker === 'boolean' ? { decisionMaker: input.decisionMaker } : {}),
+          };
+          scoped.saveContact(contact);
+          send(res, 200, contact);
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/contacts\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          if (!scoped.getContact(id)) {
+            send(res, 404, {
+              error: 'not_found', message: 'No contact by that id is visible to this session.',
+            });
+            return;
+          }
+          scoped.deleteContact(id);
+          send(res, 200, { removed: id });
         },
       },
 
@@ -2254,7 +2498,7 @@ body { max-width: 640px; margin: 48px auto; }
             });
             return;
           }
-          const input = body as { name?: string; kind?: string; phase?: string };
+          const input = body as { name?: string; kind?: string; phase?: string; figmaUrl?: string };
           if (!input?.name?.trim()) {
             send(res, 400, { error: 'bad_request', message: 'A project needs a name.' });
             return;
@@ -2266,11 +2510,71 @@ body { max-width: 640px; margin: 48px auto; }
             name: input.name.trim(),
             kind: (input.kind ?? 'brand-identity') as 'brand-identity',
             phase: (input.phase ?? 'discovery') as 'discovery',
+            ...(input.figmaUrl?.trim() ? { figmaUrl: input.figmaUrl.trim() } : {}),
             createdAt: now,
             updatedAt: now,
           };
           scoped.saveProject(project);
           send(res, 201, project);
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/projects\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getProject(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: 'No project by that id is visible to this session.',
+            });
+            return;
+          }
+          const input = body as { name?: string; kind?: string; phase?: string;
+            deadline?: string; notes?: string; figmaUrl?: string };
+          if (input?.name !== undefined && input.name.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A project needs a name.' });
+            return;
+          }
+          const project = {
+            ...existing,
+            ...(input?.name?.trim() ? { name: input.name.trim() } : {}),
+            ...(input?.kind ? { kind: input.kind as typeof existing.kind } : {}),
+            ...(input?.phase ? { phase: input.phase as typeof existing.phase } : {}),
+            ...(input?.deadline !== undefined ? { deadline: input.deadline } : {}),
+            ...(input?.notes !== undefined ? { notes: input.notes } : {}),
+            ...(input?.figmaUrl !== undefined ? { figmaUrl: input.figmaUrl } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveProject(project);
+          send(res, 200, project);
+        },
+      },
+
+      /** Only when nothing was ever run against it — a run is the project's
+       * own history, not something one click should be able to erase. */
+      {
+        method: 'DELETE', pattern: /^\/api\/projects\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          const existing = scoped.getProject(id);
+          if (!existing) {
+            send(res, 404, {
+              error: 'not_found', message: 'No project by that id is visible to this session.',
+            });
+            return;
+          }
+          if (scoped.listRuns().some((run) => run.projectId === id)) {
+            send(res, 409, {
+              error: 'not_empty',
+              message: 'This project has a run against it, so it stays as history. '
+                + 'Rename or rephase it instead.',
+            });
+            return;
+          }
+          scoped.deleteProject(id);
+          send(res, 200, { removed: id });
         },
       },
 

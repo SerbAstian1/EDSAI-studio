@@ -160,7 +160,7 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
           {placed.map((point) => (
             <button
               key={point.id} type="button" disabled={remove.isPending}
-              onClick={() => remove.mutate(point.id)}
+              onClick={() => { if (confirm(`Remove ${point.label} from the chart?`)) remove.mutate(point.id); }}
             >
               Remove {point.label}
             </button>
