@@ -219,6 +219,36 @@ export interface OnboardingSummary {
   };
 }
 
+/** A question, exactly as `@edsai/engine`'s `QUESTIONS` catalog states it. */
+export interface DiscoveryQuestion {
+  id: string;
+  act: string;
+  kind: 'binary' | 'scale' | 'ratio' | 'pick-many' | 'text';
+  prompt: string;
+  help?: string;
+  options?: { id: string; label: string }[];
+  anchors?: { low: string; high: string };
+  sides?: { a: string; b: string };
+  take?: number;
+  required: boolean;
+}
+
+export interface DiscoveryStrength { id: string; label: string; ratio: string }
+
+/** One onboarding's questions, answers and progress — the same shape whether
+ * it is read through an invite token or through the studio's own session. */
+export interface DiscoveryForm {
+  clientName: string;
+  status: string;
+  questions: DiscoveryQuestion[];
+  strengths: DiscoveryStrength[];
+  answers: { questionId: string; value: unknown }[];
+  progress: {
+    answered: number; required: number; percent: number;
+    outstanding: string[]; axesDecided: number; axesDrafted: string[];
+  };
+}
+
 export interface Measured {
   ratio?: number;
   required?: number;
@@ -460,6 +490,18 @@ export const api = {
       `/api/clients/${clientId}/onboarding`, { method: 'POST' }),
   acceptOnboarding: (onboardingId: string) =>
     call<{ project: Project }>(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' }),
+
+  /** The discovery form, answered from inside the studio — the invite
+   * token's own endpoints, reached through the session instead. */
+  discoveryForm: (onboardingId: string) => call<DiscoveryForm>(`/api/onboardings/${onboardingId}`),
+  answerDiscovery: (onboardingId: string, questionId: string, value: unknown) =>
+    call<{ progress: DiscoveryForm['progress'] }>(`/api/onboardings/${onboardingId}`, {
+      method: 'POST', body: JSON.stringify({ questionId, value }),
+    }),
+  submitDiscovery: (onboardingId: string) =>
+    call<{ status: string; progress: DiscoveryForm['progress'] }>(`/api/onboardings/${onboardingId}`, {
+      method: 'POST', body: JSON.stringify({ submit: true }),
+    }),
 
   createProject: (clientId: string, input: { name: string; kind?: string }) =>
     call<Project>(`/api/clients/${clientId}/projects`, {

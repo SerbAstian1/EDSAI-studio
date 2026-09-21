@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OnboardingSummary } from '../api.js';
+import { DiscoveryQuestions } from './DiscoveryQuestions.js';
 
 /**
  * The studio's side of onboarding.
@@ -9,7 +10,58 @@ import { api, type OnboardingSummary } from '../api.js';
  * digest is stored — the same rule as a session token. If it is lost, a new one
  * is issued, which is an action the client can see; recovering the old one would
  * mean the database held something that could open the form.
+ *
+ * The link is still the way to hand this to a client — nothing about that
+ * changed. What is new is that answering it no longer requires the link: a
+ * card can be opened right here and answered from inside the studio's own
+ * session, for the call where the client says the answer out loud instead of
+ * typing it themselves.
  */
+
+/** The one onboarding open for answering inline, or none. */
+function InlineDiscovery({ onboardingId, onDone }: { onboardingId: string; onDone: () => void }): ReactElement {
+  const queryClient = useQueryClient();
+  const { data, isPending, error } = useQuery({
+    queryKey: ['discovery', onboardingId], queryFn: () => api.discoveryForm(onboardingId),
+  });
+
+  const invalidate = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['discovery', onboardingId] });
+    void queryClient.invalidateQueries({ queryKey: ['onboardings'] });
+  };
+
+  const answer = useMutation({
+    mutationFn: (input: { questionId: string; value: unknown }) =>
+      api.answerDiscovery(onboardingId, input.questionId, input.value),
+    onSuccess: invalidate,
+  });
+
+  const submit = useMutation({
+    mutationFn: () => api.submitDiscovery(onboardingId),
+    onSuccess: () => { invalidate(); onDone(); },
+  });
+
+  if (isPending) return <p className="muted">Opening…</p>;
+  if (error) return <p className="err">{(error as Error).message}</p>;
+
+  if (data.status === 'submitted' || data.status === 'accepted') {
+    return <p className="muted">Every question here has an answer. Turn it into a project above.</p>;
+  }
+
+  return (
+    <div className="stack">
+      <DiscoveryQuestions
+        data={data}
+        onAnswer={(questionId, value) => answer.mutate({ questionId, value })}
+        onSubmit={() => submit.mutate()}
+        saving={answer.isPending || submit.isPending}
+        saveError={(answer.error ?? submit.error) as Error | undefined}
+        submitLabel="Mark complete"
+      />
+    </div>
+  );
+}
+
 export function OnboardingPanel({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const { data: onboardings, isPending } = useQuery({
@@ -17,6 +69,7 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
   });
 
   const [link, setLink] = useState<string | undefined>();
+  const [answering, setAnswering] = useState<string | undefined>();
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['onboardings', clientId] });
@@ -76,6 +129,13 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                   {onboarding.status}
                 </span>
                 <span className="muted mono" style={{ fontSize: 12 }}>{onboarding.id}</span>
+                {(onboarding.status === 'draft' || onboarding.status === 'sent'
+                  || onboarding.status === 'in-progress') && (
+                  <button style={{ marginLeft: 'auto' }}
+                          onClick={() => setAnswering((id) => id === onboarding.id ? undefined : onboarding.id)}>
+                    {answering === onboarding.id ? 'Close' : 'Answer here'}
+                  </button>
+                )}
                 {onboarding.status === 'submitted' && (
                   <button className="primary" style={{ marginLeft: 'auto' }}
                           onClick={() => accept.mutate(onboarding.id)}
@@ -101,6 +161,15 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                 <p className="muted" style={{ fontSize: 13 }}>
                   Became project <span className="mono">{onboarding.projectId}</span>.
                 </p>
+              )}
+
+              {answering === onboarding.id && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <InlineDiscovery
+                    onboardingId={onboarding.id}
+                    onDone={() => setAnswering(undefined)}
+                  />
+                </div>
               )}
             </div>
           ))}

@@ -22,7 +22,7 @@ import {
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   orderMilestones, invoiceStatus, invoiceTotals,
   type AssetStore,
-  type Run, type Onboarding, type PortalKey,
+  type Run, type Onboarding, type PortalKey, type Answer,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
 } from '@edsai/engine';
 import {
@@ -2037,6 +2037,96 @@ body { max-width: 640px; margin: 48px auto; }
             this.store.saveOnboarding({ ...onboarding, status: 'in-progress' });
           }
           send(res, 200, { progress: progressOf(this.store.getAnswers(onboarding.id)) });
+        },
+      },
+
+      /**
+       * The same discovery form, answered from inside the studio.
+       *
+       * A studio user on a call with a client, or working from an email
+       * reply instead of the link, should not have to open the client-facing
+       * form in another tab to record what was said — the questions and the
+       * validation are exactly the invite token's, only the session is
+       * different. The invite link stays exactly what it was for anyone the
+       * studio does send it to; this is an additional way in, not a
+       * replacement.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/onboardings\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const onboarding = scoped.getOnboarding(params['id'] ?? '');
+          if (!onboarding) {
+            send(res, 404, {
+              error: 'not_found', message: 'No onboarding by that id is visible to this session.',
+            });
+            return;
+          }
+          const client = scoped.getClient(onboarding.clientId);
+          const answers = scoped.getAnswers(onboarding.id);
+          send(res, 200, {
+            clientName: client?.name ?? onboarding.clientId,
+            status: onboarding.status,
+            questions: QUESTIONS,
+            strengths: RATIO_STRENGTHS,
+            answers: answers.map((a) => ({ questionId: a.questionId, value: a.value })),
+            progress: progressOf(answers),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/onboardings\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const onboarding = scoped.getOnboarding(params['id'] ?? '');
+          if (!onboarding) {
+            send(res, 404, {
+              error: 'not_found', message: 'No onboarding by that id is visible to this session.',
+            });
+            return;
+          }
+          if (onboarding.status === 'accepted') {
+            send(res, 409, {
+              error: 'closed', message: 'This onboarding already became a project.',
+            });
+            return;
+          }
+
+          const input = body as { questionId?: string; value?: unknown; submit?: boolean };
+
+          if (input?.submit === true) {
+            const answers = scoped.getAnswers(onboarding.id);
+            const progress = progressOf(answers);
+            if (progress.outstanding.length > 0) {
+              send(res, 400, {
+                error: 'incomplete',
+                message: `${progress.outstanding.length} question(s) still need an answer.`,
+                reasons: progress.outstanding,
+              });
+              return;
+            }
+            scoped.saveOnboarding({
+              ...onboarding, status: 'submitted', submittedAt: new Date().toISOString(),
+            });
+            send(res, 200, { status: 'submitted', progress });
+            return;
+          }
+
+          if (typeof input?.questionId !== 'string' || !answerIsValid(input.questionId, input.value)) {
+            send(res, 400, { error: 'bad_answer', message: 'That answer does not fit that question.' });
+            return;
+          }
+
+          const answer: Answer = {
+            onboardingId: onboarding.id, questionId: input.questionId, value: input.value,
+            answeredAt: new Date().toISOString(),
+          };
+          scoped.saveAnswer(answer);
+          if (onboarding.status === 'sent' || onboarding.status === 'draft') {
+            scoped.saveOnboarding({ ...onboarding, status: 'in-progress' });
+          }
+          send(res, 200, { progress: progressOf(scoped.getAnswers(onboarding.id)) });
         },
       },
 

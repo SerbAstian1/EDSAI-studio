@@ -4,7 +4,7 @@ import {
 } from '@edsai/auth';
 import type { RunStore } from './store.js';
 import type { Client, Contact, Project } from './entities.js';
-import type { Onboarding } from './onboarding.js';
+import type { Onboarding, Answer } from './onboarding.js';
 import type { BrandValue } from './brand.js';
 import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
@@ -340,6 +340,25 @@ export class ScopedStore {
   saveOnboarding(onboarding: Onboarding): void {
     this.mustWrite('client', onboarding.clientId, 'write');
     this.store.saveOnboarding(onboarding);
+  }
+
+  /**
+   * Answering the discovery questions from inside the studio itself — the
+   * same record a client's own invite link writes to, gated the same way
+   * (`onboarding`'s own `client` resource) rather than through a second rule
+   * for who may hold a pen.
+   */
+  getAnswers(onboardingId: string): Answer[] {
+    const onboarding = this.store.getOnboarding(onboardingId);
+    if (!onboarding || !this.mayRead('client', onboarding.clientId)) return [];
+    return this.store.getAnswers(onboardingId);
+  }
+
+  saveAnswer(answer: Answer): void {
+    const onboarding = this.store.getOnboarding(answer.onboardingId);
+    if (!onboarding) throw new Error(`No such onboarding: ${answer.onboardingId}`);
+    this.mustWrite('client', onboarding.clientId, 'write');
+    this.store.saveAnswer(answer);
   }
 
   /**
