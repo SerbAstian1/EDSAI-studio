@@ -13,6 +13,13 @@ dist/
 *.sqlite
 data/runs/
 
+# Local dev server state — database and uploaded files from `edsai serve`
+# run with no explicit --db/--assets, defaulting under the repo.
+.edsai/
+
+# Design references dropped in for a session, not part of the source.
+ui ref/
+
 # Exemplar imagery is third-party client work (Disan's Footwear).
 # The data model marks it "local library, never redistributed".
 # Kept out of this repo while it is public — see docs/notes/gaps.md.

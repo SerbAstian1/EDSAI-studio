@@ -17,8 +17,12 @@ export type Action = typeof ACTIONS[number];
 
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
+  'deliverable', 'milestone', 'invoice', 'message', 'feedback',
 ] as const;
 export type ResourceKind = typeof RESOURCES[number];
+
+/** Studio-only writes: a client portal reads its own status, never sets it. */
+const STUDIO_MANAGED: readonly ResourceKind[] = ['deliverable', 'milestone', 'invoice'];
 
 export interface Resource {
   kind: ResourceKind;
@@ -89,6 +93,15 @@ export function can(principal: Principal, action: Action, resource: Resource): D
   //    read its own but never write it.
   if (principal.kind === 'portal' && resource.kind === 'client' && action !== 'read') {
     return deny('a client portal cannot modify the client record');
+  }
+
+  // 5. Deliverables, milestones and invoices are the studio's own tracking of
+  //    its own work — a portal reads them to see where things stand, but only
+  //    the studio moves one to done or marks an invoice paid. Messages and
+  //    feedback stay off this list deliberately: those are genuinely two-way,
+  //    gated by the ordinary role check below like any other write.
+  if (principal.kind === 'portal' && STUDIO_MANAGED.includes(resource.kind) && action !== 'read') {
+    return deny(`${resource.kind} status is set by the studio, not from a client portal`);
   }
 
   return atLeast(principal.role, NEEDS[action])

@@ -51,13 +51,14 @@ function actionCommands(): Command[] {
     },
     {
       id: 'client:new', title: 'New client', group: 'Create', glyph: '+',
-      available: false,
-      unavailable: 'Clients arrive in P2. A run currently carries a project id with no record behind it.',
+      available: true, run: go('#/clients'),
+      keywords: 'onboard studio',
     },
     {
       id: 'asset:upload', title: 'Upload asset', group: 'Create', glyph: '↑',
       available: false,
-      unavailable: 'The asset library arrives in P5; there is no storage layer yet.',
+      unavailable: 'Uploads happen from a client’s own page — there is no studio-wide '
+        + 'drop target yet, and inventing one here would upload to nowhere.',
     },
     {
       id: 'portal:publish', title: 'Publish brand portal', group: 'Deliver', glyph: '◎',

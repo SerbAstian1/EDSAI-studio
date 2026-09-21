@@ -10,6 +10,11 @@ import { slugify } from './entities.js';
 import { Comparator, type Comparator as ComparatorType } from './positioning.js';
 import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import { Asset, type Asset as AssetType } from './assets.js';
+import { Deliverable, type Deliverable as DeliverableType } from './deliverables.js';
+import { Milestone, type Milestone as MilestoneType } from './milestones.js';
+import { Invoice, type Invoice as InvoiceType } from './invoices.js';
+import { Message, type Message as MessageType } from './messages.js';
+import { Feedback, type Feedback as FeedbackType } from './feedback.js';
 import {
   Onboarding, Answer,
   type Onboarding as OnboardingType, type Answer as AnswerType,
@@ -250,6 +255,82 @@ CREATE TABLE IF NOT EXISTS violations (
   claimed TEXT NOT NULL,
   detail TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS deliverables (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  asset_id TEXT,
+  due_date TEXT,
+  delivered_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS deliverables_by_client ON deliverables (client_id);
+
+CREATE TABLE IF NOT EXISTS milestones (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'upcoming',
+  due_date TEXT,
+  completed_at TEXT,
+  ord INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS milestones_by_client ON milestones (client_id);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  number TEXT NOT NULL,
+  description TEXT NOT NULL,
+  issue_date TEXT NOT NULL,
+  due_date TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  paid INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS invoices_by_client ON invoices (client_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  author_kind TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attachment_asset_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS messages_by_client ON messages (client_id);
+
+CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  body TEXT NOT NULL,
+  rating INTEGER,
+  created_at TEXT NOT NULL,
+  response TEXT,
+  responded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS feedback_by_client ON feedback (client_id);
 `;
 
 export interface StoredViolation {
@@ -536,6 +617,152 @@ export class RunStore {
     return row.n;
   }
 
+  /* ------------------------------------------------------------ deliverables */
+
+  saveDeliverable(deliverable: DeliverableType): void {
+    Deliverable.parse(deliverable);
+    this.db.prepare(`
+      INSERT INTO deliverables (id, client_id, project_id, kind, title, description, status,
+                                asset_id, due_date, delivered_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id, kind = excluded.kind, title = excluded.title,
+        description = excluded.description, status = excluded.status,
+        asset_id = excluded.asset_id, due_date = excluded.due_date,
+        delivered_at = excluded.delivered_at, updated_at = excluded.updated_at
+    `).run(deliverable.id, deliverable.clientId, deliverable.projectId ?? null,
+      deliverable.kind, deliverable.title, deliverable.description ?? null, deliverable.status,
+      deliverable.assetId ?? null, deliverable.dueDate ?? null, deliverable.deliveredAt ?? null,
+      deliverable.createdAt, deliverable.updatedAt);
+  }
+
+  listDeliverables(clientId: string): DeliverableType[] {
+    return (this.db.prepare('SELECT * FROM deliverables WHERE client_id = ? ORDER BY created_at')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateDeliverable);
+  }
+
+  getDeliverable(id: string): DeliverableType | undefined {
+    const row = this.db.prepare('SELECT * FROM deliverables WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateDeliverable(row) : undefined;
+  }
+
+  deleteDeliverable(id: string): void {
+    this.db.prepare('DELETE FROM deliverables WHERE id = ?').run(id);
+  }
+
+  /* -------------------------------------------------------------- milestones */
+
+  saveMilestone(milestone: MilestoneType): void {
+    Milestone.parse(milestone);
+    this.db.prepare(`
+      INSERT INTO milestones (id, client_id, project_id, title, description, status,
+                              due_date, completed_at, ord, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id, title = excluded.title,
+        description = excluded.description, status = excluded.status,
+        due_date = excluded.due_date, completed_at = excluded.completed_at,
+        ord = excluded.ord, updated_at = excluded.updated_at
+    `).run(milestone.id, milestone.clientId, milestone.projectId ?? null, milestone.title,
+      milestone.description ?? null, milestone.status, milestone.dueDate ?? null,
+      milestone.completedAt ?? null, milestone.order, milestone.createdAt, milestone.updatedAt);
+  }
+
+  listMilestones(clientId: string): MilestoneType[] {
+    return (this.db.prepare('SELECT * FROM milestones WHERE client_id = ? ORDER BY ord, due_date')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateMilestone);
+  }
+
+  getMilestone(id: string): MilestoneType | undefined {
+    const row = this.db.prepare('SELECT * FROM milestones WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateMilestone(row) : undefined;
+  }
+
+  deleteMilestone(id: string): void {
+    this.db.prepare('DELETE FROM milestones WHERE id = ?').run(id);
+  }
+
+  /* ---------------------------------------------------------------- invoices */
+
+  saveInvoice(invoice: InvoiceType): void {
+    Invoice.parse(invoice);
+    this.db.prepare(`
+      INSERT INTO invoices (id, client_id, project_id, number, description, issue_date,
+                            due_date, amount_cents, currency, paid, paid_at,
+                            created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id, number = excluded.number,
+        description = excluded.description, issue_date = excluded.issue_date,
+        due_date = excluded.due_date, amount_cents = excluded.amount_cents,
+        currency = excluded.currency, paid = excluded.paid, paid_at = excluded.paid_at,
+        updated_at = excluded.updated_at
+    `).run(invoice.id, invoice.clientId, invoice.projectId ?? null, invoice.number,
+      invoice.description, invoice.issueDate, invoice.dueDate, invoice.amountCents,
+      invoice.currency, invoice.paid ? 1 : 0, invoice.paidAt ?? null,
+      invoice.createdAt, invoice.updatedAt);
+  }
+
+  listInvoices(clientId: string): InvoiceType[] {
+    return (this.db.prepare('SELECT * FROM invoices WHERE client_id = ? ORDER BY issue_date DESC')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateInvoice);
+  }
+
+  getInvoice(id: string): InvoiceType | undefined {
+    const row = this.db.prepare('SELECT * FROM invoices WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateInvoice(row) : undefined;
+  }
+
+  deleteInvoice(id: string): void {
+    this.db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+  }
+
+  /* ---------------------------------------------------------------- messages */
+
+  saveMessage(message: MessageType): void {
+    Message.parse(message);
+    this.db.prepare(`
+      INSERT INTO messages (id, client_id, author_kind, author_name, body,
+                            attachment_asset_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(message.id, message.clientId, message.authorKind, message.authorName,
+      message.body, message.attachmentAssetId ?? null, message.createdAt);
+  }
+
+  listMessages(clientId: string): MessageType[] {
+    return (this.db.prepare('SELECT * FROM messages WHERE client_id = ? ORDER BY created_at')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateMessage);
+  }
+
+  /* ---------------------------------------------------------------- feedback */
+
+  saveFeedback(feedback: FeedbackType): void {
+    Feedback.parse(feedback);
+    this.db.prepare(`
+      INSERT INTO feedback (id, client_id, project_id, body, rating, created_at,
+                            response, responded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        response = excluded.response, responded_at = excluded.responded_at
+    `).run(feedback.id, feedback.clientId, feedback.projectId ?? null, feedback.body,
+      feedback.rating ?? null, feedback.createdAt, feedback.response ?? null,
+      feedback.respondedAt ?? null);
+  }
+
+  listFeedback(clientId: string): FeedbackType[] {
+    return (this.db.prepare('SELECT * FROM feedback WHERE client_id = ? ORDER BY created_at DESC')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateFeedback);
+  }
+
+  getFeedback(id: string): FeedbackType | undefined {
+    const row = this.db.prepare('SELECT * FROM feedback WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateFeedback(row) : undefined;
+  }
+
   /* ------------------------------------------------------------ brand values */
 
   saveBrandValue(value: BrandValueType): void {
@@ -813,9 +1040,31 @@ export class RunStore {
     }) : undefined;
   }
 
+  getUserById(id: string): StudioUserType | undefined {
+    const row = this.db.prepare('SELECT * FROM users WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? StudioUser.parse({
+      id: row['id'], email: row['email'], name: row['name'], role: row['role'],
+      passwordSalt: row['password_salt'], passwordHash: row['password_hash'],
+      createdAt: row['created_at'],
+    }) : undefined;
+  }
+
   countUsers(): number {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
     return row.n;
+  }
+
+  /** The earliest owner account, for a caller that needs one without a name. */
+  getFirstOwner(): StudioUserType | undefined {
+    const row = this.db.prepare(
+      "SELECT * FROM users WHERE role = 'owner' ORDER BY created_at ASC LIMIT 1",
+    ).get() as Record<string, unknown> | undefined;
+    return row ? StudioUser.parse({
+      id: row['id'], email: row['email'], name: row['name'], role: row['role'],
+      passwordSalt: row['password_salt'], passwordHash: row['password_hash'],
+      createdAt: row['created_at'],
+    }) : undefined;
   }
 
   saveSession(session: SessionType): void {
@@ -1182,5 +1431,67 @@ function hydrateAsset(row: Record<string, unknown>): AssetType {
     ...(row['description'] ? { description: row['description'] } : {}),
     approved: row['approved'] === 1,
     uploadedAt: row['uploaded_at'],
+  });
+}
+
+function hydrateDeliverable(row: Record<string, unknown>): DeliverableType {
+  return Deliverable.parse({
+    id: row['id'], clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    kind: row['kind'], title: row['title'],
+    ...(row['description'] ? { description: row['description'] } : {}),
+    status: row['status'],
+    ...(row['asset_id'] ? { assetId: row['asset_id'] } : {}),
+    ...(row['due_date'] ? { dueDate: row['due_date'] } : {}),
+    ...(row['delivered_at'] ? { deliveredAt: row['delivered_at'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateMilestone(row: Record<string, unknown>): MilestoneType {
+  return Milestone.parse({
+    id: row['id'], clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    title: row['title'],
+    ...(row['description'] ? { description: row['description'] } : {}),
+    status: row['status'],
+    ...(row['due_date'] ? { dueDate: row['due_date'] } : {}),
+    ...(row['completed_at'] ? { completedAt: row['completed_at'] } : {}),
+    order: row['ord'],
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateInvoice(row: Record<string, unknown>): InvoiceType {
+  return Invoice.parse({
+    id: row['id'], clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    number: row['number'], description: row['description'],
+    issueDate: row['issue_date'], dueDate: row['due_date'],
+    amountCents: row['amount_cents'], currency: row['currency'],
+    paid: row['paid'] === 1,
+    ...(row['paid_at'] ? { paidAt: row['paid_at'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateMessage(row: Record<string, unknown>): MessageType {
+  return Message.parse({
+    id: row['id'], clientId: row['client_id'], authorKind: row['author_kind'],
+    authorName: row['author_name'], body: row['body'],
+    ...(row['attachment_asset_id'] ? { attachmentAssetId: row['attachment_asset_id'] } : {}),
+    createdAt: row['created_at'],
+  });
+}
+
+function hydrateFeedback(row: Record<string, unknown>): FeedbackType {
+  return Feedback.parse({
+    id: row['id'], clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    body: row['body'],
+    ...(row['rating'] !== null && row['rating'] !== undefined ? { rating: row['rating'] } : {}),
+    createdAt: row['created_at'],
+    ...(row['response'] ? { response: row['response'] } : {}),
+    ...(row['responded_at'] ? { respondedAt: row['responded_at'] } : {}),
   });
 }

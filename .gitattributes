@@ -1,0 +1,6 @@
+# The corpus's own regex-based parser splits on '\n' and anchors headings and
+# table rows with '$', which does not cross a '\r'. A Windows checkout without
+# this file silently converts every text file to CRLF and breaks that parsing
+# with no error at the point of conversion — only later, deep in a track or
+# table lookup. Force LF everywhere so the parser sees what git stored.
+* text=auto eol=lf

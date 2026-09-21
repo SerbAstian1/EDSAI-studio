@@ -1,4 +1,6 @@
+import { useMutation } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
+import { api } from '../api.js';
 import { GROUPS, sectionsIn, type Section } from './navigation.js';
 
 /**
@@ -35,6 +37,14 @@ export function Sidebar({ current, onOpenPalette }: {
   current: string;
   onOpenPalette: () => void;
 }): ReactElement {
+  // A hard reload rather than a route change: every query the session gate
+  // holds is keyed to who was signed in, and the simplest way to guarantee
+  // none of it survives a sign-out is to not keep the page that cached it.
+  const signOut = useMutation({
+    mutationFn: api.signOut,
+    onSuccess: () => { location.href = '#/'; location.reload(); },
+  });
+
   return (
     <aside className="sidebar">
       <a className="wordmark" href="#/">EDS AI</a>
@@ -55,6 +65,17 @@ export function Sidebar({ current, onOpenPalette }: {
           ))}
         </nav>
       ))}
+
+      <button
+        type="button"
+        className="nav-item nav-item-button"
+        style={{ marginTop: 'auto' }}
+        onClick={() => signOut.mutate()}
+        disabled={signOut.isPending}
+      >
+        <span className="glyph" aria-hidden="true">⏻</span>
+        {signOut.isPending ? 'Signing out…' : 'Logout'}
+      </button>
     </aside>
   );
 }

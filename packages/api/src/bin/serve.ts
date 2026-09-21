@@ -63,6 +63,9 @@ const server = new ApiServer({
   // local session silently does not work without this. The default stays the
   // safe one, and nothing turns it on by accident.
   ...(process.env['EDSAI_INSECURE_COOKIES'] === '1' ? { insecureCookies: true } : {}),
+  // Opt-in dev convenience: no sign-in screen, every request is the owner.
+  // Never set this on anything another person can reach.
+  ...(process.env['EDSAI_DISABLE_AUTH'] === '1' ? { disableAuth: true } : {}),
   ...(executor ? { executor } : {}),
 });
 
@@ -76,6 +79,14 @@ process.stdout.write(app
 process.stdout.write(executor
   ? `  runs execute on ${executor.model}\n`
   : '  no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
+process.stdout.write(server.devOwnerCreated
+  ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`
+    + `           an owner account was still created, for when this is turned back on:\n`
+    + `             email    ${server.devOwnerCreated.email}\n`
+    + `             password ${server.devOwnerCreated.password}\n`
+  : process.env['EDSAI_DISABLE_AUTH'] === '1'
+    ? '  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n'
+    : '');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => void server.close().then(() => process.exit(0)));

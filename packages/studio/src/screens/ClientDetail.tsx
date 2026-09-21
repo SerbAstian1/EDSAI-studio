@@ -7,6 +7,11 @@ import Brand from './Brand.js';
 import Assets from './Assets.js';
 import PortalAccess from './PortalAccess.js';
 import Positioning from './Positioning.js';
+import Deliverables from './Deliverables.js';
+import Milestones from './Milestones.js';
+import Invoices from './Invoices.js';
+import Messages from './Messages.js';
+import FeedbackPanel from './FeedbackPanel.js';
 import type { Run } from '../api.js';
 
 /**
@@ -141,7 +146,17 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
 
       <Positioning clientId={clientId} />
 
+      <Deliverables clientId={clientId} />
+
+      <Milestones clientId={clientId} />
+
+      <Invoices clientId={clientId} />
+
       <Assets clientId={clientId} />
+
+      <Messages clientId={clientId} />
+
+      <FeedbackPanel clientId={clientId} />
 
       <PortalAccess clientId={clientId} />
 

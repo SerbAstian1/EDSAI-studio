@@ -5,6 +5,8 @@ import { warmRoute } from './prefetch.js';
 import { api } from './api.js';
 import { useRunStream } from './useRunStream.js';
 import { Sidebar } from './shell/Sidebar.js';
+import { Header } from './shell/Header.js';
+import { StatusBar } from './shell/StatusBar.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
 import Home from './screens/Home.js';
@@ -40,8 +42,10 @@ const LOADERS = {
   finalize: () => import('./screens/Finalize.js'),
   runs: () => import('./screens/Runs.js'),
   onboard: () => import('./screens/Onboard.js'),
+  clientPortal: () => import('./portal/PortalApp.js'),
   clients: () => import('./screens/Clients.js'),
   client: () => import('./screens/ClientDetail.js'),
+  projects: () => import('./screens/Projects.js'),
   brands: () => import('./screens/Brands.js'),
   portals: () => import('./screens/Portals.js'),
   assets: () => import('./screens/FileLibrary.js'),
@@ -57,8 +61,10 @@ const Review = lazy(LOADERS.review);
 const Finalize = lazy(LOADERS.finalize);
 const Runs = lazy(LOADERS.runs);
 const Onboard = lazy(LOADERS.onboard);
+const ClientPortalApp = lazy(LOADERS.clientPortal);
 const Clients = lazy(LOADERS.clients);
 const ClientDetail = lazy(LOADERS.client);
+const Projects = lazy(LOADERS.projects);
 const Brands = lazy(LOADERS.brands);
 const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
@@ -69,7 +75,7 @@ const Planned = lazy(LOADERS.planned);
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'planned'
-  | 'clients' | 'client' | 'onboard';
+  | 'clients' | 'client' | 'onboard' | 'projects' | 'clientPortal';
 
 export interface Route {
   screen: Screen;
@@ -85,6 +91,7 @@ export interface Route {
 const SECTION_SCREENS: Record<string, Screen> = {
   runs: 'runs',
   clients: 'clients',
+  projects: 'projects',
   brands: 'brands',
   portals: 'portals',
   assets: 'assets',
@@ -103,6 +110,7 @@ export function parseRoute(hash: string): Route {
     return { screen: 'run', runId: path[1] };
   }
   if (path[0] === 'onboard' && path[1]) return { screen: 'onboard', token: path[1] };
+  if (path[0] === 'client-portal' && path[1]) return { screen: 'clientPortal', token: path[1] };
   if (path[0] === 'clients' && path[1]) return { screen: 'client', clientId: path[1] };
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
@@ -201,7 +209,9 @@ const TITLES: Record<Screen, string> = {
   runs: 'Runs',
   clients: 'Clients',
   client: 'Client',
+  projects: 'Projects',
   onboard: 'Discovery',
+  clientPortal: 'Client Portal',
   intake: 'New run',
   run: 'Run',
   scorecard: 'Scorecard',
@@ -232,6 +242,8 @@ function Shell(): ReactElement {
       <Sidebar current={activeSection(route)} onOpenPalette={() => palette.setOpen(true)} />
 
       <div className="main">
+        <Header onOpenPalette={() => palette.setOpen(true)} />
+
         <header className="topbar">
           <h1>{TITLES[route.screen]}</h1>
           {route.runId && <span className="mono muted">{route.runId}</span>}
@@ -256,6 +268,7 @@ function Shell(): ReactElement {
             {route.screen === 'runs' && <Runs />}
             {route.screen === 'clients' && <Clients />}
             {route.screen === 'client' && route.clientId && <ClientDetail clientId={route.clientId} />}
+            {route.screen === 'projects' && <Projects />}
             {route.screen === 'brands' && <Brands />}
             {route.screen === 'portals' && <Portals />}
             {route.screen === 'assets' && <FileLibrary />}
@@ -267,6 +280,7 @@ function Shell(): ReactElement {
       </div>
 
       {palette.open && <CommandPalette onClose={() => palette.setOpen(false)} />}
+      <StatusBar />
     </div>
   );
 }
@@ -303,6 +317,13 @@ function Entry(): ReactElement {
     return (
       <Suspense fallback={<p className="muted" style={{ padding: 32 }}>Opening…</p>}>
         <Onboard token={route.token} />
+      </Suspense>
+    );
+  }
+  if (route.screen === 'clientPortal' && route.token) {
+    return (
+      <Suspense fallback={<p className="muted" style={{ padding: 32 }}>Opening your portal…</p>}>
+        <ClientPortalApp token={route.token} />
       </Suspense>
     );
   }

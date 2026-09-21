@@ -23,8 +23,13 @@ import { api, type PortalKey } from '../api.js';
 
 const ROLES: { value: string; label: string; detail: string }[] = [
   {
-    value: 'viewer', label: 'Everything approved',
-    detail: 'Their whole brand and every file you have released. The usual choice.',
+    value: 'viewer', label: 'Everything approved, read-only',
+    detail: 'Their whole brand and every file you have released. Nothing to reply with.',
+  },
+  {
+    value: 'editor', label: 'Everything approved, and can reply',
+    detail: 'The usual choice for the client themselves — messages, feedback and files, '
+      + 'in both directions.',
   },
   {
     value: 'limited', label: 'Only certain collections',
@@ -48,7 +53,7 @@ export function describeKey(key: PortalKey, now = Date.now()): string {
 export default function PortalAccess({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState('');
-  const [role, setRole] = useState('viewer');
+  const [role, setRole] = useState('editor');
   const [collections, setCollections] = useState('');
   const [issued, setIssued] = useState<{ label: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);

@@ -30,15 +30,29 @@ export interface Section {
 
 export const SECTIONS: readonly Section[] = [
   {
-    id: 'overview', label: 'Overview', glyph: '⌂', group: 'Workspace',
+    id: 'overview', label: 'Home', glyph: '⌂', group: 'Workspace',
     status: 'built', href: '#/',
   },
   {
-    id: 'runs', label: 'Runs', glyph: '▣', group: 'Workspace',
+    id: 'clients', label: 'Clients', glyph: '◉', group: 'Workspace',
+    status: 'built', href: '#/clients',
+  },
+  {
+    id: 'projects', label: 'Projects', glyph: '▤', group: 'Workspace',
+    status: 'built', href: '#/projects',
+  },
+  {
+    id: 'discovery', label: 'Discovery', glyph: '◐', group: 'Workspace',
+    status: 'planned', phase: 'P10',
+    intent: 'A studio-wide view of every onboarding in flight. Today a client’s '
+      + 'discovery lives on their own client page, one at a time.',
+  },
+  {
+    id: 'runs', label: 'Pipeline', glyph: '▣', group: 'Workspace',
     status: 'built', href: '#/runs',
   },
   {
-    id: 'brands', label: 'Brands', glyph: '✦', group: 'Workspace',
+    id: 'brands', label: 'Brand Hubs', glyph: '✦', group: 'Workspace',
     status: 'built', href: '#/brands',
   },
   {
@@ -46,12 +60,14 @@ export const SECTIONS: readonly Section[] = [
     status: 'built', href: '#/portals',
   },
   {
-    id: 'clients', label: 'Clients', glyph: '◉', group: 'Workspace',
-    status: 'built', href: '#/clients',
+    id: 'assets', label: 'Documents', glyph: '◈', group: 'Workspace',
+    status: 'built', href: '#/assets',
   },
   {
-    id: 'assets', label: 'Files', glyph: '◈', group: 'Workspace',
-    status: 'built', href: '#/assets',
+    id: 'process-builder', label: 'Process Builder', glyph: '⚒', group: 'Workspace',
+    status: 'planned', phase: 'P10',
+    intent: 'Customising which departments run and in what order, per studio '
+      + 'rather than per corpus. The activation matrix is fixed today.',
   },
   {
     id: 'templates', label: 'Templates', glyph: '✎', group: 'Workspace',
@@ -70,12 +86,17 @@ export const SECTIONS: readonly Section[] = [
       + 'into every prompt. The department outputs are already the raw material.',
   },
   {
-    id: 'activity', label: 'Activity', glyph: '◷', group: 'Studio',
+    id: 'activity', label: 'Tasks & Timeline', glyph: '◷', group: 'Studio',
     status: 'built', href: '#/activity',
   },
   {
     id: 'settings', label: 'Settings', glyph: '⚙', group: 'Studio',
     status: 'built', href: '#/settings',
+  },
+  {
+    id: 'support', label: 'Support', glyph: '?', group: 'Studio',
+    status: 'planned', phase: 'P10',
+    intent: 'A place to reach whoever built this studio, from inside it.',
   },
 ];
 

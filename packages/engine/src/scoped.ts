@@ -1,5 +1,5 @@
 import {
-  can, require as requirePermission, scopeOf, scopeAllows,
+  can, require as requirePermission, scopeOf, scopeAllows, Forbidden,
   type Action, type Principal, type Resource, type ResourceKind,
 } from '@edsai/auth';
 import type { RunStore } from './store.js';
@@ -9,6 +9,11 @@ import type { BrandValue } from './brand.js';
 import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
 import type { Run } from './types.js';
+import type { Deliverable } from './deliverables.js';
+import type { Milestone } from './milestones.js';
+import type { Invoice } from './invoices.js';
+import type { Message } from './messages.js';
+import type { Feedback } from './feedback.js';
 
 /**
  * The data boundary.
@@ -216,6 +221,107 @@ export class ScopedStore {
   saveBrandValue(value: BrandValue): void {
     this.mustWrite('brand', value.clientId);
     this.store.saveBrandValue(value);
+  }
+
+  /* ------------------------------------------------------------ deliverables */
+
+  listDeliverables(clientId: string): Deliverable[] {
+    if (!this.mayRead('deliverable', clientId)) return [];
+    return this.store.listDeliverables(clientId);
+  }
+
+  saveDeliverable(deliverable: Deliverable): void {
+    this.mustWrite('deliverable', deliverable.clientId);
+    this.store.saveDeliverable(deliverable);
+  }
+
+  deleteDeliverable(id: string): void {
+    const existing = this.store.getDeliverable(id);
+    if (!existing) return;
+    this.mustWrite('deliverable', existing.clientId);
+    this.store.deleteDeliverable(id);
+  }
+
+  /* -------------------------------------------------------------- milestones */
+
+  listMilestones(clientId: string): Milestone[] {
+    if (!this.mayRead('milestone', clientId)) return [];
+    return this.store.listMilestones(clientId);
+  }
+
+  saveMilestone(milestone: Milestone): void {
+    this.mustWrite('milestone', milestone.clientId);
+    this.store.saveMilestone(milestone);
+  }
+
+  deleteMilestone(id: string): void {
+    const existing = this.store.getMilestone(id);
+    if (!existing) return;
+    this.mustWrite('milestone', existing.clientId);
+    this.store.deleteMilestone(id);
+  }
+
+  /* ---------------------------------------------------------------- invoices */
+
+  listInvoices(clientId: string): Invoice[] {
+    if (!this.mayRead('invoice', clientId)) return [];
+    return this.store.listInvoices(clientId);
+  }
+
+  saveInvoice(invoice: Invoice): void {
+    this.mustWrite('invoice', invoice.clientId);
+    this.store.saveInvoice(invoice);
+  }
+
+  deleteInvoice(id: string): void {
+    const existing = this.store.getInvoice(id);
+    if (!existing) return;
+    this.mustWrite('invoice', existing.clientId);
+    this.store.deleteInvoice(id);
+  }
+
+  /* ---------------------------------------------------------------- messages */
+
+  listMessages(clientId: string): Message[] {
+    if (!this.mayRead('message', clientId)) return [];
+    return this.store.listMessages(clientId);
+  }
+
+  saveMessage(message: Message): void {
+    this.mustWrite('message', message.clientId);
+    this.store.saveMessage(message);
+  }
+
+  /* ---------------------------------------------------------------- feedback */
+
+  listFeedback(clientId: string): Feedback[] {
+    if (!this.mayRead('feedback', clientId)) return [];
+    return this.store.listFeedback(clientId);
+  }
+
+  saveFeedback(feedback: Feedback): void {
+    this.mustWrite('feedback', feedback.clientId);
+    this.store.saveFeedback(feedback);
+  }
+
+  /**
+   * Replying to feedback is a write to the same record `saveFeedback` writes,
+   * which is exactly the trap: a portal principal has `write` on its own
+   * client's feedback (so it can submit feedback at all), and that same
+   * permission would let it forge a `response` field onto its own row through
+   * the generic path. The role check in the policy has no way to see that
+   * distinction — only *who* is asking does, so it is checked here, the same
+   * way `canManageAccess` is kept out of the general policy table.
+   */
+  respondToFeedback(feedback: Feedback): void {
+    if (this.principal.kind !== 'studio') {
+      throw new Forbidden(
+        'write', this.resource('feedback', feedback.clientId),
+        'a reply to feedback comes from the studio, not from a client portal',
+      );
+    }
+    this.mustWrite('feedback', feedback.clientId);
+    this.store.saveFeedback(feedback);
   }
 
   /* ------------------------------------------------------------- onboarding */

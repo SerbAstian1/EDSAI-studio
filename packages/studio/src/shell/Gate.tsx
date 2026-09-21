@@ -25,6 +25,7 @@ export function Gate({ children }: { children: ReactElement }): ReactElement {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const enter = useMutation({
     mutationFn: () => (health.data?.needsSetup
@@ -80,9 +81,21 @@ export function Gate({ children }: { children: ReactElement }): ReactElement {
 
         <label className="field">
           <span className="label">Password</span>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                 autoComplete={setup ? 'new-password' : 'current-password'} required
-                 minLength={setup ? 12 : undefined} />
+          <div className="password-field">
+            <input type={showPassword ? 'text' : 'password'} value={password}
+                   onChange={(e) => setPassword(e.target.value)}
+                   autoComplete={setup ? 'new-password' : 'current-password'} required
+                   minLength={setup ? 12 : undefined} />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {setup && <span className="muted" style={{ fontSize: 13 }}>
             At least 12 characters. It is hashed with scrypt and never stored.
           </span>}

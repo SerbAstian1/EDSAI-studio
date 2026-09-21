@@ -20,8 +20,10 @@ import {
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
+  orderMilestones, invoiceStatus, invoiceTotals,
   type AssetStore,
   type Run, type Onboarding, type PortalKey,
+  type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
 } from '@edsai/engine';
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
@@ -72,6 +74,13 @@ export interface ApiOptions {
    * looking like a run that stalled.
    */
   executor?: Executor;
+  /**
+   * Dev-only. Every request is treated as the studio's owner, cookie or not —
+   * there is no sign-in screen and no session to lose. Off by default: this is
+   * a convenience for a single person running their own studio locally, not a
+   * mode a shared or internet-facing deployment should ever set.
+   */
+  disableAuth?: boolean;
 }
 
 /** How long a session lasts before it has to be renewed by signing in again. */
@@ -152,6 +161,15 @@ export class ApiServer {
   /** Runs executing right now, so a second request does not start a second loop. */
   private readonly running = new Set<string>();
   private server?: Server;
+  private readonly disableAuth: boolean;
+  private devOwnerId?: string;
+  /**
+   * Set once, only when `disableAuth` had to create the owner account itself
+   * (none existed yet). `serve.ts` prints it so the credentials exist
+   * somewhere outside this process's memory — otherwise turning `disableAuth`
+   * back off would lock the owner out of the account bypassing it just made.
+   */
+  devOwnerCreated?: { email: string; password: string };
 
   constructor(options: ApiOptions = {}) {
     this.store = options.store ?? new RunStore();
@@ -165,12 +183,14 @@ export class ApiServer {
     this.assets = options.assets ?? new MemoryAssetStore();
     this.app = options.app === undefined ? undefined : new StaticApp(options.app);
     this.executor = options.executor;
+    this.disableAuth = options.disableAuth ?? false;
     this.routes = this.buildRoutes();
   }
 
   /* --------------------------------------------------------------- lifecycle */
 
-  listen(port = 0): Promise<number> {
+  async listen(port = 0): Promise<number> {
+    await this.ensureDevOwner();
     return new Promise((resolve) => {
       this.server = createServer((req, res) => void this.handle(req, res));
       this.server.listen(port, () => {
@@ -178,6 +198,38 @@ export class ApiServer {
         resolve(typeof address === 'object' && address ? address.port : port);
       });
     });
+  }
+
+  /**
+   * `disableAuth` still needs a real user row: nothing else in this file
+   * checks that one exists before writing `principal.userId` into a record,
+   * and a session bound to an id nothing else recognizes is a worse trap than
+   * the login screen it replaces. Reuses the first owner already in the
+   * database rather than minting a second one on every restart.
+   */
+  private async ensureDevOwner(): Promise<void> {
+    if (!this.disableAuth) return;
+
+    const existing = this.store.getFirstOwner();
+    if (existing) {
+      this.devOwnerId = existing.id;
+      return;
+    }
+
+    const password = randomBytes(18).toString('base64url');
+    const record = await hashPassword(password);
+    const user = {
+      id: newId('user'),
+      email: 'owner@localhost',
+      name: 'Owner',
+      role: 'owner' as const,
+      passwordSalt: record.salt,
+      passwordHash: record.hash,
+      createdAt: new Date().toISOString(),
+    };
+    this.store.saveUser(user);
+    this.devOwnerId = user.id;
+    this.devOwnerCreated = { email: user.email, password };
   }
 
   close(): Promise<void> {
@@ -329,6 +381,14 @@ export class ApiServer {
       send(res, 413, { error: 'too_large', message: error.message });
       return;
     }
+    // Imported since this file's first commit and never wired up: every
+    // `ScopedStore` permission refusal has been falling through to the 500
+    // branch below instead of a 403, which looks like a server bug to a
+    // caller whose session was simply the wrong role.
+    if (error instanceof Forbidden) {
+      send(res, 403, { error: 'forbidden', message: error.message });
+      return;
+    }
     if (error instanceof ClientSummaryRefused) {
       send(res, 409, { error: 'summary_refused', message: error.message, reasons: error.reasons });
       return;
@@ -418,6 +478,9 @@ export class ApiServer {
    * by asking, which is the entire attack this design exists to prevent.
    */
   private principalFor(req: IncomingMessage): Principal | undefined {
+    // The login wall itself, gone: every caller is the owner, cookie or not.
+    if (this.disableAuth) return { kind: 'studio', userId: this.devOwnerId ?? '', role: 'owner' };
+
     const token = readSessionCookie(req.headers.cookie);
     if (!token) return undefined;
 
@@ -573,7 +636,18 @@ export class ApiServer {
 
       {
         method: 'GET', pattern: /^\/api\/session$/,
-        run: ({ res, principal }) => send(res, 200, { principal }),
+        run: ({ res, principal }) => {
+          // The header shows a name, not just a role — the principal itself
+          // carries neither, on purpose, so callers with a wider scope cannot
+          // learn a user's name from theirs. This lookup is scoped to the
+          // caller's own id and answers who is asking, not who else exists.
+          const user = principal?.kind === 'studio'
+            ? this.store.getUserById(principal.userId) : undefined;
+          send(res, 200, {
+            principal,
+            ...(user ? { user: { name: user.name, email: user.email } } : {}),
+          });
+        },
       },
 
       {
@@ -597,6 +671,10 @@ export class ApiServer {
           compositionFamilies: this.rubric.compositionFamilies,
           severities: this.rubric.severities,
           drift: this.rubric.drift,
+          // The pipeline's own stage names, in running order — a real
+          // classification the corpus already states, not a label invented for
+          // the overview cards that use it to say what stage a run is at.
+          tracks: this.rubric.tracks.map((t) => ({ id: t.id, name: t.name, order: t.order })),
         }),
       },
 
@@ -1007,8 +1085,13 @@ export class ApiServer {
               label, role, clientId, expiresAt: expires.toISOString(),
               ...(role === 'limited' ? { collections } : {}), uses: 0,
             },
-            // Shown once. There is no route that returns it again.
-            link: { token, path: `/portal/enter/${token}` },
+            // Shown once. There is no route that returns it again. The path
+            // opens the studio's own SPA at a public, token-scoped route,
+            // which redeems the token itself via POST /api/portal/session —
+            // `/portal/enter/:token` still works as a plain-navigation
+            // fallback onto the static hub, but is no longer what a newly
+            // issued link points at.
+            link: { token, path: `/#/client-portal/${token}` },
           });
         },
       },
@@ -1352,6 +1435,396 @@ export class ApiServer {
           };
           scoped.saveBrandValue(value);
           send(res, 201, { value, measured: measure(value, [...scoped.listBrandValues(clientId)]) });
+        },
+      },
+
+      /* -------------------------------------------------------- deliverables */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/deliverables$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { deliverables: scoped.listDeliverables(clientId) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/deliverables$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { kind?: string; title?: string; description?: string;
+            projectId?: string; dueDate?: string };
+          if (!input?.kind?.trim() || !input?.title?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A deliverable needs a kind and a title.' });
+            return;
+          }
+          const now = new Date().toISOString();
+          const deliverable: Deliverable = {
+            id: newId('deliverable'), clientId, kind: input.kind as Deliverable['kind'],
+            title: input.title.trim(), status: 'pending', createdAt: now, updatedAt: now,
+            ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+            ...(input.dueDate?.trim() ? { dueDate: input.dueDate.trim() } : {}),
+          };
+          scoped.saveDeliverable(deliverable);
+          send(res, 201, { deliverable });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/deliverables\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getDeliverable(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such deliverable for this session.' });
+            return;
+          }
+          const input = body as { status?: string; title?: string; description?: string;
+            dueDate?: string; assetId?: string };
+          const status = input?.status as Deliverable['status'] | undefined;
+          const deliverable: Deliverable = {
+            ...existing,
+            ...(status ? { status } : {}),
+            ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
+            ...(input?.description !== undefined ? { description: input.description } : {}),
+            ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+            ...(input?.assetId !== undefined ? { assetId: input.assetId } : {}),
+            ...(status === 'delivered' && !existing.deliveredAt
+              ? { deliveredAt: new Date().toISOString() } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveDeliverable(deliverable);
+          send(res, 200, { deliverable });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/deliverables\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          scoped.deleteDeliverable(params['id'] ?? '');
+          send(res, 200, { removed: params['id'] ?? '' });
+        },
+      },
+
+      /* ---------------------------------------------------------- milestones */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/milestones$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { milestones: orderMilestones(scoped.listMilestones(clientId)) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/milestones$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { title?: string; description?: string; projectId?: string;
+            dueDate?: string; order?: number };
+          if (!input?.title?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A milestone needs a title.' });
+            return;
+          }
+          const now = new Date().toISOString();
+          const milestone: Milestone = {
+            id: newId('milestone'), clientId, title: input.title.trim(), status: 'upcoming',
+            order: input.order ?? scoped.listMilestones(clientId).length,
+            createdAt: now, updatedAt: now,
+            ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+            ...(input.dueDate?.trim() ? { dueDate: input.dueDate.trim() } : {}),
+          };
+          scoped.saveMilestone(milestone);
+          send(res, 201, { milestone });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/milestones\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getMilestone(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such milestone for this session.' });
+            return;
+          }
+          const input = body as { status?: string; title?: string; description?: string;
+            dueDate?: string; order?: number };
+          const status = input?.status as Milestone['status'] | undefined;
+          const milestone: Milestone = {
+            ...existing,
+            ...(status ? { status } : {}),
+            ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
+            ...(input?.description !== undefined ? { description: input.description } : {}),
+            ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+            ...(input?.order !== undefined ? { order: input.order } : {}),
+            ...(status === 'completed' && !existing.completedAt
+              ? { completedAt: new Date().toISOString() } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveMilestone(milestone);
+          send(res, 200, { milestone });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/milestones\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          scoped.deleteMilestone(params['id'] ?? '');
+          send(res, 200, { removed: params['id'] ?? '' });
+        },
+      },
+
+      /* ------------------------------------------------------------ invoices */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/invoices$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const invoices = scoped.listInvoices(clientId);
+          send(res, 200, {
+            invoices: invoices.map((invoice) => ({ ...invoice, status: invoiceStatus(invoice) })),
+            totals: invoiceTotals(invoices),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/invoices$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { description?: string; issueDate?: string; dueDate?: string;
+            amountCents?: number; currency?: string; projectId?: string; number?: string };
+          if (!input?.description?.trim() || !input?.issueDate || !input?.dueDate
+            || typeof input.amountCents !== 'number' || input.amountCents < 0) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'An invoice needs a description, an issue date, a due date and an amount.',
+            });
+            return;
+          }
+          const now = new Date().toISOString();
+          const existing = scoped.listInvoices(clientId);
+          const invoice: Invoice = {
+            id: newId('invoice'), clientId,
+            number: input.number?.trim() || `INV-${String(existing.length + 1).padStart(4, '0')}`,
+            description: input.description.trim(), issueDate: input.issueDate,
+            dueDate: input.dueDate, amountCents: Math.round(input.amountCents),
+            currency: input.currency?.trim() || 'USD', paid: false,
+            createdAt: now, updatedAt: now,
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+          };
+          scoped.saveInvoice(invoice);
+          send(res, 201, { invoice: { ...invoice, status: invoiceStatus(invoice) } });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/invoices\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getInvoice(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such invoice for this session.' });
+            return;
+          }
+          const input = body as { paid?: boolean; description?: string; dueDate?: string };
+          const invoice: Invoice = {
+            ...existing,
+            ...(input?.description?.trim() ? { description: input.description.trim() } : {}),
+            ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+            ...(typeof input?.paid === 'boolean' ? { paid: input.paid } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          // Setting the key to `undefined` is not the same as leaving it out
+          // under this project's strict optional types, so clearing it on
+          // "mark unpaid" is a real delete rather than an assignment.
+          if (input?.paid === true && !existing.paidAt) invoice.paidAt = new Date().toISOString();
+          if (input?.paid === false) delete invoice.paidAt;
+          scoped.saveInvoice(invoice);
+          send(res, 200, { invoice: { ...invoice, status: invoiceStatus(invoice) } });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/invoices\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          scoped.deleteInvoice(params['id'] ?? '');
+          send(res, 200, { removed: params['id'] ?? '' });
+        },
+      },
+
+      /**
+       * A printable invoice. HTML rather than a PDF library — a browser's own
+       * print-to-PDF is what every studio already has, and this stays legible
+       * without one more dependency this codebase has to keep patched.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/invoices\/(?<id>[\w-]+)\/document$/, html: true,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const invoice = this.store.getInvoice(params['id'] ?? '');
+          if (!invoice || !scoped.listInvoices(invoice.clientId).some((i) => i.id === invoice.id)) {
+            sendHtml(res, 404, '<p>No such invoice.</p>');
+            return;
+          }
+          const client = scoped.getClient(invoice.clientId);
+          const amount = (invoice.amountCents / 100).toLocaleString('en-US', {
+            style: 'currency', currency: invoice.currency,
+          });
+          sendHtml(res, 200, `<!doctype html><html><head><meta charset="utf-8">
+<title>${escapeHtml(invoice.number)}</title><style>${STYLE}
+body { max-width: 640px; margin: 48px auto; }
+.row { display: flex; justify-content: space-between; margin: 4px 0; }
+.total { font-size: 1.4em; font-weight: 600; margin-top: 24px; }
+</style></head><body>
+<h1>${escapeHtml(invoice.number)}</h1>
+<p class="muted">${escapeHtml(client?.name ?? invoice.clientId)}</p>
+<div class="row"><span>${escapeHtml(invoice.description)}</span><span>${amount}</span></div>
+<div class="row"><span>Issued</span><span>${escapeHtml(invoice.issueDate.slice(0, 10))}</span></div>
+<div class="row"><span>Due</span><span>${escapeHtml(invoice.dueDate.slice(0, 10))}</span></div>
+<div class="row"><span>Status</span><span>${invoiceStatus(invoice)}</span></div>
+<div class="row total"><span>Total</span><span>${amount}</span></div>
+</body></html>`);
+        },
+      },
+
+      /* ------------------------------------------------------------ messages */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/messages$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { messages: scoped.listMessages(clientId) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/messages$/,
+        run: ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { body?: string; attachmentAssetId?: string; authorName?: string };
+          if (!input?.body?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A message needs a body.' });
+            return;
+          }
+          const authorName = principal.kind === 'studio'
+            ? (this.store.getUserById(principal.userId)?.name ?? 'Studio')
+            : (input.authorName?.trim() || 'Client');
+          const message: Message = {
+            id: newId('msg'), clientId, authorKind: principal.kind, authorName,
+            body: input.body.trim(), createdAt: new Date().toISOString(),
+            ...(input.attachmentAssetId?.trim() ? { attachmentAssetId: input.attachmentAssetId.trim() } : {}),
+          };
+          scoped.saveMessage(message);
+          send(res, 201, { message });
+        },
+      },
+
+      /* ------------------------------------------------------------ feedback */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/feedback$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { feedback: scoped.listFeedback(clientId) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/feedback$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { body?: string; rating?: number; projectId?: string };
+          if (!input?.body?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'Feedback needs a body.' });
+            return;
+          }
+          const feedback: Feedback = {
+            id: newId('feedback'), clientId, body: input.body.trim(),
+            createdAt: new Date().toISOString(),
+            ...(input.rating ? { rating: input.rating } : {}),
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+          };
+          scoped.saveFeedback(feedback);
+          send(res, 201, { feedback });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/feedback\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = this.store.getFeedback(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such feedback for this session.' });
+            return;
+          }
+          const input = body as { response?: string };
+          if (!input?.response?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A reply needs a body.' });
+            return;
+          }
+          const feedback: Feedback = {
+            ...existing, response: input.response.trim(), respondedAt: new Date().toISOString(),
+          };
+          scoped.respondToFeedback(feedback);
+          send(res, 200, { feedback });
         },
       },
 

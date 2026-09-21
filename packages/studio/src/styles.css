@@ -1,3 +1,16 @@
+/* Self-hosted, not linked from Google Fonts: no third-party request on every
+   load, and it works offline like the rest of this CSR shell. Only the
+   weights the type roles below actually use — Inter 400 is the body default,
+   500 carries labels, buttons and nav items; Space Grotesk 500/600 are the
+   heading and metric weights, 700 the wordmark; Instrument Serif ships one
+   weight only. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource/instrument-serif/400.css';
+
 /* ===========================================================================
    AW design system — EDS AI Studio
    ---------------------------------------------------------------------------
@@ -546,8 +559,14 @@ th, td { text-align: left; padding: var(--row-y) 10px; border-bottom: 1px solid 
 th { font-weight: 500; }
 tbody tr:hover { background: var(--surface); }
 
+/* `justify-self: start` matters wherever a pill sits directly inside a grid
+   container (a `.project-card`, most often) — a grid item stretches to fill
+   its column by default, which turns `inline-block` content into a pill the
+   width of the card. Harmless everywhere else: the property does nothing
+   outside a grid or flex parent. */
 .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
-        border: 1px solid currentColor; letter-spacing: 0.03em; }
+        border: 1px solid currentColor; letter-spacing: 0.03em;
+        justify-self: start; align-self: start; }
 .Blocker, .blocker, .err { color: var(--error); }
 .Major, .major { color: var(--warning); }
 .Minor, .minor, .Nitpick, .nitpick { color: var(--text-muted); }
@@ -598,6 +617,26 @@ tbody tr:hover { background: var(--surface); }
 }
 .gate-card .editorial { font-size: 26px; margin: 0; }
 .field { display: grid; gap: calc(var(--step) * 1); }
+
+/* The password field's own toggle sits inside the input's own box, not below
+   it, so revealing a password never shifts anything else in the form. */
+.password-field { position: relative; display: grid; }
+.password-field input { padding-right: 64px; width: 100%; }
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+.password-toggle:hover { text-decoration: underline; }
+.password-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* — files ————————————————————————————————————————————————————————— */
 
@@ -826,3 +865,371 @@ button.choice.chosen {
 .measured { font-size: 12.5px; margin: calc(var(--step) * 2) 0 0; line-height: 1.4; }
 .measured.ok { color: var(--success); }
 .measured.err { color: var(--error); }
+
+/* — app header ——————————————————————————————————————————————————— */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 4);
+  padding: calc(var(--step) * 3) var(--space-page) 0;
+}
+
+.header-search {
+  flex: 1 1 auto;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: var(--text-muted);
+  text-align: left;
+}
+.header-search:hover:not([disabled]) { border-color: var(--border-strong); color: var(--text-primary); }
+.header-search-glyph { color: var(--text-muted); }
+.header-search-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-search .kbd { margin-left: 0; }
+
+.header-bell {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  text-decoration: none;
+  flex: none;
+}
+.header-bell:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+.header-identity {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2.5);
+  flex: none;
+}
+.header-identity-text { display: grid; line-height: 1.25; }
+.header-name { font-size: 14px; font-weight: 500; }
+.header-role { font-size: 12px; }
+
+.avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-on);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .header-search-text { display: none; }
+  .header-identity-text { display: none; }
+}
+
+/* — sidebar logout ——————————————————————————————————————————————— */
+
+.nav-item-button {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  justify-content: flex-start;
+  font-size: 14px;
+}
+.nav-item-button:hover:not([disabled]) { border-color: transparent; }
+
+/* — tabs ————————————————————————————————————————————————————————— */
+
+.tabs {
+  display: flex;
+  gap: calc(var(--step) * 5);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.tab {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: calc(var(--step) * 2.5) 0;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+}
+.tab:hover:not([disabled]) { color: var(--text-primary); border-color: transparent; }
+.tab[aria-current="page"], .tab.current {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-bottom-color: var(--accent);
+}
+
+/* — project cards ———————————————————————————————————————————————— */
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-block);
+}
+
+.project-card {
+  position: relative;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-card);
+  display: grid;
+  gap: calc(var(--step) * 2.5);
+  box-shadow: 0 1px 2px rgba(20, 20, 20, 0.04), 0 6px 16px rgba(20, 20, 20, 0.05);
+}
+
+.project-card-head { display: flex; align-items: flex-start; gap: calc(var(--step) * 2.5); }
+.project-card-logo {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: none;
+}
+.project-card-title { min-width: 0; }
+.project-card-title .client { display: block; font-size: 12px; color: var(--text-muted); }
+.project-card-title strong { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.bookmark {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 2px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--border-strong);
+}
+.bookmark:hover { color: var(--text-muted); }
+.bookmark.on { color: var(--accent-ink); }
+
+.project-card-status { font-size: 13px; color: var(--text-secondary); line-height: 1.45; min-height: 2.6em; }
+
+.project-card-progress { display: grid; gap: 5px; }
+.project-card-progress .row-labels {
+  display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);
+}
+
+.project-card-actions { display: grid; gap: calc(var(--step) * 1.5); margin-top: auto; }
+.project-card-actions .primary { width: 100%; text-align: center; }
+.project-card-secondary { display: flex; gap: calc(var(--step) * 1.5); flex-wrap: wrap; }
+.project-card-secondary a, .project-card-secondary button {
+  flex: 1 1 auto;
+  font-size: 13px;
+  padding: 4px 8px;
+  text-align: center;
+  text-decoration: none;
+  color: var(--text-secondary);
+}
+
+/* — sticky status bar ———————————————————————————————————————————— */
+
+/* Fixed, not sticky within the grid: a grid row only starts sticking once
+   scrolled to, which for a row placed after a tall scrolling column means
+   "stuck to the bottom" would not begin until the very end of the page — the
+   opposite of "always on". `left` is offset by the sidebar's own width so the
+   bar's content starts where the main column starts, matching what it sits
+   under, even though the coloured band itself runs the full viewport width. */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 2.5) var(--space-page);
+  /* The one gradient in the interface, and deliberately so: this bar is the
+     one surface meant to read as "always on" rather than as a page. Charcoal
+     text throughout, same as any other filled orange control — see the
+     contrast measurements at the top of this file. */
+  background: linear-gradient(90deg, var(--accent-ink), var(--accent));
+  color: var(--charcoal);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.status-bar a { color: var(--charcoal); font-weight: 500; }
+.status-bar-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.status-bar-sep { opacity: 0.5; }
+.status-bar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2.5);
+  flex-wrap: wrap;
+}
+.status-bar-link { font-size: 13px; }
+button.ghost-light {
+  background: rgba(26, 26, 26, 0.08);
+  border-color: transparent;
+  color: var(--charcoal);
+  font-size: 13px;
+  padding: 4px 10px;
+}
+button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); border-color: transparent; }
+
+@media (max-width: 640px) {
+  .status-bar-actions .status-bar-link { display: none; }
+}
+
+/* — client portal ———————————————————————————————————————————————— */
+
+.portal-entry {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--step) * 6);
+  background: var(--surface);
+}
+.portal-entry-card {
+  width: min(420px, 100%);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 8);
+  text-align: center;
+}
+
+.portal {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+.portal-sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: var(--space-page) calc(var(--step) * 5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.portal-nav { display: grid; gap: 2px; }
+.portal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 3);
+  width: 100%;
+  padding: 9px calc(var(--step) * 2.5);
+  border-radius: var(--radius);
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.portal-nav-item:hover { color: var(--text-primary); background: var(--surface-elevated); }
+.portal-nav-item[aria-current="page"] {
+  color: var(--accent-on);
+  background: var(--accent);
+  font-weight: 500;
+}
+.portal-nav-index {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 18px;
+  flex: none;
+}
+.portal-nav-item[aria-current="page"] .portal-nav-index { color: var(--accent-on); opacity: 0.75; }
+
+.portal-help {
+  margin-top: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 3);
+  font-size: 13px;
+}
+
+.portal-main { padding: var(--space-page) calc(var(--step) * 8); max-width: 1120px; }
+.portal-topline {
+  display: flex;
+  gap: calc(var(--step) * 2);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  margin-bottom: var(--space-section);
+}
+
+.portal-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.portal-timeline > li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: calc(var(--step) * 3);
+  padding-bottom: calc(var(--step) * 5);
+  position: relative;
+}
+.portal-timeline > li::before {
+  /* The connecting line. Drawn once per item rather than as one long line
+     behind the list, so it stops exactly at the last dot instead of trailing
+     off under empty space. */
+  content: "";
+  position: absolute;
+  left: 7px; top: 18px; bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.portal-timeline > li:last-child::before { display: none; }
+.portal-timeline-dot {
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: var(--surface-elevated);
+  border: 2px solid var(--border-strong);
+  margin-top: 2px;
+}
+.portal-timeline-dot.pass { background: var(--accent); border-color: var(--accent); }
+
+@media (max-width: 900px) {
+  .portal { grid-template-columns: 1fr; }
+  .portal-sidebar {
+    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
+    align-items: center; gap: calc(var(--step) * 3); border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .portal-nav { display: flex; flex-wrap: wrap; }
+  .portal-help { margin-top: 0; margin-left: auto; }
+  .portal-main { padding: calc(var(--step) * 4); }
+}
+
+/* Room for the fixed bar at the foot of every screen, so the last card or row
+   is never hidden behind it. Placed here, after every earlier `.content`
+   padding shorthand in the cascade, so only the bottom edge is added to —
+   not a reset of the padding those rules already set. */
+.content { padding-bottom: 68px; }
+
+@media (max-width: 900px) {
+  /* The sidebar stops being a fixed-width column here (see its own rule) and
+     becomes a row above the content, so the bar no longer has a column to
+     leave clear. */
+  .status-bar { left: 0; }
+}

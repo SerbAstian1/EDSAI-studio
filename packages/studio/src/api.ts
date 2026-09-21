@@ -124,6 +124,7 @@ export interface RubricSummary {
   universalDimensions: string[];
   severities: { name: Severity; definition: string; targetForFinal: string; blocksFinal: boolean }[];
   drift: { departmentId: number; dimension: string; detail: string }[];
+  tracks: { id: string; name: string; order: number[] }[];
 }
 
 export class ApiError extends Error {
@@ -331,10 +332,88 @@ export interface Comparator {
   createdAt: string;
 }
 
+export interface Deliverable {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  kind: 'document' | 'presentation' | 'planning' | 'data' | 'design-assets'
+    | 'development' | 'media' | 'other';
+  title: string;
+  description?: string;
+  status: 'pending' | 'in-progress' | 'delivered';
+  assetId?: string;
+  dueDate?: string;
+  deliveredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Milestone {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  title: string;
+  description?: string;
+  status: 'upcoming' | 'in-progress' | 'completed';
+  dueDate?: string;
+  completedAt?: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  number: string;
+  description: string;
+  issueDate: string;
+  dueDate: string;
+  amountCents: number;
+  currency: string;
+  paid: boolean;
+  paidAt?: string;
+  status: 'paid' | 'pending' | 'overdue';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceTotals {
+  totalCents: number;
+  paidCents: number;
+  pendingCents: number;
+  overdueCents: number;
+  count: number;
+  pendingCount: number;
+  overdueCount: number;
+}
+
+export interface Message {
+  id: string;
+  clientId: string;
+  authorKind: 'studio' | 'portal';
+  authorName: string;
+  body: string;
+  attachmentAssetId?: string;
+  createdAt: string;
+}
+
+export interface Feedback {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  body: string;
+  rating?: number;
+  createdAt: string;
+  response?: string;
+  respondedAt?: string;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean }>('/api/health'),
 
-  session: () => call<{ principal: Principal }>('/api/session'),
+  session: () => call<{ principal: Principal; user?: { name: string; email: string } }>('/api/session'),
   signIn: (email: string, password: string) =>
     call<Principal>('/api/session', {
       method: 'POST', body: JSON.stringify({ email, password }),
@@ -462,4 +541,77 @@ export const api = {
 
   documentUrl: (id: string) => `/api/runs/${id}/document`,
   handoffUrl: (id: string) => `/api/runs/${id}/handoff`,
+
+  /** Redeems a portal link into a session cookie. The one public entry point
+   * for a client-facing portal screen — everything after this call is the
+   * same scoped API the studio itself uses. */
+  portalSession: (token: string) =>
+    call<{ client?: { id: string; name: string; slug: string }; role: string }>(
+      '/api/portal/session', { method: 'POST', body: JSON.stringify({ token }) },
+    ),
+
+  deliverables: (clientId: string) =>
+    call<{ deliverables: Deliverable[] }>(`/api/clients/${clientId}/deliverables`)
+      .then((r) => r.deliverables),
+  createDeliverable: (clientId: string, input: { kind: string; title: string;
+    description?: string; projectId?: string; dueDate?: string }) =>
+    call<{ deliverable: Deliverable }>(`/api/clients/${clientId}/deliverables`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.deliverable),
+  updateDeliverable: (id: string, input: { status?: string; title?: string;
+    description?: string; dueDate?: string; assetId?: string }) =>
+    call<{ deliverable: Deliverable }>(`/api/deliverables/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.deliverable),
+  deleteDeliverable: (id: string) =>
+    call<{ removed: string }>(`/api/deliverables/${id}`, { method: 'DELETE' }),
+
+  milestones: (clientId: string) =>
+    call<{ milestones: Milestone[] }>(`/api/clients/${clientId}/milestones`)
+      .then((r) => r.milestones),
+  createMilestone: (clientId: string, input: { title: string; description?: string;
+    projectId?: string; dueDate?: string; order?: number }) =>
+    call<{ milestone: Milestone }>(`/api/clients/${clientId}/milestones`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.milestone),
+  updateMilestone: (id: string, input: { status?: string; title?: string;
+    description?: string; dueDate?: string; order?: number }) =>
+    call<{ milestone: Milestone }>(`/api/milestones/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.milestone),
+  deleteMilestone: (id: string) =>
+    call<{ removed: string }>(`/api/milestones/${id}`, { method: 'DELETE' }),
+
+  invoices: (clientId: string) =>
+    call<{ invoices: Invoice[]; totals: InvoiceTotals }>(`/api/clients/${clientId}/invoices`),
+  createInvoice: (clientId: string, input: { description: string; issueDate: string;
+    dueDate: string; amountCents: number; currency?: string; projectId?: string; number?: string }) =>
+    call<{ invoice: Invoice }>(`/api/clients/${clientId}/invoices`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.invoice),
+  updateInvoice: (id: string, input: { paid?: boolean; description?: string; dueDate?: string }) =>
+    call<{ invoice: Invoice }>(`/api/invoices/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.invoice),
+  deleteInvoice: (id: string) =>
+    call<{ removed: string }>(`/api/invoices/${id}`, { method: 'DELETE' }),
+  invoiceDocumentUrl: (id: string) => `/api/invoices/${id}/document`,
+
+  messages: (clientId: string) =>
+    call<{ messages: Message[] }>(`/api/clients/${clientId}/messages`).then((r) => r.messages),
+  sendMessage: (clientId: string, input: { body: string; attachmentAssetId?: string; authorName?: string }) =>
+    call<{ message: Message }>(`/api/clients/${clientId}/messages`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.message),
+
+  feedback: (clientId: string) =>
+    call<{ feedback: Feedback[] }>(`/api/clients/${clientId}/feedback`).then((r) => r.feedback),
+  submitFeedback: (clientId: string, input: { body: string; rating?: number; projectId?: string }) =>
+    call<{ feedback: Feedback }>(`/api/clients/${clientId}/feedback`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.feedback),
+  respondToFeedback: (id: string, response: string) =>
+    call<{ feedback: Feedback }>(`/api/feedback/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ response }),
+    }).then((r) => r.feedback),
 };

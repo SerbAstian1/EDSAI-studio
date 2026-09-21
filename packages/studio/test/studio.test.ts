@@ -13,6 +13,7 @@ import { shelves } from '../src/screens/FileLibrary.js';
 import { briefFrom, stillNeeded, missingSentence } from '../src/screens/NewRun.js';
 import { matchProjects, resolveProject } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
+import { dollarsToCents, formatCents } from '../src/screens/Invoices.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
   runId: 'r1', departmentId, body: 'x',
@@ -613,5 +614,31 @@ describe('what a run is still waiting for', () => {
       .toBe('Still needs a project and what they asked for.');
     expect(missingSentence(['a', 'b', 'c'])).toBe('Still needs a, b and c.');
     expect(missingSentence([])).toBe('');
+  });
+});
+
+describe('an invoice amount, typed as dollars and stored as cents', () => {
+  it('reads a plain amount', () => {
+    expect(dollarsToCents('1500')).toBe(150000);
+    expect(dollarsToCents('1500.5')).toBe(150050);
+  });
+
+  it('ignores a leading dollar sign and surrounding space', () => {
+    expect(dollarsToCents('  $250.00 ')).toBe(25000);
+  });
+
+  it('rejects nothing coercible to a non-negative number', () => {
+    expect(dollarsToCents('')).toBeUndefined();
+    expect(dollarsToCents('free')).toBeUndefined();
+    expect(dollarsToCents('-5')).toBeUndefined();
+  });
+
+  it('rounds a fraction of a cent rather than truncating it', () => {
+    expect(dollarsToCents('0.015')).toBe(2);
+  });
+
+  it('formats cents back as a currency string', () => {
+    expect(formatCents(150000)).toBe('$1,500.00');
+    expect(formatCents(0)).toBe('$0.00');
   });
 });

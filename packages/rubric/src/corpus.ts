@@ -17,11 +17,21 @@ export function corpusRoot(): string {
   throw new Error('corpus/ not found: expected a vendored corpus above packages/rubric');
 }
 
+/**
+ * Every heading and table regex in `markdown.ts` is anchored per line with
+ * `$`, which in JavaScript does not cross a `\r` — a file checked out with
+ * CRLF line endings (the Windows default before this repo's `.gitattributes`
+ * existed) fails every one of those matches silently upstream of here. The
+ * corpus itself stays untouched; only what this function hands the parser is
+ * normalized.
+ */
+const toLf = (text: string): string => text.replace(/\r\n/g, '\n');
+
 export function readSkill(root = corpusRoot()): string {
-  return readFileSync(join(root, 'SKILL.md'), 'utf8');
+  return toLf(readFileSync(join(root, 'SKILL.md'), 'utf8'));
 }
 
 export function readReference(file: string, root = corpusRoot()): string {
   const name = file.replace(/^references\//, '');
-  return readFileSync(join(root, 'references', name), 'utf8');
+  return toLf(readFileSync(join(root, 'references', name), 'utf8'));
 }
