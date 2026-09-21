@@ -123,6 +123,38 @@ describe('running a whole run', () => {
     store.close();
   });
 
+  it('persists the halt onto the run itself, not just the event nobody may be listening for', async () => {
+    // A tab opened after the halt (or one that was never open) still has to
+    // be able to read why the run stopped, from the run's own record.
+    const { context, run, store } = fixture();
+    await runPipeline({
+      context, executor: new Executor({ client: failsAfter(1) }), events: new RunEvents(), runId: run.id,
+    });
+
+    const saved = store.getRun(run.id);
+    expect(saved?.status).toBe('failed');
+    expect(saved?.haltedReason).toBeTruthy();
+    store.close();
+  });
+
+  it('clears the halt once a resume actually gets moving again', async () => {
+    const { context, run, store } = fixture();
+    const events = new RunEvents();
+    await runPipeline({
+      context, executor: new Executor({ client: failsAfter(1) }), events, runId: run.id,
+    });
+    expect(store.getRun(run.id)?.status).toBe('failed');
+
+    await runPipeline({
+      context, executor: new Executor({ client: alwaysSubmits() }), events, runId: run.id,
+    });
+
+    const resumed = store.getRun(run.id);
+    expect(resumed?.status).not.toBe('failed');
+    expect(resumed?.haltedReason).toBeUndefined();
+    store.close();
+  });
+
   it('adds up what the whole run cost', async () => {
     const { context, run, store } = fixture();
     const result = await runPipeline({

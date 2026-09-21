@@ -26,6 +26,10 @@ import { ApiServer } from '../server.js';
 const executor = process.env['ANTHROPIC_API_KEY']
   ? new Executor({
     ...(process.env['EDSAI_MODEL'] ? { model: process.env['EDSAI_MODEL'] } : {}),
+    // Needed only for an organisation-level key; a workspace-scoped key
+    // carries its workspace already and the API refuses the header on it.
+    ...(process.env['ANTHROPIC_WORKSPACE_ID']
+      ? { workspaceId: process.env['ANTHROPIC_WORKSPACE_ID'] } : {}),
   })
   : undefined;
 

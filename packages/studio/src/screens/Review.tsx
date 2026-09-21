@@ -8,7 +8,9 @@ const SEVERITIES: Severity[] = ['Blocker', 'Major', 'Minor', 'Nitpick'];
 /** Issue tracker and conflict panel — the two things standing between V1 and FINAL. */
 export default function Review({ runId }: { runId: string }): ReactElement {
   const client = useQueryClient();
-  const { data, isPending } = useQuery({ queryKey: ['run', runId], queryFn: () => api.run(runId) });
+  const { data, isPending, error } = useQuery({
+    queryKey: ['run', runId], queryFn: () => api.run(runId),
+  });
 
   const [severity, setSeverity] = useState<Severity>('Major');
   const [description, setDescription] = useState('');
@@ -47,6 +49,10 @@ export default function Review({ runId }: { runId: string }): ReactElement {
     onSuccess: refresh,
   });
 
+  // `!data` without an error branch meant a failed fetch rendered "Loading
+  // review…" for as long as the tab stayed open — the gate between V1 and
+  // FINAL, apparently still loading, permanently.
+  if (error) return <p className="err">Could not load this review. {(error as Error).message}</p>;
   if (isPending || !data) return <p className="muted">Loading review…</p>;
 
   const counts = issueCounts(data.issues);

@@ -266,6 +266,11 @@ export class ScopedStore {
     this.store.saveBrandValue(value);
   }
 
+  deleteBrandValue(clientId: string, name: string): void {
+    this.mustWrite('brand', clientId);
+    this.store.deleteBrandValue(clientId, name);
+  }
+
   /* ------------------------------------------------------------ deliverables */
 
   listDeliverables(clientId: string): Deliverable[] {

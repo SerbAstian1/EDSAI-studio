@@ -59,6 +59,8 @@ export interface Conflict {
 export interface Run {
   id: string;
   projectId: string;
+  /** Which client's work this run is. Every scope check on the server reads it. */
+  clientId: string;
   brief: string;
   level: number;
   tracks: string[];
@@ -69,6 +71,9 @@ export interface Run {
   startedAt: string;
   determination?: string;
   completed?: number;
+  /** Why the pipeline stopped before every department had an output, if it did. */
+  haltedReason?: string;
+  haltedRetryable?: boolean;
 }
 
 export interface Gate {
@@ -466,7 +471,8 @@ export interface DepartmentOverride {
 }
 
 export const api = {
-  health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean }>('/api/health'),
+  health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean;
+    executionEnabled: boolean }>('/api/health'),
 
   session: () => call<{ principal: Principal; user?: { name: string; email: string } }>('/api/session'),
   signIn: (email: string, password: string) =>
@@ -518,6 +524,8 @@ export const api = {
     call<{ value: BrandValue }>(`/api/clients/${clientId}/brand`, {
       method: 'POST', body: JSON.stringify(input),
     }),
+  deleteBrandValue: (clientId: string, name: string) =>
+    call<{ removed: string }>(`/api/clients/${clientId}/brand/${name}`, { method: 'DELETE' }),
   seedBrand: (clientId: string, runId: string) =>
     call<{ seeded: number; skipped: number }>(`/api/clients/${clientId}/brand/seed`, {
       method: 'POST', body: JSON.stringify({ runId }),
@@ -559,6 +567,9 @@ export const api = {
 
   portalKeys: (clientId: string) =>
     call<{ keys: PortalKey[] }>(`/api/clients/${clientId}/portal-keys`).then((r) => r.keys),
+  /** Every live link across every client, for the studio-wide Portals view. */
+  allPortalKeys: () =>
+    call<{ keys: PortalKey[] }>('/api/portal-keys').then((r) => r.keys),
   relabelPortalKey: (clientId: string, keyId: string, label: string) =>
     call<{ id: string; label: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`, {
       method: 'PATCH', body: JSON.stringify({ label }),
@@ -609,6 +620,15 @@ export const api = {
 
   startRun: (input: { projectId: string; brief: string; level: number }) =>
     call<Run>('/api/runs', { method: 'POST', body: JSON.stringify(input) }),
+
+  /**
+   * Resume a halted run, or start one that was created before a model was
+   * configured. A refusal (no model configured, already running) comes back
+   * as a thrown `ApiError` with the server's own explanation, same as any
+   * other refused write — not a silent `started: false`.
+   */
+  executeRun: (id: string) =>
+    call<{ started: boolean }>(`/api/runs/${id}/execute`, { method: 'POST' }),
 
   saveIssue: (id: string, issue: Issue) =>
     call<{ issues: Issue[] }>(`/api/runs/${id}/issues`, {

@@ -43,6 +43,16 @@ export async function runPipeline(options: {
   const completed: number[] = [];
   let usage = NO_USAGE;
 
+  // A retry starts by clearing whatever the last attempt left behind — a run
+  // reopened cold reads its own record, not a live event, so a halt that no
+  // longer applies has to stop being reported the moment work resumes.
+  const opening = context.store.getRun(runId);
+  if (opening?.status === 'failed') {
+    context.store.saveRun({
+      ...opening, status: 'running', haltedReason: undefined, haltedRetryable: undefined,
+    });
+  }
+
   events.emit(runId, 'pipeline.started', { model: executor.model });
 
   for (;;) {
@@ -101,6 +111,19 @@ export async function runPipeline(options: {
         hint: diagnosis.hint,
         completed,
       });
+
+      // Persisted, not just broadcast — a tab opened after the halt (or one
+      // that was never listening) still has to be able to read why the run
+      // stopped moving, from the run's own record rather than a stream
+      // nobody caught.
+      const current = context.store.getRun(runId);
+      if (current) {
+        context.store.saveRun({
+          ...current, status: 'failed',
+          haltedReason: diagnosis.hint ? `${reason} — ${diagnosis.hint}` : reason,
+          haltedRetryable: diagnosis.retryable,
+        });
+      }
       return {
         completed,
         usage,

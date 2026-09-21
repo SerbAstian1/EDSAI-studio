@@ -196,9 +196,15 @@ export function missingSentence(missing: readonly string[]): string {
   return `Still needs ${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}.`;
 }
 
-export default function NewRun(): ReactElement {
+export default function NewRun(
+  { projectId: initialProjectId }: { projectId: string | undefined },
+): ReactElement {
   const client = useQueryClient();
-  const [projectId, setProjectId] = useState('');
+  // Arriving from "Start a run" on a project's own page names the project
+  // already — the field below still resolves it against the loaded list
+  // (see ProjectField's own seeding), but the question this screen actually
+  // starts on is the brief, not "which project was that again."
+  const [projectId, setProjectId] = useState(initialProjectId ?? '');
   const [asked, setAsked] = useState('');
   const [assumed, setAssumed] = useState('');
   const [unknown, setUnknown] = useState('');

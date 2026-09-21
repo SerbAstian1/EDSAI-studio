@@ -26,9 +26,13 @@ export default function Clients(): ReactElement {
 
   const create = useMutation({
     mutationFn: () => api.createClient({ name, ...(industry ? { industry } : {}) }),
-    onSuccess: () => {
-      setName(''); setIndustry(''); setAdding(false);
+    onSuccess: (client) => {
       void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      // Straight to the record just created, not back to the list it now
+      // sits in — everything that makes it useful (a contact, a project, a
+      // run) happens on its own page, not by finding the new row and
+      // clicking in a second time.
+      location.hash = `#/clients/${client.id}`;
     },
   });
 

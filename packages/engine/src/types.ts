@@ -187,5 +187,15 @@ export const Run = z.object({
   completedAt: z.string().optional(),
   /** Set by Arbitration, then overridden by the gate if it cannot hold. */
   determination: RunVersion.optional(),
+  /**
+   * Why the pipeline stopped before every department had an output — no
+   * model configured, a refused turn, or an error the world produced.
+   * Persisted rather than left to the SSE event that reported it, so a run
+   * opened cold (no listener, no reconnect) still shows why it isn't
+   * moving instead of a progress bar that looks stuck for no stated reason.
+   */
+  haltedReason: z.string().optional(),
+  /** Whether trying again might succeed, or the halt names something no retry fixes. */
+  haltedRetryable: z.boolean().optional(),
 });
 export type Run = z.infer<typeof Run>;

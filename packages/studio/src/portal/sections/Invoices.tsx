@@ -3,7 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type Client, type Invoice } from '../../api.js';
 import { formatCents } from '../../screens/Invoices.js';
 
-const STATUS_TONE: Record<Invoice['status'], string> = { paid: 'pass', pending: 'minor', overdue: 'Blocker' };
+// `Blocker` is the run rubric's severity vocabulary and has no business in a
+// client's invoice table; `major` carries the same weight in the stylesheet
+// without borrowing a word from a system they cannot see.
+const STATUS_TONE: Record<Invoice['status'], string> = { paid: 'pass', pending: 'minor', overdue: 'major' };
+
+/** What a client reads, rather than the enum the database stores. */
+const STATUS_LABEL: Record<Invoice['status'], string> = {
+  paid: 'Paid', pending: 'Due', overdue: 'Overdue',
+};
 
 export default function InvoicesSection({ client }: { client: Client }): ReactElement {
   const { data, isPending, error } = useQuery({
@@ -55,7 +63,11 @@ export default function InvoicesSection({ client }: { client: Client }): ReactEl
                 <td>{invoice.description}</td>
                 <td className="muted">{invoice.dueDate}</td>
                 <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
-                <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
+                <td>
+                  <span className={`pill ${STATUS_TONE[invoice.status]}`}>
+                    {STATUS_LABEL[invoice.status]}
+                  </span>
+                </td>
                 <td>
                   <a href={api.invoiceDocumentUrl(invoice.id)} target="_blank" rel="noreferrer">
                     <button type="button">Download</button>

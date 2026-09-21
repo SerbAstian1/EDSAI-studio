@@ -62,13 +62,22 @@ export function diagnose(error: unknown): Diagnosis {
     // Includes the out-of-credit case, which reads as a bad request and is the
     // single most likely thing to stop a run in this project.
     const outOfCredit = /credit|balance|quota/i.test(error.message);
+    // An organisation-level key that names no workspace. Also a 400, and
+    // also nothing to do with the request being malformed — calling it a
+    // bug here sent the person reading it to the wrong place.
+    const noWorkspace = /workspace/i.test(error.message);
     return {
       retryable: false,
       hint: outOfCredit
         ? 'The account is out of credit. Top it up and run it again — completed '
           + 'departments are kept, so this resumes rather than starting over.'
-        : 'The request was rejected as malformed. This is a bug here, not '
-          + 'something retrying will fix.',
+        : noWorkspace
+          ? 'This key belongs to an organisation rather than a workspace, so the API '
+            + 'needs told which workspace to bill. Either set ANTHROPIC_WORKSPACE_ID '
+            + 'to the workspace id from the Anthropic console, or use a key created '
+            + 'inside a workspace, then restart and run it again.'
+          : 'The request was rejected as malformed. This is a bug here, not '
+            + 'something retrying will fix.',
     };
   }
   if (error instanceof Anthropic.InternalServerError) {

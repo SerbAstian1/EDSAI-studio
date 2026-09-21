@@ -11,7 +11,7 @@ import type { Asset, Client, DepartmentOutput, Issue, Plotted, Project } from '.
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
 import { briefFrom, stillNeeded, missingSentence } from '../src/screens/NewRun.js';
-import { matchProjects, resolveProject } from '../src/components/ProjectField.js';
+import { matchProjects, resolveProject, projectToSeed } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
 import { dollarsToCents, formatCents } from '../src/screens/Invoices.js';
 
@@ -37,6 +37,12 @@ describe('routing', () => {
 
   it('reads the intake screen', () => {
     expect(parseRoute('#/new')).toEqual({ screen: 'intake' });
+  });
+
+  it('carries a known project into the intake screen — "Start a run" from that project\'s own page', () => {
+    expect(parseRoute('#/new/project-morrow-abc123')).toEqual({
+      screen: 'intake', projectId: 'project-morrow-abc123',
+    });
   });
 
   it('reads a run and its sub-screens', () => {
@@ -572,6 +578,38 @@ describe('typing a project name', () => {
     const matches = matchProjects(projects, clients, 'nonsense');
     expect(matches).toEqual([]);
     expect(resolveProject(matches, 'nonsense')).toBeUndefined();
+  });
+});
+
+describe('arriving already knowing the project — "Start a run" from its own page', () => {
+  const project = (id: string, clientId: string, name: string): Project => ({
+    id, clientId, name, kind: 'brand-identity', phase: 'discovery',
+  });
+
+  const projects = [project('p1', 'm', 'Showroom site')];
+
+  it('finds the named project once it has loaded', () => {
+    expect(projectToSeed(projects, 'p1', '')?.name).toBe('Showroom site');
+  });
+
+  it('has nothing to seed yet while the project list is still empty', () => {
+    // Not an error — the caller retries next render once `projects` arrives,
+    // rather than this treating an empty list as "no such project."
+    expect(projectToSeed([], 'p1', '')).toBeUndefined();
+  });
+
+  it('never seeds once anything has been typed', () => {
+    // The moment there's a query, whatever's in the box is either what was
+    // seeded already or what a person typed — not this function's call.
+    expect(projectToSeed(projects, 'p1', 'sh')).toBeUndefined();
+  });
+
+  it('has nothing to seed when nothing was handed in', () => {
+    expect(projectToSeed(projects, '', '')).toBeUndefined();
+  });
+
+  it('has nothing to seed for an id that names no real project', () => {
+    expect(projectToSeed(projects, 'p-deleted', '')).toBeUndefined();
   });
 });
 

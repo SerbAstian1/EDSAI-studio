@@ -30,7 +30,7 @@ export interface Section {
 
 export const SECTIONS: readonly Section[] = [
   {
-    id: 'overview', label: 'Home', glyph: '⌂', group: 'Workspace',
+    id: 'overview', label: 'Overview', glyph: '⌂', group: 'Workspace',
     status: 'built', href: '#/',
   },
   {
@@ -50,7 +50,7 @@ export const SECTIONS: readonly Section[] = [
     status: 'built', href: '#/runs',
   },
   {
-    id: 'brands', label: 'Brand Hubs', glyph: '✦', group: 'Workspace',
+    id: 'brands', label: 'Brands', glyph: '✦', group: 'Workspace',
     status: 'built', href: '#/brands',
   },
   {
@@ -58,7 +58,7 @@ export const SECTIONS: readonly Section[] = [
     status: 'built', href: '#/portals',
   },
   {
-    id: 'assets', label: 'Documents', glyph: '◈', group: 'Workspace',
+    id: 'assets', label: 'Files', glyph: '◈', group: 'Workspace',
     status: 'built', href: '#/assets',
   },
   {
@@ -80,7 +80,7 @@ export const SECTIONS: readonly Section[] = [
       + 'into every prompt. The department outputs are already the raw material.',
   },
   {
-    id: 'activity', label: 'Tasks & Timeline', glyph: '◷', group: 'Studio',
+    id: 'activity', label: 'Activity', glyph: '◷', group: 'Studio',
     status: 'built', href: '#/activity',
   },
   {

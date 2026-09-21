@@ -35,6 +35,11 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
     },
   });
 
+  const remove = useMutation({
+    mutationFn: () => api.deleteBrandValue(clientId, value.name),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['brand', clientId] }); },
+  });
+
   const measured = value.measured;
   const dirty = draft.trim() !== value.value;
 
@@ -92,17 +97,29 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
             <p className="err">{(save.error as Error).message}</p>
           )}
 
-          {(dirty || needsReason) && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="primary" type="submit"
-                      disabled={save.isPending || (needsReason && !reason.trim())}>
-                {save.isPending ? 'Saving…' : needsReason ? 'Save anyway' : 'Save'}
-              </button>
-              <button type="button" onClick={() => {
-                setDraft(value.value); setNeedsReason(false); setReason('');
-              }}>Reset</button>
-            </div>
-          )}
+          <div className="row" style={{ marginTop: 8 }}>
+            {(dirty || needsReason) && (
+              <>
+                <button className="primary" type="submit"
+                        disabled={save.isPending || (needsReason && !reason.trim())}>
+                  {save.isPending ? 'Saving…' : needsReason ? 'Save anyway' : 'Save'}
+                </button>
+                <button type="button" onClick={() => {
+                  setDraft(value.value); setNeedsReason(false); setReason('');
+                }}>Reset</button>
+              </>
+            )}
+            {/* Editing a value is re-measured and can be refused; removing
+                one cannot be, and until this existed a value added by
+                mistake stayed in the brand for good. */}
+            <button type="button" style={{ marginLeft: 'auto' }}
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      if (confirm(`Remove "${value.name}" from this brand?`)) remove.mutate();
+                    }}>
+              {remove.isPending ? 'Removing…' : 'Remove'}
+            </button>
+          </div>
         </form>
 
         {value.reason && (
@@ -119,6 +136,105 @@ const SAFE = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/]+\))$/i;
 const safeColor = (value: string): string =>
   (SAFE.test(value.trim()) ? value.trim() : 'transparent');
 
+const KINDS: BrandValue['kind'][] = ['color', 'font', 'size', 'space', 'radius', 'text'];
+
+/**
+ * How a brand gets its first value — the two ways the engine already
+ * supported and nothing on screen could reach.
+ *
+ * Seeding pulls the tokens a run's departments actually produced, each
+ * arriving with the ratio its instrument measured. Adding one by hand is for
+ * the value that was decided in a room rather than derived from a run; it
+ * carries no measurement until it is saved, and then it is measured like any
+ * other.
+ */
+function AddValues({ clientId }: { clientId: string }): ReactElement {
+  const queryClient = useQueryClient();
+  const runs = useQuery({ queryKey: ['runs'], queryFn: api.runs });
+
+  const [runId, setRunId] = useState('');
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<BrandValue['kind']>('color');
+  const [value, setValue] = useState('');
+  const [role, setRole] = useState('');
+
+  const invalidate = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['brand', clientId] });
+  };
+
+  const seed = useMutation({
+    mutationFn: () => api.seedBrand(clientId, runId),
+    onSuccess: invalidate,
+  });
+
+  const add = useMutation({
+    mutationFn: () => api.addBrandValue(clientId, {
+      name: name.trim(), kind, value: value.trim(),
+      ...(role.trim() ? { role: role.trim() } : {}),
+    }),
+    onSuccess: () => { setName(''); setValue(''); setRole(''); invalidate(); },
+  });
+
+  const mine = (runs.data ?? []).filter((run) => run.clientId === clientId);
+
+  return (
+    <div className="card stack">
+      {mine.length > 0 && (
+        <div className="stack" style={{ gap: 'calc(var(--step) * 2)' }}>
+          <span className="label">Seed from a run</span>
+          <div className="row">
+            <select value={runId} onChange={(e) => setRunId(e.target.value)} aria-label="Run">
+              <option value="">Pick a run…</option>
+              {mine.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {run.id} · {run.determination ?? run.version} · {run.completed ?? 0} of{' '}
+                  {run.activatedDepartments.length} departments
+                </option>
+              ))}
+            </select>
+            <button type="button" disabled={!runId || seed.isPending}
+                    onClick={() => seed.mutate()}>
+              {seed.isPending ? 'Seeding…' : 'Seed from this run'}
+            </button>
+          </div>
+          {seed.data && (
+            <p className="muted">
+              {seed.data.seeded === 0
+                ? 'That run has produced no measured tokens yet — a department has to '
+                  + 'complete before there is anything to seed from.'
+                : `Seeded ${seed.data.seeded} value${seed.data.seeded === 1 ? '' : 's'}.`}
+              {seed.data.skipped > 0 && ` ${seed.data.skipped} already had an edited value and were left alone.`}
+            </p>
+          )}
+          {seed.error && <p className="err">{(seed.error as Error).message}</p>}
+        </div>
+      )}
+
+      <form className="stack" style={{ gap: 'calc(var(--step) * 2)' }}
+            onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+        <span className="label">Or add one by hand</span>
+        <div className="row">
+          <input value={name} onChange={(e) => setName(e.target.value)}
+                 placeholder="ink" aria-label="Value name" style={{ maxWidth: 160 }} />
+          <select value={kind} onChange={(e) => setKind(e.target.value as BrandValue['kind'])}
+                  aria-label="Kind">
+            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <input value={value} onChange={(e) => setValue(e.target.value)}
+                 placeholder="#1A1A1A" aria-label="Value" className="mono" style={{ maxWidth: 180 }} />
+          <input value={role} onChange={(e) => setRole(e.target.value)}
+                 placeholder="Body text on paper" aria-label="Role" style={{ flex: 1 }} />
+          <button type="submit" className="primary"
+                  disabled={!name.trim() || !value.trim() || add.isPending}>
+            {add.isPending ? 'Adding…' : 'Add value'}
+          </button>
+        </div>
+        {add.error && <p className="err">{(add.error as Error).message}</p>}
+      </form>
+    </div>
+  );
+}
+
 export default function Brand({ clientId }: { clientId: string }): ReactElement {
   const { data: values, isPending, error } = useQuery({
     queryKey: ['brand', clientId], queryFn: () => api.brand(clientId),
@@ -134,14 +250,17 @@ export default function Brand({ clientId }: { clientId: string }): ReactElement 
 
   if (values.length === 0) {
     return (
-      <div className="empty">
-        <p className="editorial">This brand has no values yet.</p>
-        <p>
-          Seed it from a run that cleared the gate, and every colour arrives with the ratio the
-          instruments measured. After that it is yours to edit — each change is re-measured on
-          save, so the numbers a client sees stay true.
-        </p>
-      </div>
+      <section className="stack">
+        <div className="empty">
+          <p className="editorial">This brand has no values yet.</p>
+          <p>
+            Seed it from a run, and every colour arrives with the ratio the instruments
+            measured. After that it is yours to edit — each change is re-measured on
+            save, so the numbers a client sees stay true.
+          </p>
+        </div>
+        <AddValues clientId={clientId} />
+      </section>
     );
   }
 
@@ -189,6 +308,8 @@ export default function Brand({ clientId }: { clientId: string }): ReactElement 
           </div>
         </>
       )}
+
+      <AddValues clientId={clientId} />
     </section>
   );
 }

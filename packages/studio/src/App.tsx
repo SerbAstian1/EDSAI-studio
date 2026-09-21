@@ -1,14 +1,19 @@
 import { lazy, Suspense, useEffect, useState , type ReactElement } from 'react';
 import { flushSync } from 'react-dom';
-import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  MutationCache, QueryCache, QueryClient, QueryClientProvider, useMutation, useQueryClient,
+} from '@tanstack/react-query';
 import { warmRoute } from './prefetch.js';
-import { api } from './api.js';
+import { api, ApiError } from './api.js';
+import { reportLapsedSession } from './lapsed.js';
 import { useRunStream } from './useRunStream.js';
 import { Sidebar } from './shell/Sidebar.js';
 import { Header } from './shell/Header.js';
 import { StatusBar } from './shell/StatusBar.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
+import { FailureBanner } from './components/FailureBanner.js';
+import { reportFailure } from './failures.js';
 import Home from './screens/Home.js';
 
 /**
@@ -96,6 +101,12 @@ export interface Route {
   token?: string;
   /** The section id, when a planned section was opened. */
   sectionId?: string;
+  /**
+   * A project already known when the intake screen opens — arriving via
+   * "Start a run" from that project's own page, rather than the cold,
+   * unscoped `#/new` a sidebar or Home tab reaches for.
+   */
+  projectId?: string;
 }
 
 /** Top-level sections that are a screen of their own, by hash segment. */
@@ -117,7 +128,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  if (path[0] === 'new') return { screen: 'intake' };
+  if (path[0] === 'new') return { screen: 'intake', ...(path[1] ? { projectId: path[1] } : {}) };
   if (path[0] === 'run' && path[1]) {
     const screen = path[2];
     if (screen === 'scorecard' || screen === 'review' || screen === 'finalize') {
@@ -177,14 +188,28 @@ async function transitionTo(
   ]);
 
   const start = (document as Document & {
-    startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+    startViewTransition?: (cb: () => void) => {
+      finished: Promise<void>;
+      ready: Promise<void>;
+      updateCallbackDone: Promise<void>;
+    };
   }).startViewTransition;
 
   if (typeof start !== 'function') {
     apply();
     return;
   }
-  start.call(document, () => { flushSync(apply); });
+
+  // Clicking a second nav item before the first transition settles skips the
+  // one in flight, and `ready` rejects to say so — correct behaviour for the
+  // animation, an unhandled rejection in the console for everyone else. The
+  // navigation itself already happened; there is nothing to recover here,
+  // only to stop shouting about it. All three are caught because which one
+  // rejects depends on when the interruption lands.
+  const transition = start.call(document, () => { flushSync(apply); });
+  transition.ready.catch(() => undefined);
+  transition.finished.catch(() => undefined);
+  transition.updateCallbackDone.catch(() => undefined);
 }
 
 function useRoute(): Route {
@@ -223,7 +248,7 @@ function useRoute(): Route {
 
 const TITLES: Record<Screen, string> = {
   workspace: 'Overview',
-  runs: 'Runs',
+  runs: 'Pipeline',
   clients: 'Clients',
   client: 'Client',
   projects: 'Projects',
@@ -282,7 +307,7 @@ function Shell(): ReactElement {
         <main className="content">
           <Suspense fallback={<p className="muted">Loading…</p>}>
             {route.screen === 'workspace' && <Home />}
-            {route.screen === 'intake' && <NewRun />}
+            {route.screen === 'intake' && <NewRun projectId={route.projectId} />}
             {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
             {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
             {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
@@ -321,11 +346,28 @@ const client = new QueryClient({
       retry: 1,
     },
   },
+  // The floor under every write in the app: a mutation that fails says so,
+  // whether or not the screen that fired it renders its own error. Silence
+  // and success used to be indistinguishable on most of these screens.
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) { reportLapsedSession(); return; }
+      reportFailure(error instanceof Error ? error.message : String(error));
+    },
+  }),
+  // One lapse, answered once. Seven sections each reporting the same 401 in
+  // the API's own vocabulary is what this replaces.
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) reportLapsedSession();
+    },
+  }),
 });
 
 export default function App(): ReactElement {
   return (
     <QueryClientProvider client={client}>
+      <FailureBanner />
       <Entry />
     </QueryClientProvider>
   );

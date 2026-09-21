@@ -4,7 +4,11 @@ import { api } from '../api.js';
 import { RunTable } from '../components/RunTable.js';
 
 /**
- * Every run, newest first.
+ * Every run, newest first — the sidebar calls this "Pipeline," so this
+ * screen does too now. It used to say "Runs" while the nav item that opens
+ * it said "Pipeline," which is exactly the label mismatch Department 4's
+ * Information Scent rule exists to catch: a person clicking a nav item
+ * should land somewhere that visibly matches what they clicked.
  *
  * Distinct from the overview on purpose: the overview answers "where does the
  * studio stand", this answers "where is that one run". They shared a screen in
@@ -20,7 +24,7 @@ export default function Runs(): ReactElement {
   return (
     <section className="stack">
       <div className="row">
-        <h2>Runs</h2>
+        <h2>Pipeline</h2>
         <span className="muted mono">{runs.length}</span>
         <a href="#/new" style={{ marginLeft: 'auto' }}>
           <button className="primary">New run</button>
@@ -31,9 +35,9 @@ export default function Runs(): ReactElement {
         <div className="empty">
           <p className="editorial">No runs yet.</p>
           <p>
-            A run takes a brief and a system level, then walks the departments the
-            classification activates. The CLI writes to the same store, so
-            <span className="mono"> edsai run </span> and this screen are the same data.
+            A run takes a brief and walks the departments your build's level
+            activates — the scorecard, the QA pass, and the FINAL gate all come out
+            of it. Start one from a project's own page, or from here.
           </p>
           <a href="#/new"><button className="primary">New run</button></a>
         </div>

@@ -57,7 +57,13 @@ const env = {
   EDSAI_INSECURE_COOKIES: process.env.EDSAI_INSECURE_COOKIES || '1',
 };
 
-const api = spawn(process.execPath, ['packages/api/dist/bin/serve.js'], { stdio: 'inherit', env });
+// `.env` holds the one secret this needs (ANTHROPIC_API_KEY) and Node does
+// not read it on its own — without this flag the key sits in the file and
+// every run is "created but not executed" with no hint as to why. Node's
+// own `--env-file` rather than a dotenv dependency; the file is optional,
+// so its absence is not an error.
+const envFile = existsSync('.env') ? ['--env-file=.env'] : [];
+const api = spawn(process.execPath, [...envFile, 'packages/api/dist/bin/serve.js'], { stdio: 'inherit', env });
 const studio = spawn('pnpm', ['--filter', '@edsai/studio', 'dev'], { stdio: 'inherit', shell: true, env });
 
 let stopping = false;

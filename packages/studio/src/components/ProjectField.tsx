@@ -67,6 +67,22 @@ export function resolveProject(matches: readonly ProjectMatch[], query: string):
   return matches.length === 1 ? matches[0]?.project : undefined;
 }
 
+/**
+ * The project to seed the field's visible text from, when the field arrives
+ * already knowing which one — "Start a run" from that project's own page —
+ * rather than the cold, blank box `#/new` reaches for on its own.
+ *
+ * Fires only while nothing has been typed yet: the moment there's a query,
+ * whatever's in the box is either what the field seeded or what a person
+ * typed, and either way it's no longer this function's decision.
+ */
+export function projectToSeed(
+  projects: readonly Project[], value: string, query: string,
+): Project | undefined {
+  if (query !== '' || value === '') return undefined;
+  return projects.find((p) => p.id === value);
+}
+
 export interface ProjectFieldProps {
   projects: readonly Project[];
   clients: readonly Client[];
@@ -90,17 +106,30 @@ export default function ProjectField({
   );
   const highlighted = matches[Math.min(index, matches.length - 1)];
 
-  // Typing is the only thing that changes the text; choosing is the only thing
-  // that sets the id. Keeping them in step here means the field can never show
-  // one project's name while carrying another's id.
+  // A caller can arrive already knowing the project — "start a run" from
+  // that project's own page — and `value` carries that in before anyone has
+  // typed anything. Seed the visible text from it once the project it names
+  // has actually loaded, so arriving here reads as a continuation rather
+  // than a blank field that quietly clears the id it was handed.
+  //
+  // Typing is otherwise the only thing that changes the text, and choosing
+  // is the only thing that sets the id — kept in one effect so the seed and
+  // the ordinary sync can never race and clear each other's write on the
+  // same render.
+  const seeded = useRef(false);
   useEffect(() => {
+    if (query === '' && value !== '' && !seeded.current) {
+      const known = projectToSeed(projects, value, query);
+      if (known) { setQuery(known.name); seeded.current = true; }
+      // Seeded just now, or the project hasn't loaded yet — either way,
+      // don't fall through to the clearing logic below on this pass.
+      return;
+    }
     const resolved = resolveProject(matches, query);
     const next = resolved?.id ?? '';
     if (next !== value) onChange(next);
-    // `value` is deliberately absent: this reacts to what was typed, not to
-    // the id it just reported.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, matches]);
+  }, [query, matches, value, projects]);
 
   useEffect(() => { setIndex(0); }, [query]);
 

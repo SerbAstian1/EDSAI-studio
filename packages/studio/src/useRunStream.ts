@@ -26,6 +26,10 @@ export function useRunStream(runId: string | undefined): void {
     for (const type of [
       'department.accepted', 'issue.saved', 'conflict.saved',
       'score.rescored', 'run.finalized',
+      // A halt changes nothing department-level, so nothing else here would
+      // ever trigger a refetch — without this, a run that stops moving looks
+      // identical, live, to one still quietly in progress.
+      'pipeline.started', 'pipeline.halted', 'pipeline.finished', 'pipeline.cancelled',
     ]) {
       source.addEventListener(type, refresh);
     }

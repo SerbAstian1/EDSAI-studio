@@ -127,6 +127,17 @@ describe('runs', () => {
     expect(status).toBe(400);
     expect(body['message']).toMatch(/needs a brief/);
   });
+
+  it('says plainly, on both health and the run itself, that nothing will execute without a model', async () => {
+    const health = await json('/api/health');
+    expect(health.body['executionEnabled']).toBe(false);
+
+    const run = await startRun();
+    const { status, body } = await json(`/api/runs/${run.id}/execute`, { method: 'POST' });
+    expect(status).toBe(503);
+    expect(body['error']).toBe('no_executor');
+    expect(body['message']).toMatch(/ANTHROPIC_API_KEY/);
+  });
 });
 
 describe('process overrides', () => {
@@ -1267,6 +1278,22 @@ describe('brand value names', () => {
     expect(edited.status).toBe(200);
   });
 
+  it('removes a value, and says so when there is nothing by that name to remove', async () => {
+    // Editing is re-measured and can be refused; removing is the way back
+    // out of a value added by mistake, which nothing offered before.
+    const clientId = await freshClient('Removable Co');
+    await json(`/api/clients/${clientId}/brand`, {
+      method: 'POST', body: JSON.stringify({ name: 'ink', kind: 'color', value: '#111111' }),
+    });
+
+    const gone = await json(`/api/clients/${clientId}/brand/ink`, { method: 'DELETE' });
+    expect(gone.status).toBe(200);
+    expect((await json(`/api/clients/${clientId}/brand`)).body['values']).toEqual([]);
+
+    const again = await json(`/api/clients/${clientId}/brand/ink`, { method: 'DELETE' });
+    expect(again.status).toBe(404);
+  });
+
   it('refuses to create over an existing value rather than overwriting it', async () => {
     const clientId = await freshClient('Collide Co');
     await json(`/api/clients/${clientId}/brand`, {
@@ -1596,6 +1623,33 @@ describe('portal keys', () => {
 
   const tokenOf = (body: Record<string, never>): string =>
     (body['link'] as unknown as { token: string }).token;
+
+  it('lists every client’s live links in one read, without ever exposing a digest', async () => {
+    const a = await client('Link Co A');
+    const b = await client('Link Co B');
+    await issue(a, { label: 'Ada at A' });
+    await issue(b, { label: 'Bo at B' });
+
+    const { status, body } = await json('/api/portal-keys');
+    expect(status).toBe(200);
+    const keys = body['keys'] as unknown as { label: string; clientId: string; id: string }[];
+    expect(keys.map((k) => k.label).sort()).toEqual(['Ada at A', 'Bo at B']);
+    expect(keys.map((k) => k.clientId).sort()).toEqual([a, b].sort());
+    // The id is a 12-char prefix, never the digest the server stores.
+    expect(keys.every((k) => k.id.length === 12)).toBe(true);
+    expect(JSON.stringify(keys)).not.toContain('digest');
+  });
+
+  it('shows a portal session none of the studio-wide link list', async () => {
+    // A client holding a link must not be able to enumerate anyone's links,
+    // including their own — issuing and listing are the studio's.
+    const id = await client('Enumerate Co');
+    const { body } = await issue(id);
+    const saved = cookie;
+    cookie = await enter(tokenOf(body));
+    expect((await json('/api/portal-keys')).body['keys']).toEqual([]);
+    cookie = saved;
+  });
 
   it('shows the link exactly once and never again', async () => {
     const id = await client();

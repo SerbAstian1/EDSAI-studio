@@ -67,6 +67,19 @@ export default function FeedbackSection({ client, canWrite }: { client: Client; 
       {isPending && <p className="muted">Loading…</p>}
       {error && <p className="err">Could not load feedback. {(error as Error).message}</p>}
 
+      {/* A read-only visitor with nothing here used to get the heading, the
+          blurb, and then nothing at all — no form to explain the silence. */}
+      {data && data.length === 0 && (
+        <div className="empty">
+          <p className="editorial">Nothing here yet.</p>
+          <p>
+            {canWrite
+              ? 'Anything you send goes straight to the studio, and their reply appears here beside it.'
+              : 'Feedback on this project will appear here, with the studio’s reply beside it.'}
+          </p>
+        </div>
+      )}
+
       {data && data.length > 0 && (
         <div className="stack" style={{ gap: 'calc(var(--step) * 2)' }}>
           {data.map((entry) => (

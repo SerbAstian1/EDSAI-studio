@@ -39,7 +39,7 @@ export function StatusBar(): ReactElement | null {
       <div className="status-bar-actions">
         <a href="#/clients"><button type="button" className="ghost-light">New client</button></a>
         <a href="#/clients"><button type="button" className="ghost-light">Run discovery</button></a>
-        <a href="#/brands" className="status-bar-link">Brand Hubs</a>
+        <a href="#/brands" className="status-bar-link">Brands</a>
         <a href="#/activity" className="status-bar-link">Tasks</a>
       </div>
     </div>

@@ -56,7 +56,9 @@ CREATE TABLE IF NOT EXISTS runs (
   status TEXT NOT NULL,
   started_at TEXT NOT NULL,
   completed_at TEXT,
-  determination TEXT
+  determination TEXT,
+  halted_reason TEXT,
+  halted_retryable INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -448,6 +450,12 @@ export class RunStore {
     }
     if (!columns('projects').includes('figma_url')) {
       this.db.exec('ALTER TABLE projects ADD COLUMN figma_url TEXT');
+    }
+    if (!columns('runs').includes('halted_reason')) {
+      this.db.exec('ALTER TABLE runs ADD COLUMN halted_reason TEXT');
+    }
+    if (!columns('runs').includes('halted_retryable')) {
+      this.db.exec('ALTER TABLE runs ADD COLUMN halted_retryable INTEGER');
     }
     this.attachOrphanedRuns();
   }
@@ -890,6 +898,11 @@ export class RunStore {
     return this.listBrandValues(clientId).find((value) => value.name === name);
   }
 
+  deleteBrandValue(clientId: string, name: string): void {
+    this.db.prepare('DELETE FROM brand_values WHERE client_id = ? AND name = ?')
+      .run(clientId, name);
+  }
+
   /* ------------------------------------------------------------- onboarding */
 
   saveOnboarding(onboarding: OnboardingType): void {
@@ -1223,15 +1236,18 @@ export class RunStore {
     Run.parse(run);
     this.db.prepare(`
       INSERT INTO runs (id, project_id, client_id, brief, level, tracks, scope_id, activated,
-                        version, status, started_at, completed_at, determination)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        version, status, started_at, completed_at, determination,
+                        halted_reason, halted_retryable)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         version = excluded.version, status = excluded.status,
-        completed_at = excluded.completed_at, determination = excluded.determination
+        completed_at = excluded.completed_at, determination = excluded.determination,
+        halted_reason = excluded.halted_reason, halted_retryable = excluded.halted_retryable
     `).run(
       run.id, run.projectId, run.clientId, run.brief, run.level, JSON.stringify(run.tracks),
       run.scopeId, JSON.stringify(run.activatedDepartments), run.version, run.status,
       run.startedAt, run.completedAt ?? null, run.determination ?? null,
+      run.haltedReason ?? null, run.haltedRetryable === undefined ? null : (run.haltedRetryable ? 1 : 0),
     );
   }
 
@@ -1254,6 +1270,9 @@ export class RunStore {
       startedAt: row['started_at'],
       ...(row['completed_at'] ? { completedAt: row['completed_at'] } : {}),
       ...(row['determination'] ? { determination: row['determination'] } : {}),
+      ...(row['halted_reason'] ? { haltedReason: row['halted_reason'] } : {}),
+      ...(row['halted_retryable'] !== null && row['halted_retryable'] !== undefined
+        ? { haltedRetryable: row['halted_retryable'] === 1 } : {}),
     });
   }
 

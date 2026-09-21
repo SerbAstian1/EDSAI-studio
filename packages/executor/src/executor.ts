@@ -37,6 +37,12 @@ export interface ModelClient {
 export interface ExecutorOptions {
   client?: ModelClient;
   apiKey?: string;
+  /**
+   * The workspace to bill against. An organisation-level key is refused by
+   * the API unless every request names one; a key already scoped to a
+   * workspace needs nothing here.
+   */
+  workspaceId?: string;
   model?: string;
   /** How hard to think. The default is the API's, which is `high`. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -92,8 +98,12 @@ export class Executor {
   private readonly onEvent: (event: ExecutorEvent) => void;
 
   constructor(options: ExecutorOptions = {}) {
-    this.client = options.client
-      ?? new Anthropic(options.apiKey ? { apiKey: options.apiKey } : {});
+    this.client = options.client ?? new Anthropic({
+      ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+      ...(options.workspaceId
+        ? { defaultHeaders: { 'anthropic-workspace-id': options.workspaceId } }
+        : {}),
+    });
     this.model = options.model ?? DEFAULT_MODEL;
     this.effort = options.effort;
     this.maxToolRounds = options.maxToolRounds ?? DEFAULT_TOOL_ROUNDS;

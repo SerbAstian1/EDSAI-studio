@@ -1,29 +1,56 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState , type ReactElement } from 'react';
-import { api, type DepartmentOutput } from '../api.js';
+import { api, type ApiError, type DepartmentOutput } from '../api.js';
 import { progress } from '../scorecard.js';
 
-/** Run view and department reader — progress, resume, and what each one produced. */
+/**
+ * Run view and department reader — progress, resume, and what each one produced.
+ *
+ * A run that isn't moving and a run that's working are indistinguishable from
+ * the outside unless this says which — no model configured, a halt with a
+ * reason, or genuinely in flight. "Resume execution" covers all three: the
+ * server's own response says why, rather than this guessing in advance.
+ */
 export default function RunView({ runId }: { runId: string }): ReactElement {
+  const queryClient = useQueryClient();
   const { data, isPending, error } = useQuery({
     queryKey: ['run', runId], queryFn: () => api.run(runId),
   });
   const { data: next } = useQuery({
     queryKey: ['next', runId], queryFn: () => api.next(runId),
   });
+  const { data: health } = useQuery({ queryKey: ['health'], queryFn: api.health });
+  // A run's own heading used to be its project's id. Nobody calls it that.
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+  const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
   const [open, setOpen] = useState<number | undefined>(undefined);
+
+  const execute = useMutation({
+    mutationFn: () => api.executeRun(runId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['run', runId] });
+      void queryClient.invalidateQueries({ queryKey: ['next', runId] });
+    },
+  });
 
   if (isPending) return <p className="muted">Loading run…</p>;
   if (error) return <p className="err">Could not load this run. {(error as Error).message}</p>;
 
   const done = data.outputs.map((o) => o.departmentId);
   const p = progress(data.run.activatedDepartments, done);
+  const halted = data.run.status === 'failed';
+
+  const project = (projects.data ?? []).find((each) => each.id === data.run.projectId);
+  const client = project
+    ? (clients.data ?? []).find((each) => each.id === project.clientId)
+    : undefined;
 
   return (
     <section className="stack">
       <div className="card">
         <div className="row">
-          <h2>{data.run.projectId}</h2>
+          <h2>{project?.name ?? data.run.projectId}</h2>
+          {client && <span className="muted">{client.name}</span>}
           <span className="mono muted" style={{ marginLeft: 'auto' }}>
             level {data.run.level} · scope {data.run.scopeId}
           </span>
@@ -45,6 +72,32 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
           <p className="muted mono" style={{ fontSize: 13 }}>
             remaining: {p.remaining.join(', ')}
           </p>
+        )}
+
+        {halted && data.run.haltedReason && (
+          <p className="err" style={{ marginTop: 10 }}>
+            Stopped: {data.run.haltedReason}
+            {data.run.haltedRetryable === false
+              && ' — retrying won\'t change this on its own; it needs the cause fixed first.'}
+          </p>
+        )}
+        {health && !health.executionEnabled && next?.done === false && (
+          <p className="muted" style={{ marginTop: 10 }}>
+            This server has no model configured, so this run will not proceed on its own.
+            Set <span className="mono">ANTHROPIC_API_KEY</span> and restart it, then resume below.
+          </p>
+        )}
+
+        {next?.done === false && (
+          <div className="row" style={{ marginTop: 10, gap: 10 }}>
+            <button type="button" className="primary"
+                    onClick={() => execute.mutate()} disabled={execute.isPending}>
+              {execute.isPending ? 'Starting…' : halted ? 'Retry execution' : 'Start execution'}
+            </button>
+            {execute.error && (
+              <span className="err">{(execute.error as ApiError).message}</span>
+            )}
+          </div>
         )}
       </div>
 

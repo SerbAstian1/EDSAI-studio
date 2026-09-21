@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
-import type { Run } from '../api.js';
+import { useQuery } from '@tanstack/react-query';
+import { api, type Run } from '../api.js';
 
 /**
  * The run table, in one place.
@@ -7,8 +8,15 @@ import type { Run } from '../api.js';
  * The overview shows the most recent handful and the runs screen shows all of
  * them; the rows are identical, so the markup is written once. Two copies of a
  * table drift in exactly the way two copies of a rule do — one gains a column.
+ *
+ * The project column resolves its own name rather than printing the id the
+ * database uses. Every caller already has the projects in cache, so this
+ * costs a cache read, not a request.
  */
 export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+  const named = new Map((projects.data ?? []).map((project) => [project.id, project.name]));
+
   return (
     <table>
       <thead>
@@ -25,7 +33,7 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
           return (
             <tr key={run.id}>
               <td><a className="mono" href={`#/run/${run.id}`}>{run.id}</a></td>
-              <td>{run.projectId}</td>
+              <td>{named.get(run.projectId) ?? run.projectId}</td>
               <td className="mono">{run.level}</td>
               <td className="mono">
                 {done}/{total}

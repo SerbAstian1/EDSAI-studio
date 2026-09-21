@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Run } from '../api.js';
+import { api, type Client, type Project, type Run } from '../api.js';
 
 /**
  * Activity.
@@ -17,18 +17,36 @@ export interface ActivityEntry {
   tone: 'pass' | 'minor';
 }
 
-export function activityFrom(runs: readonly Run[]): ActivityEntry[] {
+/**
+ * `project-brand-identity-6110ce` is how the database refers to a project.
+ * It is not how anyone in the studio does, so the name is resolved here and
+ * the id only survives as a fallback for a project this session cannot see.
+ */
+export function activityFrom(
+  runs: readonly Run[],
+  projects: readonly Project[] = [],
+  clients: readonly Client[] = [],
+): ActivityEntry[] {
+  const projectName = new Map(projects.map((project) => [project.id, project]));
+  const clientName = new Map(clients.map((client) => [client.id, client.name]));
+
   return [...runs].reverse().map((run) => {
     const determination = run.determination ?? run.version;
     const done = run.completed ?? 0;
     const total = run.activatedDepartments.length;
+    const project = projectName.get(run.projectId);
+    const client = project ? clientName.get(project.clientId) : undefined;
+    const label = project
+      ? (client ? `${project.name} · ${client}` : project.name)
+      : run.projectId;
+
     return determination === 'FINAL'
       ? {
-        runId: run.id, project: run.projectId, tone: 'pass' as const,
+        runId: run.id, project: label, tone: 'pass' as const,
         text: `cleared the gate at FINAL across ${total} departments`,
       }
       : {
-        runId: run.id, project: run.projectId, tone: 'minor' as const,
+        runId: run.id, project: label, tone: 'minor' as const,
         text: `is at ${determination} — ${done} of ${total} departments complete`,
       };
   });
@@ -36,11 +54,13 @@ export function activityFrom(runs: readonly Run[]): ActivityEntry[] {
 
 export default function Activity(): ReactElement {
   const { data: runs, isPending, error } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+  const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
 
   if (isPending) return <p className="muted">Loading activity…</p>;
   if (error) return <p className="err">Could not load activity. {(error as Error).message}</p>;
 
-  const entries = activityFrom(runs);
+  const entries = activityFrom(runs, projects.data ?? [], clients.data ?? []);
 
   return (
     <section className="stack">

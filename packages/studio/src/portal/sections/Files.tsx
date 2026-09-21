@@ -59,6 +59,18 @@ export default function FilesSection({ client, canWrite }: { client: Client; can
         />
       </div>
       {upload.error && <p className="err">{(upload.error as Error).message}</p>}
+      {/*
+        An upload arrives unapproved, and this list only ever shows approved
+        files — so without this line the file a client just sent vanishes:
+        the button returns to rest, the list does not change, and if it was
+        empty they read "Nothing shared yet." right after sending something.
+      */}
+      {upload.isSuccess && upload.data && (
+        <p className="pass">
+          {upload.data.length === 1 ? 'Sent.' : `${upload.data.length} files sent.`} Your studio
+          reviews what arrives before it appears here — nothing is lost in the meantime.
+        </p>
+      )}
 
       {isPending && <p className="muted">Loading…</p>}
       {error && <p className="err">Could not load files. {(error as Error).message}</p>}

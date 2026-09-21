@@ -548,6 +548,10 @@ export class ApiServer {
           // process, rather than a static paragraph that drifts the first
           // time someone flips the flag.
           authDisabled: this.disableAuth,
+          // Without this, a run's own screen has no way to say *why* it
+          // isn't moving — "created but not executed" and "stuck" look
+          // identical from the outside otherwise.
+          executionEnabled: Boolean(this.executor),
         }),
       },
 
@@ -1204,6 +1208,26 @@ export class ApiServer {
         },
       },
 
+      /**
+       * Every live portal link, across every client this session may manage.
+       *
+       * The Portals screen used to describe a generator that runs from a
+       * terminal and list nothing, while the links that actually open a
+       * portal lived one at a time inside each client's page. This is the
+       * read that lets that screen show the working feature.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/portal-keys$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          const keys = (scoped.listClients() ?? [])
+            .filter((client) => scoped.canManageAccess(client.id))
+            .flatMap((client) => this.store.listPortalKeys(client.id)
+              .map(({ digest, ...rest }) => ({ ...rest, id: digest.slice(0, 12) })));
+          send(res, 200, { keys });
+        },
+      },
+
       {
         method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/portal-keys\/(?<keyId>[0-9a-f]{12})$/,
         run: ({ res, params, scoped }) => {
@@ -1500,6 +1524,29 @@ export class ApiServer {
             }
             throw error;
           }
+        },
+      },
+
+      /**
+       * Removing a value outright. Editing one is re-measured and can be
+       * refused; removing it cannot be, because there is nothing left to
+       * measure — it is the one way back out of a value added by mistake,
+       * and until now the only way was to leave it there.
+       */
+      {
+        method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand\/(?<name>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const name = params['name'] ?? '';
+          if (!scoped.listBrandValues(clientId).some((value) => value.name === name)) {
+            send(res, 404, {
+              error: 'not_found', message: `No value called "${name}" in this brand.`,
+            });
+            return;
+          }
+          scoped.deleteBrandValue(clientId, name);
+          send(res, 200, { removed: name });
         },
       },
 

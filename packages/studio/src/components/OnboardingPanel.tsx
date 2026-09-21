@@ -67,6 +67,8 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
   const { data: onboardings, isPending } = useQuery({
     queryKey: ['onboardings', clientId], queryFn: () => api.onboardings(clientId),
   });
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+  const projectName = new Map((projects.data ?? []).map((p) => [p.id, p.name]));
 
   const [link, setLink] = useState<string | undefined>();
   const [answering, setAnswering] = useState<string | undefined>();
@@ -163,7 +165,8 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
 
               {onboarding.projectId && (
                 <p className="muted" style={{ fontSize: 13 }}>
-                  Became project <span className="mono">{onboarding.projectId}</span>.
+                  Became the project{' '}
+                  <strong>{projectName.get(onboarding.projectId) ?? onboarding.projectId}</strong>.
                 </p>
               )}
 

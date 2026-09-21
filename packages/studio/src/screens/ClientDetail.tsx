@@ -98,20 +98,32 @@ function ClientHeader({ client, dependents, onSaved }: {
         <p className="muted">
           {[client.industry, client.location, client.website].filter(Boolean).join(' · ') || '—'}
         </p>
-        {(client.slackUrl || client.meetUrl) && (
-          <div className="row" style={{ gap: 6 }}>
-            {client.slackUrl && (
-              <a href={client.slackUrl} target="_blank" rel="noreferrer">
-                <button type="button">Open Slack ↗</button>
-              </a>
-            )}
-            {client.meetUrl && (
-              <a href={client.meetUrl} target="_blank" rel="noreferrer">
-                <button type="button">Join Meet ↗</button>
-              </a>
-            )}
-          </div>
-        )}
+        {/*
+          Shown whether or not they are set. Rendering these only once a URL
+          existed meant the integration was invisible until you already knew
+          it was there — the feature and the empty state were the same
+          nothing. Unset, each one is the way in to setting it.
+        */}
+        <div className="row" style={{ gap: 6 }}>
+          {client.slackUrl ? (
+            <a href={client.slackUrl} target="_blank" rel="noreferrer">
+              <button type="button">Open Slack ↗</button>
+            </a>
+          ) : (
+            <button type="button" className="link" onClick={() => setEditing(true)}>
+              + Slack channel
+            </button>
+          )}
+          {client.meetUrl ? (
+            <a href={client.meetUrl} target="_blank" rel="noreferrer">
+              <button type="button">Join Meet ↗</button>
+            </a>
+          ) : (
+            <button type="button" className="link" onClick={() => setEditing(true)}>
+              + Google Meet
+            </button>
+          )}
+        </div>
         {client.notes && <p className="muted">{client.notes}</p>}
         {remove.error && (
           <p className="err">{((remove.error as ApiError).message)}</p>
@@ -302,12 +314,24 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
             </a>
           : <span className="muted">—</span>}
       </td>
-      <td className="row" style={{ gap: 6 }}>
-        <button type="button" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" onClick={onDelete} disabled={remove.isPending}
-                title={remove.error ? (remove.error as ApiError).message : undefined}>
-          Remove
-        </button>
+      <td>
+        <div className="row" style={{ gap: 6 }}>
+          <a href={`#/new/${project.id}`}>
+            <button type="button" className="primary">Start a run</button>
+          </a>
+          <button type="button" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" onClick={onDelete} disabled={remove.isPending}>
+            Remove
+          </button>
+        </div>
+        {/* A refusal that only exists in a `title` is a refusal for people
+            who happen to hover. This one says why a project with a run
+            against it stays. */}
+        {remove.error && (
+          <p className="err" style={{ margin: '6px 0 0', fontSize: 13 }}>
+            {(remove.error as ApiError).message}
+          </p>
+        )}
       </td>
     </tr>
   );

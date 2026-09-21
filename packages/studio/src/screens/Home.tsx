@@ -59,7 +59,7 @@ type Filter = 'overview' | 'active';
 
 const EXTERNAL_TABS: { label: string; href: string }[] = [
   { label: 'Clients', href: '#/clients' },
-  { label: 'Brand Hubs', href: '#/brands' },
+  { label: 'Brands', href: '#/brands' },
   { label: 'Pipeline', href: '#/runs' },
 ];
 
