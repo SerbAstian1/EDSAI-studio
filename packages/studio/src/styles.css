@@ -725,14 +725,24 @@ button.choice.chosen {
   background: var(--surface-elevated);
 }
 .scale { display: grid; gap: calc(var(--step) * 3); }
-.scale-end { margin: 0; color: var(--text-secondary); font-size: 15px; }
+/* The two anchors sit left and right, directly above the row they describe,
+   so "closer to this end" is a position a reader sees, not a rule they have
+   to remember while looking at five otherwise-identical buttons. */
+.scale-ends { display: flex; justify-content: space-between; gap: calc(var(--step) * 4); }
+.scale-end { margin: 0; color: var(--text-secondary); font-size: 15px; max-width: 22ch; }
+.scale-end-high { text-align: right; }
 .scale-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(var(--step) * 2); }
-.scale-row button.choice { text-align: center; font-family: var(--font-display); font-size: 17px; }
+.scale-row button.choice {
+  text-align: center; font-family: var(--font-ui); font-weight: 500;
+  font-size: 13px; line-height: 1.25; padding: calc(var(--step) * 2.5) calc(var(--step) * 1.5);
+}
 
 @media (max-width: 620px) {
   .onboard { padding: calc(var(--step) * 6) calc(var(--step) * 4) calc(var(--step) * 16); }
   .onboard .editorial { font-size: 23px; }
   .onboard-card { padding: calc(var(--step) * 5); }
+  .scale-ends { flex-direction: column; gap: calc(var(--step) * 1); }
+  .scale-end-high { text-align: left; }
 }
 
 /* — a field that suggests as you type ————————————————————————————— */

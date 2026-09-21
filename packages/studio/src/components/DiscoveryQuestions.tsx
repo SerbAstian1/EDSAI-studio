@@ -10,6 +10,18 @@ import type { DiscoveryForm } from '../api.js';
  *
  * See `Onboard.tsx` for the ratio mechanic's reasoning; it did not change.
  */
+
+/**
+ * A `scale` question's five positions, worded rather than numbered.
+ *
+ * Every other subjective question in this flow already avoids a bare number —
+ * `binary` shows full sentences, `ratio` uses "Slightly / Clearly /
+ * Overwhelmingly" instead of a digit. `scale` was the exception: five buttons
+ * reading `1 2 3 4 5` between two anchor sentences, with nothing on the
+ * buttons themselves saying what a given number meant. The stored value is
+ * still the position, 1 through 5 — only the label changed.
+ */
+const SCALE_LABELS = ['Entirely', 'Mostly', 'Some of each', 'Mostly', 'Entirely'] as const;
 export function DiscoveryQuestions({ data, onAnswer, onSubmit, saving, saveError, submitLabel }: {
   data: DiscoveryForm;
   onAnswer: (questionId: string, value: unknown) => void;
@@ -88,16 +100,25 @@ export function DiscoveryQuestions({ data, onAnswer, onSubmit, saving, saveError
 
           {current.kind === 'scale' && (
             <div className="scale">
-              <p className="scale-end">{current.anchors?.low}</p>
-              <div className="scale-row">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} onClick={() => commit(n)}
-                          aria-label={`${n} of 5`}
-                          aria-pressed={existing === n}
-                          className={existing === n ? 'choice chosen' : 'choice'}>{n}</button>
-                ))}
+              <div className="scale-ends">
+                <p className="scale-end">{current.anchors?.low}</p>
+                <p className="scale-end scale-end-high">{current.anchors?.high}</p>
               </div>
-              <p className="scale-end">{current.anchors?.high}</p>
+              <div className="scale-row">
+                {SCALE_LABELS.map((label, i) => {
+                  const n = i + 1;
+                  // The word alone is ambiguous out of visual context — "Entirely"
+                  // at position 1 and position 5 read identically to a screen
+                  // reader unless the anchor it leans toward comes with it.
+                  const leaning = n <= 2 ? current.anchors?.low : n >= 4 ? current.anchors?.high : undefined;
+                  return (
+                    <button key={n} onClick={() => commit(n)}
+                            aria-label={leaning ? `${label} — ${leaning}` : label}
+                            aria-pressed={existing === n}
+                            className={existing === n ? 'choice chosen' : 'choice'}>{label}</button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
