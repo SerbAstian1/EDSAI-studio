@@ -24,6 +24,7 @@ import {
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
+  type SupportNote,
 } from '@edsai/engine';
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
@@ -1932,6 +1933,80 @@ body { max-width: 640px; margin: 48px auto; }
           };
           scoped.respondToFeedback(feedback);
           send(res, 200, { feedback });
+        },
+      },
+
+      /* -------------------------------------------------------- support notes */
+
+      {
+        method: 'GET', pattern: /^\/api\/support$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          send(res, 200, { notes: scoped.listSupportNotes() });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/support$/,
+        run: ({ res, body, scoped }) => {
+          if (!scoped) return;
+          const input = body as { kind?: string; body?: string };
+          if (!input?.body?.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A note needs a body.' });
+            return;
+          }
+          const note: SupportNote = {
+            id: newId('support'),
+            kind: (input.kind ?? 'other') as SupportNote['kind'],
+            body: input.body.trim(),
+            status: 'open',
+            createdAt: new Date().toISOString(),
+          };
+          scoped.saveSupportNote(note);
+          send(res, 201, { note });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/support\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped?.getSupportNote(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such note for this session.' });
+            return;
+          }
+          const input = body as { kind?: string; body?: string; status?: string };
+          if (input?.body !== undefined && input.body.trim() === '') {
+            send(res, 400, { error: 'bad_request', message: 'A note needs a body.' });
+            return;
+          }
+          const status = (input?.status ?? existing.status) as SupportNote['status'];
+          const note: SupportNote = {
+            ...existing,
+            ...(input?.kind ? { kind: input.kind as SupportNote['kind'] } : {}),
+            ...(input?.body?.trim() ? { body: input.body.trim() } : {}),
+            status,
+            ...(status === 'resolved'
+              ? { resolvedAt: existing.resolvedAt ?? new Date().toISOString() }
+              : { resolvedAt: undefined }),
+          };
+          scoped.saveSupportNote(note);
+          send(res, 200, { note });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/support\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          if (!scoped.getSupportNote(id)) {
+            send(res, 404, { error: 'not_found', message: 'No such note for this session.' });
+            return;
+          }
+          scoped.deleteSupportNote(id);
+          send(res, 200, { removed: id });
         },
       },
 

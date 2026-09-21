@@ -448,6 +448,16 @@ export interface Feedback {
   respondedAt?: string;
 }
 
+/** A note about the tool itself — a bug, an idea, a question — not a client's. */
+export interface SupportNote {
+  id: string;
+  kind: 'bug' | 'idea' | 'question' | 'other';
+  body: string;
+  status: 'open' | 'resolved';
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean }>('/api/health'),
 
@@ -694,4 +704,17 @@ export const api = {
     call<{ feedback: Feedback }>(`/api/feedback/${id}`, {
       method: 'PATCH', body: JSON.stringify({ response }),
     }).then((r) => r.feedback),
+
+  supportNotes: () => call<{ notes: SupportNote[] }>('/api/support').then((r) => r.notes),
+  addSupportNote: (input: { kind: SupportNote['kind']; body: string }) =>
+    call<{ note: SupportNote }>('/api/support', {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.note),
+  updateSupportNote: (id: string, input: { kind?: SupportNote['kind']; body?: string;
+    status?: SupportNote['status'] }) =>
+    call<{ note: SupportNote }>(`/api/support/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.note),
+  deleteSupportNote: (id: string) =>
+    call<{ removed: string }>(`/api/support/${id}`, { method: 'DELETE' }),
 };

@@ -2082,3 +2082,72 @@ describe('the positioning chart', () => {
     expect(body['comparators']).toEqual([]);
   });
 });
+
+describe('support notes', () => {
+  it('adds one, edits it, resolves it, and lists it back', async () => {
+    const created = await json('/api/support', {
+      method: 'POST', body: JSON.stringify({ kind: 'bug', body: 'Sidebar overlaps on narrow screens.' }),
+    });
+    expect(created.status).toBe(201);
+    const note = created.body['note'] as unknown as { id: string; status: string };
+    expect(note.status).toBe('open');
+
+    const edited = await json(`/api/support/${note.id}`, {
+      method: 'PATCH', body: JSON.stringify({ body: 'Sidebar overlaps below 900px.' }),
+    });
+    expect((edited.body['note'] as unknown as { body: string }).body).toBe('Sidebar overlaps below 900px.');
+
+    const resolved = await json(`/api/support/${note.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'resolved' }),
+    });
+    const resolvedNote = resolved.body['note'] as unknown as { status: string; resolvedAt?: string };
+    expect(resolvedNote.status).toBe('resolved');
+    expect(resolvedNote.resolvedAt).toBeTruthy();
+
+    const list = await json('/api/support');
+    expect((list.body['notes'] as unknown as unknown[]).length).toBe(1);
+  });
+
+  it('reopening clears the resolved timestamp', async () => {
+    const created = await json('/api/support', {
+      method: 'POST', body: JSON.stringify({ kind: 'idea', body: 'Dark mode.' }),
+    });
+    const id = (created.body['note'] as unknown as { id: string }).id;
+    await json(`/api/support/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'resolved' }) });
+    const reopened = await json(`/api/support/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'open' }),
+    });
+    expect(reopened.body['note']).not.toHaveProperty('resolvedAt');
+  });
+
+  it('deletes one', async () => {
+    const created = await json('/api/support', {
+      method: 'POST', body: JSON.stringify({ kind: 'question', body: 'Why 1440px?' }),
+    });
+    const id = (created.body['note'] as unknown as { id: string }).id;
+    expect((await json(`/api/support/${id}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await json('/api/support')).body['notes']).toEqual([]);
+  });
+
+  it('a portal session sees none of it', async () => {
+    await json('/api/support', {
+      method: 'POST', body: JSON.stringify({ kind: 'bug', body: 'Studio-only.' }),
+    });
+
+    const saved = cookie;
+    const token = 'portal-support-check';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'owner',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+    expect((await json('/api/support')).body['notes']).toEqual([]);
+    expect((await json('/api/support', {
+      method: 'POST', body: JSON.stringify({ kind: 'bug', body: 'Should be refused.' }),
+    })).status).toBe(403);
+    cookie = saved;
+  });
+});

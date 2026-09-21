@@ -48,6 +48,9 @@ function forRoute(route: Route): Warm[] {
     case 'settings':
       return [{ queryKey: ['rubric'], queryFn: api.rubric }];
 
+    case 'support':
+      return [{ queryKey: ['support-notes'], queryFn: api.supportNotes }];
+
     case 'client': {
       const id = route.clientId;
       if (!id) return [];

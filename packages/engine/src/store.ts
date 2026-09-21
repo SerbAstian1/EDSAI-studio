@@ -15,6 +15,7 @@ import { Milestone, type Milestone as MilestoneType } from './milestones.js';
 import { Invoice, type Invoice as InvoiceType } from './invoices.js';
 import { Message, type Message as MessageType } from './messages.js';
 import { Feedback, type Feedback as FeedbackType } from './feedback.js';
+import { SupportNote, type SupportNote as SupportNoteType } from './support.js';
 import {
   Onboarding, Answer,
   type Onboarding as OnboardingType, type Answer as AnswerType,
@@ -334,6 +335,15 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 CREATE INDEX IF NOT EXISTS feedback_by_client ON feedback (client_id);
+
+CREATE TABLE IF NOT EXISTS support_notes (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+);
 `;
 
 export interface StoredViolation {
@@ -788,6 +798,34 @@ export class RunStore {
     const row = this.db.prepare('SELECT * FROM feedback WHERE id = ?')
       .get(id) as Record<string, unknown> | undefined;
     return row ? hydrateFeedback(row) : undefined;
+  }
+
+  /* ------------------------------------------------------------ support notes */
+
+  saveSupportNote(note: SupportNoteType): void {
+    SupportNote.parse(note);
+    this.db.prepare(`
+      INSERT INTO support_notes (id, kind, body, status, created_at, resolved_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        kind = excluded.kind, body = excluded.body, status = excluded.status,
+        resolved_at = excluded.resolved_at
+    `).run(note.id, note.kind, note.body, note.status, note.createdAt, note.resolvedAt ?? null);
+  }
+
+  listSupportNotes(): SupportNoteType[] {
+    return (this.db.prepare('SELECT * FROM support_notes ORDER BY created_at DESC')
+      .all() as Record<string, unknown>[]).map(hydrateSupportNote);
+  }
+
+  getSupportNote(id: string): SupportNoteType | undefined {
+    const row = this.db.prepare('SELECT * FROM support_notes WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateSupportNote(row) : undefined;
+  }
+
+  deleteSupportNote(id: string): void {
+    this.db.prepare('DELETE FROM support_notes WHERE id = ?').run(id);
   }
 
   /* ------------------------------------------------------------ brand values */
@@ -1548,5 +1586,13 @@ function hydrateFeedback(row: Record<string, unknown>): FeedbackType {
     createdAt: row['created_at'],
     ...(row['response'] ? { response: row['response'] } : {}),
     ...(row['responded_at'] ? { respondedAt: row['responded_at'] } : {}),
+  });
+}
+
+function hydrateSupportNote(row: Record<string, unknown>): SupportNoteType {
+  return SupportNote.parse({
+    id: row['id'], kind: row['kind'], body: row['body'], status: row['status'],
+    createdAt: row['created_at'],
+    ...(row['resolved_at'] ? { resolvedAt: row['resolved_at'] } : {}),
   });
 }

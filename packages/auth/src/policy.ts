@@ -17,7 +17,7 @@ export type Action = typeof ACTIONS[number];
 
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
-  'deliverable', 'milestone', 'invoice', 'message', 'feedback',
+  'deliverable', 'milestone', 'invoice', 'message', 'feedback', 'support',
 ] as const;
 export type ResourceKind = typeof RESOURCES[number];
 
@@ -28,7 +28,15 @@ const STUDIO_MANAGED: readonly ResourceKind[] = [
 
 export interface Resource {
   kind: ResourceKind;
-  /** Which client's data this is. Everything client-scoped carries one. */
+  /**
+   * Which client's data this is. Everything client-scoped carries one —
+   * `support` is the one kind that is not about a client at all, and passes
+   * an empty string here. A portal principal's scope is a list of real
+   * client ids, so an empty string never matches it and every portal
+   * session is refused before any role is even considered; a studio
+   * principal's scope is `'all'`, so this reaches the ordinary role check
+   * below untouched. No special case needed for either.
+   */
   clientId: string;
   /** For `limited` portal principals: which collection the resource sits in. */
   collection?: string;

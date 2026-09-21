@@ -14,6 +14,7 @@ import type { Milestone } from './milestones.js';
 import type { Invoice } from './invoices.js';
 import type { Message } from './messages.js';
 import type { Feedback } from './feedback.js';
+import type { SupportNote } from './support.js';
 
 /**
  * The data boundary.
@@ -363,6 +364,35 @@ export class ScopedStore {
     }
     this.mustWrite('feedback', feedback.clientId);
     this.store.saveFeedback(feedback);
+  }
+
+  /* ----------------------------------------------------------- support notes */
+
+  /**
+   * Notes about the tool itself — bugs, ideas, questions — never a client's.
+   * Gated the same way every other write is, through the same `can()` the
+   * client-scoped resources use, just with no client to name: see the
+   * comment on `Resource.clientId` in `@edsai/auth` for why an empty string
+   * there is enough on its own to keep a portal session out.
+   */
+  listSupportNotes(): SupportNote[] {
+    if (!this.mayRead('support', '')) return [];
+    return this.store.listSupportNotes();
+  }
+
+  getSupportNote(id: string): SupportNote | undefined {
+    if (!this.mayRead('support', '')) return undefined;
+    return this.store.getSupportNote(id);
+  }
+
+  saveSupportNote(note: SupportNote): void {
+    this.mustWrite('support', '');
+    this.store.saveSupportNote(note);
+  }
+
+  deleteSupportNote(id: string): void {
+    this.mustWrite('support', '');
+    this.store.deleteSupportNote(id);
   }
 
   /* ------------------------------------------------------------- onboarding */

@@ -52,6 +52,7 @@ const LOADERS = {
   assets: () => import('./screens/FileLibrary.js'),
   activity: () => import('./screens/Activity.js'),
   settings: () => import('./screens/Settings.js'),
+  support: () => import('./screens/Support.js'),
   planned: () => import('./screens/Planned.js'),
 } satisfies Partial<Record<Screen, () => Promise<unknown>>>;
 
@@ -72,11 +73,12 @@ const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
 const Activity = lazy(LOADERS.activity);
 const Settings = lazy(LOADERS.settings);
+const Support = lazy(LOADERS.support);
 const Planned = lazy(LOADERS.planned);
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
-  | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'planned'
+  | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'clientPortal';
 
 export interface Route {
@@ -100,6 +102,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   assets: 'assets',
   activity: 'activity',
   settings: 'settings',
+  support: 'support',
 };
 
 export function parseRoute(hash: string): Route {
@@ -226,6 +229,7 @@ const TITLES: Record<Screen, string> = {
   assets: 'Files',
   activity: 'Activity',
   settings: 'Settings',
+  support: 'Support',
   planned: 'Studio',
 };
 
@@ -279,6 +283,7 @@ function Shell(): ReactElement {
             {route.screen === 'assets' && <FileLibrary />}
             {route.screen === 'activity' && <Activity />}
             {route.screen === 'settings' && <Settings />}
+            {route.screen === 'support' && <Support />}
             {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
           </Suspense>
         </main>

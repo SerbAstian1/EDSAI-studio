@@ -93,8 +93,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'support', label: 'Support', glyph: '?', group: 'Studio',
-    status: 'planned', phase: 'P10',
-    intent: 'A place to reach whoever built this studio, from inside it.',
+    status: 'built', href: '#/support',
   },
 ];
 
