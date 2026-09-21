@@ -74,6 +74,7 @@ function forRoute(route: Route): Warm[] {
     }
 
     case 'intake':
+    case 'campaigns':
       return [clients, { queryKey: ["projects"], queryFn: api.projects }];
 
     // The client-facing discovery flow loads nothing the shell can predict,

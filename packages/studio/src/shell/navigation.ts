@@ -73,8 +73,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'campaigns', label: 'Campaigns', glyph: '◌', group: 'Workspace',
-    status: 'planned', phase: 'P10',
-    intent: 'Campaign spaces that inherit an approved brand rather than restating it.',
+    status: 'built', href: '#/campaigns',
   },
   {
     id: 'brand-brain', label: 'Brand Brain', glyph: '✦', group: 'AI',
