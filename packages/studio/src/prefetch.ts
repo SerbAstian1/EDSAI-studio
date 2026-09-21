@@ -43,6 +43,7 @@ function forRoute(route: Route): Warm[] {
       return [{ queryKey: ['onboardings'], queryFn: api.allOnboardings }];
 
     case 'assets':
+    case 'templates':
       return [clients, { queryKey: ['assets'], queryFn: api.allAssets }];
 
     case 'settings':

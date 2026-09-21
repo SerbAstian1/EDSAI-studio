@@ -31,6 +31,9 @@ const KIND_GLYPH: Record<Asset['kind'], string> = {
   document: '▤', presentation: '▦', template: '▧', other: '◇',
 };
 
+/** In `KIND_GLYPH`'s own order, so the two never drift apart. */
+const KINDS = Object.keys(KIND_GLYPH) as Asset['kind'][];
+
 /** Bytes as a person reads them. */
 export function readableSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -67,6 +70,7 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
   const [filename, setFilename] = useState(asset.filename);
   const [description, setDescription] = useState(asset.description ?? '');
   const [collection, setCollection] = useState(asset.collection ?? '');
+  const [kind, setKind] = useState(asset.kind);
 
   const setApproved = useMutation({
     mutationFn: (approved: boolean) => api.updateAsset(asset.id, { approved }),
@@ -75,7 +79,7 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
 
   const save = useMutation({
     mutationFn: () => api.updateAsset(asset.id, {
-      filename: filename.trim(), description, collection,
+      filename: filename.trim(), description, collection, kind,
     }),
     onSuccess: () => { setEditing(false); onChanged(); },
   });
@@ -96,8 +100,14 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
         <td colSpan={2}>
           <input value={filename} onChange={(e) => setFilename(e.target.value)}
                  aria-label="Filename" />
-          <input value={description} onChange={(e) => setDescription(e.target.value)}
-                 aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
+          <div className="row" style={{ marginTop: 4, gap: 4 }}>
+            <select value={kind} onChange={(e) => setKind(e.target.value as Asset['kind'])}
+                    aria-label="Kind">
+              {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <input value={description} onChange={(e) => setDescription(e.target.value)}
+                   aria-label="Description" placeholder="Description" style={{ flex: 1 }} />
+          </div>
         </td>
         <td>
           <input value={collection} onChange={(e) => setCollection(e.target.value)}

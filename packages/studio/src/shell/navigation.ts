@@ -69,8 +69,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'templates', label: 'Templates', glyph: '✎', group: 'Workspace',
-    status: 'planned', phase: 'P10',
-    intent: 'Reusable artwork a client can use without touching the brand system.',
+    status: 'built', href: '#/templates',
   },
   {
     id: 'campaigns', label: 'Campaigns', glyph: '◌', group: 'Workspace',

@@ -50,6 +50,7 @@ const LOADERS = {
   brands: () => import('./screens/Brands.js'),
   portals: () => import('./screens/Portals.js'),
   assets: () => import('./screens/FileLibrary.js'),
+  templates: () => import('./screens/Templates.js'),
   activity: () => import('./screens/Activity.js'),
   settings: () => import('./screens/Settings.js'),
   support: () => import('./screens/Support.js'),
@@ -71,6 +72,7 @@ const Discovery = lazy(LOADERS.discovery);
 const Brands = lazy(LOADERS.brands);
 const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
+const Templates = lazy(LOADERS.templates);
 const Activity = lazy(LOADERS.activity);
 const Settings = lazy(LOADERS.settings);
 const Support = lazy(LOADERS.support);
@@ -79,7 +81,7 @@ const Planned = lazy(LOADERS.planned);
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
-  | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'clientPortal';
+  | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'clientPortal';
 
 export interface Route {
   screen: Screen;
@@ -103,6 +105,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   activity: 'activity',
   settings: 'settings',
   support: 'support',
+  templates: 'templates',
 };
 
 export function parseRoute(hash: string): Route {
@@ -230,6 +233,7 @@ const TITLES: Record<Screen, string> = {
   activity: 'Activity',
   settings: 'Settings',
   support: 'Support',
+  templates: 'Templates',
   planned: 'Studio',
 };
 
@@ -281,6 +285,7 @@ function Shell(): ReactElement {
             {route.screen === 'brands' && <Brands />}
             {route.screen === 'portals' && <Portals />}
             {route.screen === 'assets' && <FileLibrary />}
+            {route.screen === 'templates' && <Templates />}
             {route.screen === 'activity' && <Activity />}
             {route.screen === 'settings' && <Settings />}
             {route.screen === 'support' && <Support />}

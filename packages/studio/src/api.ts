@@ -587,6 +587,7 @@ export const api = {
   uploadAsset: upload,
   updateAsset: (assetId: string, input: {
     approved?: boolean; filename?: string; description?: string; collection?: string;
+    kind?: Asset['kind'];
   }) => call<{ asset: Asset }>(`/api/assets/${assetId}`, {
     method: 'PATCH', body: JSON.stringify(input),
   }).then((r) => r.asset),

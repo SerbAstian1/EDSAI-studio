@@ -1457,6 +1457,34 @@ describe('assets', () => {
     const res = await fetch(`${base}/api/assets/${id}/download`);
     expect(res.status).toBe(401);
   });
+
+  it('clearing the collection field puts a file back in Unfiled, not a collection called "download"', async () => {
+    // `safeFilename` — reused here to sanitize a collection name — falls back
+    // to the literal string "download" for an empty input, since that is the
+    // right default for a *file*. Editing a file with no collection and
+    // saving without typing one must not silently file it under "download".
+    const clientId = await assetClient();
+    const uploaded = await upload(clientId, { filename: 'clean.png', collection: 'Drafts' });
+    const id = (uploaded.body['asset'] as unknown as { id: string }).id;
+    expect((uploaded.body['asset'] as unknown as { collection?: string }).collection).toBe('Drafts');
+
+    const cleared = await json(`/api/assets/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ collection: '' }),
+    });
+    expect(cleared.body['asset']).not.toHaveProperty('collection');
+  });
+
+  it('can be re-kinded — e.g. marked as a template after the fact', async () => {
+    const clientId = await assetClient();
+    const { body } = await upload(clientId, { filename: 'deck-shell.png' });
+    const id = (body['asset'] as unknown as { id: string }).id;
+    expect((body['asset'] as unknown as { kind: string }).kind).toBe('photography');
+
+    const patched = await json(`/api/assets/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ kind: 'template' }),
+    });
+    expect((patched.body['asset'] as unknown as { kind: string }).kind).toBe('template');
+  });
 });
 
 describe('record ids', () => {

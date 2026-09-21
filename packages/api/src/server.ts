@@ -861,15 +861,25 @@ export class ApiServer {
           }
           const input = body as {
             approved?: boolean; filename?: string; description?: string; collection?: string;
+            kind?: string;
           };
           const updated = {
             ...existing,
             ...(typeof input?.approved === 'boolean' ? { approved: input.approved } : {}),
             ...(input?.filename ? { filename: safeFilename(input.filename) } : {}),
             ...(input?.description !== undefined ? { description: input.description } : {}),
-            ...(input?.collection !== undefined
-              ? { collection: safeFilename(input.collection) } : {}),
+            ...(input?.kind ? { kind: input.kind as typeof existing.kind } : {}),
           };
+          if (input?.collection !== undefined) {
+            // `safeFilename` falls back to the literal string "download" for an
+            // empty name — sensible for a *file*, wrong for a *collection*: the
+            // upload path already guards against it (below), and clearing the
+            // field here means "move this back to Unfiled", not "file it under
+            // a collection called download".
+            const collection = safeFilename(input.collection);
+            if (collection && collection !== 'download') updated.collection = collection;
+            else delete updated.collection;
+          }
           scoped.saveAsset(updated);
           send(res, 200, { asset: updated });
         },
