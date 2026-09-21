@@ -458,6 +458,13 @@ export interface SupportNote {
   resolvedAt?: string;
 }
 
+/** A department the studio has excluded or reduced — see `DeliveryScope` in `@edsai/rubric`. */
+export interface DepartmentOverride {
+  departmentId: number;
+  state: 'excluded' | 'reduced';
+  reason?: string;
+}
+
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean }>('/api/health'),
 
@@ -718,4 +725,13 @@ export const api = {
     }).then((r) => r.note),
   deleteSupportNote: (id: string) =>
     call<{ removed: string }>(`/api/support/${id}`, { method: 'DELETE' }),
+
+  processOverrides: () =>
+    call<{ overrides: DepartmentOverride[] }>('/api/process-overrides').then((r) => r.overrides),
+  setProcessOverride: (departmentId: number, input: { state: 'excluded' | 'reduced'; reason?: string }) =>
+    call<{ override: DepartmentOverride }>(`/api/process-overrides/${departmentId}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.override),
+  clearProcessOverride: (departmentId: number) =>
+    call<{ removed: number }>(`/api/process-overrides/${departmentId}`, { method: 'DELETE' }),
 };

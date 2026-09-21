@@ -15,6 +15,7 @@ import type { Invoice } from './invoices.js';
 import type { Message } from './messages.js';
 import type { Feedback } from './feedback.js';
 import type { SupportNote } from './support.js';
+import type { DepartmentOverride } from './process.js';
 
 /**
  * The data boundary.
@@ -393,6 +394,24 @@ export class ScopedStore {
   deleteSupportNote(id: string): void {
     this.mustWrite('support', '');
     this.store.deleteSupportNote(id);
+  }
+
+  /* --------------------------------------------------------- process overrides */
+
+  /** Which departments this studio has excluded or reduced — see `Resource.clientId` above. */
+  listProcessOverrides(): DepartmentOverride[] {
+    if (!this.mayRead('process', '')) return [];
+    return this.store.listProcessOverrides();
+  }
+
+  saveProcessOverride(override: DepartmentOverride): void {
+    this.mustWrite('process', '');
+    this.store.saveProcessOverride(override);
+  }
+
+  deleteProcessOverride(departmentId: number): void {
+    this.mustWrite('process', '');
+    this.store.deleteProcessOverride(departmentId);
   }
 
   /* ------------------------------------------------------------- onboarding */

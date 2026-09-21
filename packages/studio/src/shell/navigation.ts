@@ -63,9 +63,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: 'process-builder', label: 'Process Builder', glyph: '⚒', group: 'Workspace',
-    status: 'planned', phase: 'P10',
-    intent: 'Customising which departments run and in what order, per studio '
-      + 'rather than per corpus. The activation matrix is fixed today.',
+    status: 'built', href: '#/process-builder',
   },
   {
     id: 'templates', label: 'Templates', glyph: '✎', group: 'Workspace',

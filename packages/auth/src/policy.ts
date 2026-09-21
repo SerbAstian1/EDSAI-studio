@@ -17,7 +17,7 @@ export type Action = typeof ACTIONS[number];
 
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
-  'deliverable', 'milestone', 'invoice', 'message', 'feedback', 'support',
+  'deliverable', 'milestone', 'invoice', 'message', 'feedback', 'support', 'process',
 ] as const;
 export type ResourceKind = typeof RESOURCES[number];
 

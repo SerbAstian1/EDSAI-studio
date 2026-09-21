@@ -49,6 +49,12 @@ function forRoute(route: Route): Warm[] {
     case 'settings':
       return [{ queryKey: ['rubric'], queryFn: api.rubric }];
 
+    case 'processBuilder':
+      return [
+        { queryKey: ['rubric'], queryFn: api.rubric },
+        { queryKey: ['process-overrides'], queryFn: api.processOverrides },
+      ];
+
     case 'support':
       return [{ queryKey: ['support-notes'], queryFn: api.supportNotes }];
 

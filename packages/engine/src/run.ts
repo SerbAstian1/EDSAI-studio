@@ -36,6 +36,14 @@ export interface StartRunInput {
   level: SystemLevel;
   tracks?: readonly string[];
   scopeId?: string;
+  /**
+   * The delivery scope this run actually uses, when it differs from the
+   * context's own default — the studio's persisted process overrides,
+   * computed by the caller (`scopeFromOverrides`) rather than looked up by
+   * id, since that scope is built from stored rows, not one of the fixed
+   * named scopes `scopeById` knows about.
+   */
+  scope?: DeliveryScope;
   runId?: string;
   classificationDefence?: string;
 }
@@ -80,7 +88,8 @@ export class RunContext {
   /** Create a run and compute which departments it will execute. */
   start(input: StartRunInput): RunType {
     const tracks = input.tracks ?? ['digital-product', 'frontend-block', 'closing'];
-    const departments = activatedDepartments(this.rubric, input.level, tracks, this.scope);
+    const scope = input.scope ?? this.scope;
+    const departments = activatedDepartments(this.rubric, input.level, tracks, scope);
 
     const run: RunType = Run.parse({
       id: input.runId ?? crypto.randomUUID().slice(0, 8),
@@ -89,7 +98,7 @@ export class RunContext {
       brief: input.brief,
       level: input.level,
       tracks: [...tracks],
-      scopeId: this.scope.id,
+      scopeId: scope.id,
       activatedDepartments: departments.map((d) => d.id),
       version: 'V1',
       status: 'running',

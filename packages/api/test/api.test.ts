@@ -127,7 +127,69 @@ describe('runs', () => {
     expect(status).toBe(400);
     expect(body['message']).toMatch(/needs a brief/);
   });
+});
 
+describe('process overrides', () => {
+  it('excludes a department from every run started while the override is set', async () => {
+    const before = await startRun();
+    const toExclude = before.activatedDepartments[0] as number;
+
+    const patched = await json(`/api/process-overrides/${toExclude}`, {
+      method: 'PATCH', body: JSON.stringify({ state: 'excluded' }),
+    });
+    expect(patched.status).toBe(200);
+
+    const after = await startRun();
+    expect(after.activatedDepartments).not.toContain(toExclude);
+  });
+
+  it('requires a reason to reduce a department', async () => {
+    const { status, body } = await json('/api/process-overrides/7', {
+      method: 'PATCH', body: JSON.stringify({ state: 'reduced' }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toMatch(/reason/);
+  });
+
+  it('refuses an unknown department number', async () => {
+    const { status } = await json('/api/process-overrides/9999', {
+      method: 'PATCH', body: JSON.stringify({ state: 'excluded' }),
+    });
+    expect(status).toBe(404);
+  });
+
+  it('deleting an override lets the department run normally again', async () => {
+    const before = await startRun();
+    const toExclude = before.activatedDepartments[0] as number;
+    await json(`/api/process-overrides/${toExclude}`, {
+      method: 'PATCH', body: JSON.stringify({ state: 'excluded' }),
+    });
+    await json(`/api/process-overrides/${toExclude}`, { method: 'DELETE' });
+
+    const after = await startRun();
+    expect(after.activatedDepartments).toContain(toExclude);
+  });
+
+  it('a portal session sees none of it and cannot write', async () => {
+    const saved = cookie;
+    const token = 'portal-process-check';
+    const { createHash } = await import('node:crypto');
+    store.saveSession({
+      digest: createHash('sha256').update(token).digest('hex'),
+      userId: 'p', kind: 'portal', clientId: 'client-elsewhere', role: 'owner',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    cookie = `edsai_session=${token}`;
+    expect((await json('/api/process-overrides')).body['overrides']).toEqual([]);
+    expect((await json('/api/process-overrides/7', {
+      method: 'PATCH', body: JSON.stringify({ state: 'excluded' }),
+    })).status).toBe(403);
+    cookie = saved;
+  });
+});
+
+describe('runs, continued', () => {
   it('prepares the next department, with its prompt and cache breakpoint', async () => {
     const run = await startRun();
     const { body } = await json(`/api/runs/${run.id}/next`);

@@ -16,6 +16,7 @@ import { Invoice, type Invoice as InvoiceType } from './invoices.js';
 import { Message, type Message as MessageType } from './messages.js';
 import { Feedback, type Feedback as FeedbackType } from './feedback.js';
 import { SupportNote, type SupportNote as SupportNoteType } from './support.js';
+import { DepartmentOverride, type DepartmentOverride as DepartmentOverrideType } from './process.js';
 import {
   Onboarding, Answer,
   type Onboarding as OnboardingType, type Answer as AnswerType,
@@ -343,6 +344,12 @@ CREATE TABLE IF NOT EXISTS support_notes (
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS process_overrides (
+  department_id INTEGER PRIMARY KEY,
+  state TEXT NOT NULL,
+  reason TEXT
 );
 `;
 
@@ -826,6 +833,26 @@ export class RunStore {
 
   deleteSupportNote(id: string): void {
     this.db.prepare('DELETE FROM support_notes WHERE id = ?').run(id);
+  }
+
+  /* ------------------------------------------------------------ process overrides */
+
+  saveProcessOverride(override: DepartmentOverrideType): void {
+    DepartmentOverride.parse(override);
+    this.db.prepare(`
+      INSERT INTO process_overrides (department_id, state, reason)
+      VALUES (?, ?, ?)
+      ON CONFLICT(department_id) DO UPDATE SET state = excluded.state, reason = excluded.reason
+    `).run(override.departmentId, override.state, override.reason ?? null);
+  }
+
+  listProcessOverrides(): DepartmentOverrideType[] {
+    return (this.db.prepare('SELECT * FROM process_overrides ORDER BY department_id')
+      .all() as Record<string, unknown>[]).map(hydrateProcessOverride);
+  }
+
+  deleteProcessOverride(departmentId: number): void {
+    this.db.prepare('DELETE FROM process_overrides WHERE department_id = ?').run(departmentId);
   }
 
   /* ------------------------------------------------------------ brand values */
@@ -1594,5 +1621,12 @@ function hydrateSupportNote(row: Record<string, unknown>): SupportNoteType {
     id: row['id'], kind: row['kind'], body: row['body'], status: row['status'],
     createdAt: row['created_at'],
     ...(row['resolved_at'] ? { resolvedAt: row['resolved_at'] } : {}),
+  });
+}
+
+function hydrateProcessOverride(row: Record<string, unknown>): DepartmentOverrideType {
+  return DepartmentOverride.parse({
+    departmentId: row['department_id'], state: row['state'],
+    ...(row['reason'] ? { reason: row['reason'] } : {}),
   });
 }

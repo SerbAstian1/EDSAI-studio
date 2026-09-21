@@ -24,7 +24,8 @@ import {
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
-  type SupportNote,
+  type SupportNote, type DepartmentOverride,
+  scopeFromOverrides,
 } from '@edsai/engine';
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
@@ -2020,6 +2021,67 @@ body { max-width: 640px; margin: 48px auto; }
         },
       },
 
+      /* ----------------------------------------------------- process overrides */
+
+      /**
+       * Which departments this studio has excluded or reduced, and why —
+       * Process Builder's own read. A department with no row here just runs
+       * as the corpus says; this only ever lists the departments someone
+       * made a decision about.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/process-overrides$/,
+        run: ({ res, scoped }) => {
+          if (!scoped) return;
+          send(res, 200, { overrides: scoped.listProcessOverrides() });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/process-overrides\/(?<departmentId>\d+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const departmentId = Number(params['departmentId'] ?? '');
+          if (!this.rubric.departments.some((d) => d.id === departmentId)) {
+            send(res, 404, {
+              error: 'not_found', message: `No department numbered ${departmentId}.`,
+            });
+            return;
+          }
+          const input = body as { state?: string; reason?: string };
+          if (input?.state !== 'excluded' && input?.state !== 'reduced') {
+            send(res, 400, {
+              error: 'bad_request', message: 'State must be "excluded" or "reduced".',
+            });
+            return;
+          }
+          if (input.state === 'reduced' && !input.reason?.trim()) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A reduced department needs a stated reason — an unreasoned '
+                + 'reduction is just an exclusion no one committed to.',
+            });
+            return;
+          }
+          const override: DepartmentOverride = {
+            departmentId, state: input.state,
+            ...(input.state === 'reduced' ? { reason: input.reason!.trim() } : {}),
+          };
+          scoped.saveProcessOverride(override);
+          send(res, 200, { override });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/process-overrides\/(?<departmentId>\d+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const departmentId = Number(params['departmentId'] ?? '');
+          scoped.deleteProcessOverride(departmentId);
+          send(res, 200, { removed: departmentId });
+        },
+      },
+
       /* ---------------------------------------------------------- onboarding */
 
       {
@@ -2729,12 +2791,17 @@ body { max-width: 640px; margin: 48px auto; }
             return;
           }
 
+          // The studio's own process, not the fixed default — a run started
+          // after a department was excluded or reduced through Process
+          // Builder uses that choice, not the scope the server booted with.
+          const overrides = this.store.listProcessOverrides();
           const run = this.context.start({
             projectId: resolved.id,
             clientId: resolved.clientId,
             brief: input.brief,
             level: (input.level ?? 1) as SystemLevel,
             ...(input.tracks ? { tracks: input.tracks } : {}),
+            ...(overrides.length > 0 ? { scope: scopeFromOverrides(overrides) } : {}),
           });
           this.events.emit(run.id, 'run.started', run);
 

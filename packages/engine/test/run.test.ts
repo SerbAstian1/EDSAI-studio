@@ -62,6 +62,23 @@ describe('run start', () => {
     expect(run.activatedDepartments).not.toContain(6);
     expect(run.scopeId).toBe('no-motion-authoring');
   });
+
+  it('honours a scope passed to start(), overriding the context’s own default', () => {
+    // The context's default scope is 'full' (nothing excluded) — a studio's
+    // own process overrides, built into a `DeliveryScope` by the caller, have
+    // to win over that default rather than being silently ignored.
+    const store = new RunStore();
+    const context = new RunContext({ rubric, store });
+    const run = context.start({
+      projectId: 'p1', clientId: 'client-test', brief: 'A brief.', level: 1,
+      runId: 'studio-scope-run',
+      scope: {
+        id: 'studio', description: 'Excludes department 6.', excluded: [6], reduced: {},
+      },
+    });
+    expect(run.activatedDepartments).not.toContain(6);
+    expect(run.scopeId).toBe('studio');
+  });
 });
 
 describe('prepare', () => {

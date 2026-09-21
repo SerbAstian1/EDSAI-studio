@@ -52,6 +52,7 @@ const LOADERS = {
   assets: () => import('./screens/FileLibrary.js'),
   templates: () => import('./screens/Templates.js'),
   campaigns: () => import('./screens/Campaigns.js'),
+  processBuilder: () => import('./screens/ProcessBuilder.js'),
   activity: () => import('./screens/Activity.js'),
   settings: () => import('./screens/Settings.js'),
   support: () => import('./screens/Support.js'),
@@ -75,6 +76,7 @@ const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
 const Templates = lazy(LOADERS.templates);
 const Campaigns = lazy(LOADERS.campaigns);
+const ProcessBuilder = lazy(LOADERS.processBuilder);
 const Activity = lazy(LOADERS.activity);
 const Settings = lazy(LOADERS.settings);
 const Support = lazy(LOADERS.support);
@@ -84,7 +86,7 @@ export type Screen =
   | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'campaigns'
-  | 'clientPortal';
+  | 'processBuilder' | 'clientPortal';
 
 export interface Route {
   screen: Screen;
@@ -110,6 +112,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   support: 'support',
   templates: 'templates',
   campaigns: 'campaigns',
+  'process-builder': 'processBuilder',
 };
 
 export function parseRoute(hash: string): Route {
@@ -136,6 +139,7 @@ export function activeSection(route: Route): string {
   if (route.screen === 'planned') return route.sectionId ?? '';
   if (route.screen === 'workspace') return 'overview';
   if (route.screen === 'client') return 'clients';
+  if (route.screen === 'processBuilder') return 'process-builder';
   if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
     || route.screen === 'review' || route.screen === 'finalize'
     || route.screen === 'runs') return 'runs';
@@ -239,6 +243,7 @@ const TITLES: Record<Screen, string> = {
   support: 'Support',
   templates: 'Templates',
   campaigns: 'Campaigns',
+  processBuilder: 'Process Builder',
   planned: 'Studio',
 };
 
@@ -292,6 +297,7 @@ function Shell(): ReactElement {
             {route.screen === 'assets' && <FileLibrary />}
             {route.screen === 'templates' && <Templates />}
             {route.screen === 'campaigns' && <Campaigns />}
+            {route.screen === 'processBuilder' && <ProcessBuilder />}
             {route.screen === 'activity' && <Activity />}
             {route.screen === 'settings' && <Settings />}
             {route.screen === 'support' && <Support />}
