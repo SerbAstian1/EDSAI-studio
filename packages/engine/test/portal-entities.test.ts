@@ -5,7 +5,7 @@ import { ScopedStore } from '../src/scoped.js';
 import { invoiceStatus, invoiceTotals, type Invoice } from '../src/invoices.js';
 import { orderMilestones, type Milestone } from '../src/milestones.js';
 import type { Client } from '../src/entities.js';
-import type { Deliverable } from '../src/deliverables.js';
+import { isFigmaUrl, type Deliverable } from '../src/deliverables.js';
 import type { Message } from '../src/messages.js';
 import type { Feedback } from '../src/feedback.js';
 
@@ -47,6 +47,31 @@ describe('store round-trips', () => {
     expect(store.getDeliverable('d1')).toEqual(deliverable);
     store.deleteDeliverable('d1');
     expect(store.listDeliverables('acme')).toEqual([]);
+  });
+
+  it('keeps a Figma preview URL, and drops it when cleared', () => {
+    const store = fixture();
+    const base: Deliverable = {
+      id: 'd2', clientId: 'acme', kind: 'document', title: 'Brand guide',
+      status: 'in-progress', createdAt: NOW, updatedAt: NOW,
+      figmaUrl: 'https://www.figma.com/design/abc/Brand-guide',
+    };
+    store.saveDeliverable(base);
+    expect(store.getDeliverable('d2')?.figmaUrl).toBe('https://www.figma.com/design/abc/Brand-guide');
+    const { figmaUrl: _cleared, ...withoutFigma } = base;
+    store.saveDeliverable(withoutFigma);
+    expect(store.getDeliverable('d2')).toEqual(withoutFigma);
+  });
+
+  it('only frames figma.com', () => {
+    expect(isFigmaUrl('https://www.figma.com/design/abc/Brand')).toBe(true);
+    expect(isFigmaUrl('https://figma.com/proto/abc')).toBe(true);
+    expect(isFigmaUrl('https://embed.figma.com/design/abc')).toBe(true);
+    expect(isFigmaUrl('http://www.figma.com/design/abc')).toBe(false);
+    expect(isFigmaUrl('https://figma.com.evil.example/design/abc')).toBe(false);
+    expect(isFigmaUrl('https://notfigma.com/design/abc')).toBe(false);
+    expect(isFigmaUrl('javascript:alert(1)')).toBe(false);
+    expect(isFigmaUrl('figma.com/design/abc')).toBe(false);
   });
 
   it('orders milestones by their own order, not by insertion', () => {

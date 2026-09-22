@@ -272,6 +272,7 @@ CREATE TABLE IF NOT EXISTS deliverables (
   description TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   asset_id TEXT,
+  figma_url TEXT,
   due_date TEXT,
   delivered_at TEXT,
   created_at TEXT NOT NULL,
@@ -456,6 +457,9 @@ export class RunStore {
     }
     if (!columns('runs').includes('halted_retryable')) {
       this.db.exec('ALTER TABLE runs ADD COLUMN halted_retryable INTEGER');
+    }
+    if (!columns('deliverables').includes('figma_url')) {
+      this.db.exec('ALTER TABLE deliverables ADD COLUMN figma_url TEXT');
     }
     this.attachOrphanedRuns();
   }
@@ -675,16 +679,17 @@ export class RunStore {
     Deliverable.parse(deliverable);
     this.db.prepare(`
       INSERT INTO deliverables (id, client_id, project_id, kind, title, description, status,
-                                asset_id, due_date, delivered_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                asset_id, figma_url, due_date, delivered_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id, kind = excluded.kind, title = excluded.title,
         description = excluded.description, status = excluded.status,
-        asset_id = excluded.asset_id, due_date = excluded.due_date,
+        asset_id = excluded.asset_id, figma_url = excluded.figma_url, due_date = excluded.due_date,
         delivered_at = excluded.delivered_at, updated_at = excluded.updated_at
     `).run(deliverable.id, deliverable.clientId, deliverable.projectId ?? null,
       deliverable.kind, deliverable.title, deliverable.description ?? null, deliverable.status,
-      deliverable.assetId ?? null, deliverable.dueDate ?? null, deliverable.deliveredAt ?? null,
+      deliverable.assetId ?? null, deliverable.figmaUrl ?? null, deliverable.dueDate ?? null,
+      deliverable.deliveredAt ?? null,
       deliverable.createdAt, deliverable.updatedAt);
   }
 
@@ -1581,6 +1586,7 @@ function hydrateDeliverable(row: Record<string, unknown>): DeliverableType {
     ...(row['description'] ? { description: row['description'] } : {}),
     status: row['status'],
     ...(row['asset_id'] ? { assetId: row['asset_id'] } : {}),
+    ...(row['figma_url'] ? { figmaUrl: row['figma_url'] } : {}),
     ...(row['due_date'] ? { dueDate: row['due_date'] } : {}),
     ...(row['delivered_at'] ? { deliveredAt: row['delivered_at'] } : {}),
     createdAt: row['created_at'], updatedAt: row['updated_at'],

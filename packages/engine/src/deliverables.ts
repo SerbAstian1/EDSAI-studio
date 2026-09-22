@@ -29,9 +29,29 @@ export const Deliverable = z.object({
   status: DeliverableStatus.default('pending'),
   /** Set once an uploaded file is what "delivered" means for this item. */
   assetId: z.string().optional(),
+  /**
+   * A Figma file or prototype that *is* this deliverable, previewed in place
+   * in the studio and in the client's portal rather than sent as a link to
+   * open somewhere else. The URL is checked to be Figma's before it is ever
+   * framed — an arbitrary origin in an iframe is not a preview, it is a hole.
+   */
+  figmaUrl: z.string().optional(),
   dueDate: z.string().optional(),
   deliveredAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type Deliverable = z.infer<typeof Deliverable>;
+
+/**
+ * True only for an https link on figma.com or one of its subdomains. This is
+ * the whole gate between "a URL someone typed" and "an origin we frame", so
+ * it is deliberately strict: no http, no look-alike hosts, no bare strings.
+ */
+export function isFigmaUrl(value: string): boolean {
+  let url: URL;
+  try { url = new URL(value); } catch { return false; }
+  if (url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  return host === 'figma.com' || host.endsWith('.figma.com');
+}

@@ -337,7 +337,20 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
   );
 }
 
-export default function ClientDetail({ clientId }: { clientId: string }): ReactElement {
+export type ClientTab = 'overview' | 'discovery' | 'brand' | 'delivery' | 'client';
+
+/** In the order the work actually flows: set up, discover, define, deliver, talk. */
+const TABS: { id: ClientTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'discovery', label: 'Discovery' },
+  { id: 'brand', label: 'Brand' },
+  { id: 'delivery', label: 'Delivery' },
+  { id: 'client', label: 'Client' },
+];
+
+export default function ClientDetail({ clientId, tab }: {
+  clientId: string; tab: string | undefined;
+}): ReactElement {
   const queryClient = useQueryClient();
   const { data, isPending, error } = useQuery({
     queryKey: ['client', clientId], queryFn: () => api.client(clientId),
@@ -377,6 +390,7 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
   }
 
   const { client, contacts, projects, runs } = data;
+  const current: ClientTab = tab && TABS.some((t) => t.id === tab) ? tab as ClientTab : 'overview';
 
   return (
     <section className="stack">
@@ -393,6 +407,23 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
           <span className="metric" style={{ fontSize: 20 }}>{client.status}</span></div>
       </div>
 
+      {/*
+        Five tabs where there were twelve stacked sections. The tab is in the
+        URL rather than component state so a refresh, a shared link and the
+        back button all land on the same view — the same reason the run
+        screens are routes and not a state variable.
+      */}
+      <nav className="tabs" aria-label="Client sections">
+        {TABS.map((t) => (
+          <a key={t.id} className="tab"
+             href={`#/clients/${clientId}${t.id === 'overview' ? '' : `/${t.id}`}`}
+             aria-current={current === t.id ? 'page' : undefined}>
+            {t.label}
+          </a>
+        ))}
+      </nav>
+
+      {current === 'overview' && (<>
       <h3>Contacts</h3>
       {contacts.length === 0
         ? <p className="muted">Nobody recorded yet. A project whose approver is unnamed is a
@@ -440,30 +471,31 @@ export default function ClientDetail({ clientId }: { clientId: string }): ReactE
         </button>
       </form>
 
-      <OnboardingPanel clientId={clientId} />
-
-      <Brand clientId={clientId} />
-
-      <Positioning clientId={clientId} />
-
-      <Deliverables clientId={clientId} />
-
-      <Milestones clientId={clientId} />
-
-      <Invoices clientId={clientId} />
-
-      <Assets clientId={clientId} />
-
-      <Messages clientId={clientId} />
-
-      <FeedbackPanel clientId={clientId} />
-
-      <PortalAccess clientId={clientId} />
-
       <h3>Runs</h3>
       {runs.length === 0
         ? <p className="muted">No run has been started for this client yet.</p>
         : <RunTable runs={runs as Run[]} />}
+      </>)}
+
+      {current === 'discovery' && (<>
+        <OnboardingPanel clientId={clientId} />
+        <Positioning clientId={clientId} />
+      </>)}
+
+      {current === 'brand' && <Brand clientId={clientId} />}
+
+      {current === 'delivery' && (<>
+        <Deliverables clientId={clientId} />
+        <Milestones clientId={clientId} />
+        <Assets clientId={clientId} />
+      </>)}
+
+      {current === 'client' && (<>
+        <Messages clientId={clientId} />
+        <FeedbackPanel clientId={clientId} />
+        <Invoices clientId={clientId} />
+        <PortalAccess clientId={clientId} />
+      </>)}
     </section>
   );
 }

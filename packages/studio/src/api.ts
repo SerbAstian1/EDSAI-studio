@@ -385,6 +385,8 @@ export interface Deliverable {
   description?: string;
   status: 'pending' | 'in-progress' | 'delivered';
   assetId?: string;
+  /** A Figma file previewed in place, here and in the client's portal. */
+  figmaUrl?: string;
   dueDate?: string;
   deliveredAt?: string;
   createdAt: string;
@@ -672,12 +674,12 @@ export const api = {
     call<{ deliverables: Deliverable[] }>(`/api/clients/${clientId}/deliverables`)
       .then((r) => r.deliverables),
   createDeliverable: (clientId: string, input: { kind: string; title: string;
-    description?: string; projectId?: string; dueDate?: string }) =>
+    description?: string; projectId?: string; dueDate?: string; figmaUrl?: string }) =>
     call<{ deliverable: Deliverable }>(`/api/clients/${clientId}/deliverables`, {
       method: 'POST', body: JSON.stringify(input),
     }).then((r) => r.deliverable),
   updateDeliverable: (id: string, input: { status?: string; title?: string;
-    description?: string; dueDate?: string; assetId?: string }) =>
+    description?: string; dueDate?: string; assetId?: string; figmaUrl?: string }) =>
     call<{ deliverable: Deliverable }>(`/api/deliverables/${id}`, {
       method: 'PATCH', body: JSON.stringify(input),
     }).then((r) => r.deliverable),

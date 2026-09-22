@@ -1,6 +1,15 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Download } from 'lucide-react';
 import { api, type Client, type Deliverable } from '../../api.js';
+import FigmaEmbed, { isFigmaUrl } from '../../components/FigmaEmbed.js';
+
+/**
+ * The client's view of what they are owed. A deliverable that lives in Figma
+ * previews right here — the client reads the document inside the portal
+ * instead of being handed a link out of it — and a card with a preview takes
+ * the full row so the viewer is a viewer, not a thumbnail.
+ */
 
 const KIND_LABEL: Record<Deliverable['kind'], string> = {
   document: 'Document', presentation: 'Presentation', planning: 'Planning / Strategy',
@@ -42,22 +51,32 @@ export default function DeliverablesSection({ client }: { client: Client }): Rea
 
       {data && data.length > 0 && (
         <div className="project-grid">
-          {data.map((d) => (
-            <article key={d.id} className="project-card">
-              <div className="project-card-head">
-                <div className="project-card-title">
-                  <span className="client">{KIND_LABEL[d.kind]}</span>
-                  <strong title={d.title}>{d.title}</strong>
+          {data.map((d) => {
+            const preview = d.figmaUrl && isFigmaUrl(d.figmaUrl) ? d.figmaUrl : undefined;
+            return (
+              <article key={d.id} className={`project-card${preview ? ' wide' : ''}`}>
+                <div className="project-card-head">
+                  <div className="project-card-title">
+                    <span className="client">{KIND_LABEL[d.kind]}</span>
+                    <strong title={d.title}>{d.title}</strong>
+                  </div>
+                  <span className={`pill ${STATUS_TONE[d.status]}`} style={{ marginLeft: 'auto' }}>
+                    {STATUS_LABEL[d.status]}
+                  </span>
                 </div>
-              </div>
-              <span className={`pill ${STATUS_TONE[d.status]}`}>{STATUS_LABEL[d.status]}</span>
-              {d.description && <p className="project-card-status">{d.description}</p>}
-              {d.dueDate && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Due {d.dueDate}</p>}
-              {d.assetId && (
-                <a href={api.downloadPath(d.assetId)}><button type="button">Download</button></a>
-              )}
-            </article>
-          ))}
+                {d.description && <p className="project-card-status">{d.description}</p>}
+                {d.dueDate && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Due {d.dueDate}</p>}
+                {preview && <FigmaEmbed url={preview} title={d.title} />}
+                {d.assetId && (
+                  <a href={api.downloadPath(d.assetId)}>
+                    <button type="button">
+                      <Download size={14} strokeWidth={1.75} aria-hidden="true" /> Download
+                    </button>
+                  </a>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

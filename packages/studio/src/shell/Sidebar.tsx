@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
+import { LogOut, Search } from 'lucide-react';
 import { api } from '../api.js';
 import { GROUPS, sectionsIn, type Section } from './navigation.js';
 
@@ -12,10 +13,11 @@ import { GROUPS, sectionsIn, type Section } from './navigation.js';
  */
 
 function Item({ section, current }: { section: Section; current: string }): ReactElement {
+  const Icon = section.icon;
   if (section.status === 'planned') {
     return (
       <span className="nav-item pending" aria-disabled="true" title={section.intent}>
-        <span className="glyph" aria-hidden="true">{section.glyph}</span>
+        <Icon className="glyph" size={16} strokeWidth={1.75} aria-hidden="true" />
         {section.label}
         <span className="phase">{section.phase}</span>
       </span>
@@ -27,7 +29,7 @@ function Item({ section, current }: { section: Section; current: string }): Reac
       href={section.href}
       aria-current={current === section.id ? 'page' : undefined}
     >
-      <span className="glyph" aria-hidden="true">{section.glyph}</span>
+      <Icon className="glyph" size={16} strokeWidth={1.75} aria-hidden="true" />
       {section.label}
     </a>
   );
@@ -53,6 +55,7 @@ export function Sidebar({ current, onOpenPalette }: {
           `margin-top: auto` it left a column of dead space on every screen,
           and it is the fastest way to reach anything here — not a footer. */}
       <button className="search" onClick={onOpenPalette}>
+        <Search size={15} strokeWidth={1.75} aria-hidden="true" />
         Search
         <span className="kbd" aria-hidden="true">⌘K</span>
       </button>
@@ -73,7 +76,7 @@ export function Sidebar({ current, onOpenPalette }: {
         onClick={() => signOut.mutate()}
         disabled={signOut.isPending}
       >
-        <span className="glyph" aria-hidden="true">⏻</span>
+        <LogOut className="glyph" size={16} strokeWidth={1.75} aria-hidden="true" />
         {signOut.isPending ? 'Signing out…' : 'Logout'}
       </button>
     </aside>

@@ -20,7 +20,7 @@ import {
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
-  orderMilestones, invoiceStatus, invoiceTotals,
+  orderMilestones, invoiceStatus, invoiceTotals, isFigmaUrl,
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
@@ -1629,9 +1629,14 @@ export class ApiServer {
             return;
           }
           const input = body as { kind?: string; title?: string; description?: string;
-            projectId?: string; dueDate?: string };
+            projectId?: string; dueDate?: string; figmaUrl?: string };
           if (!input?.kind?.trim() || !input?.title?.trim()) {
             send(res, 400, { error: 'bad_request', message: 'A deliverable needs a kind and a title.' });
+            return;
+          }
+          const figmaUrl = input.figmaUrl?.trim();
+          if (figmaUrl && !isFigmaUrl(figmaUrl)) {
+            send(res, 400, { error: 'bad_request', message: 'Only figma.com links can be previewed in place.' });
             return;
           }
           const now = new Date().toISOString();
@@ -1641,6 +1646,7 @@ export class ApiServer {
             ...(input.description?.trim() ? { description: input.description.trim() } : {}),
             ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
             ...(input.dueDate?.trim() ? { dueDate: input.dueDate.trim() } : {}),
+            ...(figmaUrl ? { figmaUrl } : {}),
           };
           scoped.saveDeliverable(deliverable);
           send(res, 201, { deliverable });
@@ -1657,15 +1663,24 @@ export class ApiServer {
             return;
           }
           const input = body as { status?: string; title?: string; description?: string;
-            dueDate?: string; assetId?: string };
+            dueDate?: string; assetId?: string; figmaUrl?: string };
           const status = input?.status as Deliverable['status'] | undefined;
+          const figmaUrl = input?.figmaUrl === undefined ? undefined : input.figmaUrl.trim();
+          if (figmaUrl && !isFigmaUrl(figmaUrl)) {
+            send(res, 400, { error: 'bad_request', message: 'Only figma.com links can be previewed in place.' });
+            return;
+          }
+          // An empty string clears the preview; undefined leaves it alone.
+          const { figmaUrl: _dropped, ...rest } = existing;
+          const base = figmaUrl === '' ? rest : existing;
           const deliverable: Deliverable = {
-            ...existing,
+            ...base,
             ...(status ? { status } : {}),
             ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
             ...(input?.description !== undefined ? { description: input.description } : {}),
             ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
             ...(input?.assetId !== undefined ? { assetId: input.assetId } : {}),
+            ...(figmaUrl ? { figmaUrl } : {}),
             ...(status === 'delivered' && !existing.deliveredAt
               ? { deliveredAt: new Date().toISOString() } : {}),
             updatedAt: new Date().toISOString(),

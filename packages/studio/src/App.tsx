@@ -101,6 +101,8 @@ export interface Route {
   token?: string;
   /** The section id, when a planned section was opened. */
   sectionId?: string;
+  /** Which tab of a client's page — in the URL so refresh and back both hold it. */
+  tab?: string;
   /**
    * A project already known when the intake screen opens — arriving via
    * "Start a run" from that project's own page, rather than the cold,
@@ -138,7 +140,9 @@ export function parseRoute(hash: string): Route {
   }
   if (path[0] === 'onboard' && path[1]) return { screen: 'onboard', token: path[1] };
   if (path[0] === 'client-portal' && path[1]) return { screen: 'clientPortal', token: path[1] };
-  if (path[0] === 'clients' && path[1]) return { screen: 'client', clientId: path[1] };
+  if (path[0] === 'clients' && path[1]) {
+    return { screen: 'client', clientId: path[1], ...(path[2] ? { tab: path[2] } : {}) };
+  }
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
   if (section) return { screen: section };
@@ -291,18 +295,21 @@ function Shell(): ReactElement {
       <div className="main">
         <Header onOpenPalette={() => palette.setOpen(true)} />
 
-        <header className="topbar">
-          <h1>{TITLES[route.screen]}</h1>
-          {route.runId && <span className="mono muted">{route.runId}</span>}
-          {tabs.length > 0 && (
+        {/* Every screen names itself in its own heading, so a second title
+            here was the same word twice. The bar earns its place only on a
+            run, where it carries the run id and the four stages of it. */}
+        {route.runId && (
+          <header className="topbar">
+            <h1>{TITLES[route.screen]}</h1>
+            <span className="mono muted">{route.runId}</span>
             <nav aria-label="Run">
               {tabs.map(([key, label]) => (
                 <a key={key} href={`#/run/${route.runId}${key === 'run' ? '' : `/${key}`}`}
                    aria-current={route.screen === key ? 'page' : undefined}>{label}</a>
               ))}
             </nav>
-          )}
-        </header>
+          </header>
+        )}
 
         <main className="content">
           <Suspense fallback={<p className="muted">Loading…</p>}>
@@ -314,7 +321,9 @@ function Shell(): ReactElement {
             {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
             {route.screen === 'runs' && <Runs />}
             {route.screen === 'clients' && <Clients />}
-            {route.screen === 'client' && route.clientId && <ClientDetail clientId={route.clientId} />}
+            {route.screen === 'client' && route.clientId && (
+              <ClientDetail clientId={route.clientId} tab={route.tab} />
+            )}
             {route.screen === 'projects' && <Projects />}
             {route.screen === 'discovery' && <Discovery />}
             {route.screen === 'brands' && <Brands />}

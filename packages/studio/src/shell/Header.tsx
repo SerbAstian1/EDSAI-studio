@@ -1,6 +1,8 @@
-import type { ReactElement } from 'react';
+import { useSyncExternalStore, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Bell, Moon, Search, Sun } from 'lucide-react';
 import { api } from '../api.js';
+import { currentTheme, setTheme, subscribeToTheme } from '../theme.js';
 
 /**
  * The studio's top bar.
@@ -29,6 +31,29 @@ function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+/**
+ * A two-state switch rather than a three-way menu. "System" still exists —
+ * it is what you get before you ever touch this — but a person who reaches
+ * for the toggle wants the other one of light and dark, not a submenu.
+ */
+function ThemeToggle(): ReactElement {
+  const theme = useSyncExternalStore(subscribeToTheme, currentTheme, currentTheme);
+  const next = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <button
+      type="button"
+      className="header-icon-button"
+      onClick={() => setTheme(next)}
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
+    >
+      {theme === 'dark'
+        ? <Sun size={16} strokeWidth={1.75} aria-hidden="true" />
+        : <Moon size={16} strokeWidth={1.75} aria-hidden="true" />}
+    </button>
+  );
+}
+
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactElement {
   const { data: session } = useQuery({ queryKey: ['session'], queryFn: api.session });
   const principal = session?.principal;
@@ -38,13 +63,15 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactE
   return (
     <div className="app-header">
       <button type="button" className="header-search" onClick={onOpenPalette}>
-        <span className="header-search-glyph" aria-hidden="true">⌕</span>
+        <Search className="header-search-glyph" size={15} strokeWidth={1.75} aria-hidden="true" />
         <span className="header-search-text">Client, project, stage, or task</span>
         <span className="kbd" aria-hidden="true">⌘K</span>
       </button>
 
-      <a className="header-bell" href="#/activity" aria-label="Activity and notifications" title="Activity">
-        ◔
+      <ThemeToggle />
+
+      <a className="header-icon-button" href="#/activity" aria-label="Activity" title="Activity">
+        <Bell size={16} strokeWidth={1.75} aria-hidden="true" />
       </a>
 
       <div className="header-identity">
