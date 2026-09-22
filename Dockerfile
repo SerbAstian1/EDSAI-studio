@@ -34,8 +34,11 @@ COPY packages/measure/package.json packages/measure/
 COPY packages/prompts/package.json packages/prompts/
 COPY packages/rubric/package.json packages/rubric/
 COPY packages/studio/package.json packages/studio/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+# No BuildKit cache mount here on purpose: Railway refuses a cache id that is
+# not prefixed with its own service id, which would tie this file to one
+# deployment. The layer cache above still spares the install on a source-only
+# change; a manifest change re-downloads, which is a minute.
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY corpus corpus
@@ -64,8 +67,7 @@ COPY --from=build /app/packages/measure/package.json packages/measure/
 COPY --from=build /app/packages/prompts/package.json packages/prompts/
 COPY --from=build /app/packages/rubric/package.json packages/rubric/
 COPY --from=build /app/packages/studio/package.json packages/studio/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # The compiled output of every package, and the Studio's built assets.
 COPY --from=build /app/packages/api/dist packages/api/dist
@@ -100,8 +102,10 @@ RUN mkdir -p /data && chown -R node:node /data
 # `node` before the first write. The entrypoint does exactly that and then
 # drops privileges for good — see scripts/docker-entrypoint.sh.
 COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/edsai-entrypoint
+# No `VOLUME` instruction: the mount is the host's decision — a Railway
+# Volume, a Fly mount, a Compose volume — and Railway refuses an image that
+# declares one itself. `/data` exists and is owned by `node` either way.
 EXPOSE 4317
-VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4317)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
