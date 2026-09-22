@@ -1462,6 +1462,88 @@ button.choice.chosen {
 .hub-asset-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .hub-asset-name { font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* — tool workspace ———————————————————————————————————————————————— */
+
+/* A tool takes the screen. Nothing behind it moves: the bar is fixed, the
+   stage fills what is left, the panel scrolls inside its own column with
+   the Save row pinned at its foot. Every control is on screen at once; the
+   picture zooms instead of the page scrolling. */
+.tool {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; grid-template-rows: auto minmax(0, 1fr);
+  background: var(--background);
+}
+.tool-bar {
+  display: flex; align-items: center; gap: calc(var(--step) * 3);
+  min-height: 52px; padding: 0 calc(var(--step) * 4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+.tool-bar-name { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+.tool-stage-wrap { min-height: 0; display: grid; }
+.tool-stage-col { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.tool-stage {
+  position: relative; min-height: 0; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--surface);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+  outline: none;
+}
+.tool-stage:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.tool-stage.zoomed { cursor: grab; }
+.tool-stage.zoomed.dragging { cursor: grabbing; }
+.tool-art {
+  flex: none; transform-origin: center;
+  box-shadow: var(--shadow-3);
+  background: var(--surface-elevated);
+  transition: transform 120ms ease-out;
+}
+.tool-stage.dragging .tool-art { transition: none; }
+.tool-art-svg, .tool-art-svg svg { display: block; width: 100%; height: 100%; }
+.tool-zoom {
+  position: absolute; right: calc(var(--step) * 3); bottom: calc(var(--step) * 3);
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-2);
+}
+.tool-zoom button {
+  min-height: 30px; height: 30px; padding: 0 8px;
+  background: transparent; border-color: transparent; box-shadow: none;
+  color: var(--text-secondary);
+}
+.tool-zoom button:hover:not([disabled]) { background: var(--surface); color: var(--text-primary); }
+.tool-zoom-level { font-family: var(--font-mono); font-size: 12px; min-width: 52px; }
+.tool-actions {
+  padding: calc(var(--step) * 2) calc(var(--step) * 4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-elevated);
+  gap: calc(var(--step) * 2);
+}
+.tool-panel {
+  display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+.tool-panel-scroll { overflow: auto; padding: calc(var(--step) * 4); gap: calc(var(--step) * 3); }
+.tool-panel-footer {
+  padding: calc(var(--step) * 3) calc(var(--step) * 4);
+  border-top: 1px solid var(--border);
+}
+.tool-panel .field { gap: 4px; }
+.tool-panel .field input, .tool-panel .field textarea { min-height: 32px; padding: 4px 8px; font-size: 13px; }
+.tool-panel .dial { gap: 4px; }
+.tool-panel .dial .label { font-size: 10px; }
+.dial-grid { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--step) * 2) calc(var(--step) * 4); }
+.tool-panel .pattern-thumb { width: 44px; height: 44px; }
+.tool-panel .swatch-pick { width: 44px; }
+.tool-panel .swatch-pick i, .tool-panel .swatch-pick.none::before { width: 22px; height: 22px; }
+@media (max-width: 760px) {
+  .tool-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 45vh; }
+  .tool-panel { border-left: 0; border-top: 1px solid var(--border); }
+}
+
 /* — pattern studio ———————————————————————————————————————————————— */
 
 /* The canvas takes the room; the dials sit beside it in one column. Below

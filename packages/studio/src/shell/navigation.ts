@@ -13,7 +13,7 @@
  */
 
 import {
-  Activity, Compass, Files, FolderKanban, Globe, LayoutDashboard, LayoutTemplate, LifeBuoy,
+  Activity, Compass, Files, FolderKanban, Globe, Hexagon, LayoutDashboard, LayoutTemplate, LifeBuoy,
   Megaphone, Palette, Settings, SlidersHorizontal, Sparkles, Users, Workflow, type LucideIcon,
 } from 'lucide-react';
 
@@ -59,6 +59,10 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'brands', label: 'Brands', glyph: '✦', icon: Palette, group: 'Workspace',
     status: 'built', href: '#/brands',
+  },
+  {
+    id: 'brand-hub', label: 'Brand Hub', glyph: '⬡', icon: Hexagon, group: 'Workspace',
+    status: 'built', href: '#/brand-hub',
   },
   {
     id: 'portals', label: 'Portals', glyph: '◎', icon: Globe, group: 'Workspace',

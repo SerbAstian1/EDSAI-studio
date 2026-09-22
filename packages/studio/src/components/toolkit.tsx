@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Maximize2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Asset, BrandValue } from '../api.js';
 import { downloadFile } from './actions.js';
 
@@ -203,9 +204,160 @@ export function AssetPicker({ label, assets, value, onChange, allowNone, src }: 
   );
 }
 
-/** The live preview: the SVG string, straight into the page. */
-export function Preview({ svg, label, aspect }: { svg: string; label: string; aspect: string }): ReactElement {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ref.current) ref.current.innerHTML = svg; }, [svg]);
-  return <div ref={ref} className="pattern-canvas" style={{ aspectRatio: aspect }} aria-label={label} role="img" />;
+/* -------------------------------------------------------------- workspace */
+
+/**
+ * A tool takes the whole screen while it is open: a bar across the top, the
+ * stage on the left, the dials on the right, and nothing underneath to
+ * scroll to. The stage zooms and pans; the panel scrolls inside itself; the
+ * page behind does not move. Escape closes.
+ */
+export function Workspace({ title, name, onClose, stage, panel, footer }: {
+  title: string; name: string; onClose: () => void;
+  stage: ReactNode; panel: ReactNode; footer: ReactNode;
+}): ReactElement {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) onClose();
+    };
+    addEventListener('keydown', onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { removeEventListener('keydown', onKey); document.body.style.overflow = previous; };
+  }, [onClose]);
+
+  return (
+    <div className="tool" role="dialog" aria-label={title}>
+      <div className="tool-bar">
+        <span className="label">{title}</span>
+        <strong className="tool-bar-name">{name || 'Untitled'}</strong>
+        <button type="button" className="overflow-button bar" style={{ marginLeft: 'auto' }} aria-label="Close" title="Close (Esc)" onClick={onClose}>
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="tool-body">
+        <div className="tool-stage-wrap">{stage}</div>
+        <aside className="tool-panel">
+          <div className="tool-panel-scroll stack">{panel}</div>
+          <div className="tool-panel-footer">{footer}</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+const ZOOMS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+
+/**
+ * The live preview, zoomable: fits the stage at 100%, zooms with the
+ * buttons, ⌘/Ctrl + wheel or a pinch, and +/−/0 on the keyboard; drags to
+ * pan once zoomed in. The SVG string goes straight into the page, and it
+ * is the same string that exports.
+ */
+export function Stage({ svg, label, width, height, actions }: {
+  svg: string; label: string; width: number; height: number; actions?: ReactNode;
+}): ReactElement {
+  const wrap = useRef<HTMLDivElement>(null);
+  const art = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({ w: 400, h: 400 });
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | undefined>(undefined);
+
+  useEffect(() => { if (art.current) art.current.innerHTML = svg; }, [svg]);
+
+  // Fit is the size at which the whole design shows with a margin; 100% means that.
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const measure = (): void => {
+      const pad = 32;
+      const W = el.clientWidth - pad * 2;
+      const H = el.clientHeight - pad * 2;
+      const s = Math.min(W / width, H / height);
+      setFit({ w: Math.max(80, width * s), h: Math.max(80, height * s) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width, height]);
+
+  const clamp = (z: number): number => Math.min(4, Math.max(0.25, z));
+  const step = (dir: 1 | -1): void => setZoom((z) => {
+    const next = dir > 0 ? ZOOMS.find((v) => v > z + 0.001) : [...ZOOMS].reverse().find((v) => v < z - 0.001);
+    const value = clamp(next ?? z);
+    if (value <= 1) setPan({ x: 0, y: 0 });
+    return value;
+  });
+  const reset = (): void => { setZoom(1); setPan({ x: 0, y: 0 }); };
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent): void => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setZoom((z) => {
+          const value = clamp(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+          if (value <= 1) setPan({ x: 0, y: 0 });
+          return value;
+        });
+      } else if (zoom > 1) {
+        e.preventDefault();
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [zoom]);
+
+  const onKey = (e: React.KeyboardEvent): void => {
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); step(1); }
+    else if (e.key === '-') { e.preventDefault(); step(-1); }
+    else if (e.key === '0') { e.preventDefault(); reset(); }
+  };
+
+  return (
+    <div className="tool-stage-col">
+      <div
+        ref={wrap}
+        className={`tool-stage${zoom > 1 ? ' zoomed' : ''}${drag.current ? ' dragging' : ''}`}
+        tabIndex={0}
+        aria-label={`${label}. Zoom ${Math.round(zoom * 100)}%. Press + or - to zoom, 0 to fit.`}
+        onKeyDown={onKey}
+        onPointerDown={(e) => {
+          if (zoom <= 1) return;
+          drag.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
+        }}
+        onPointerUp={() => { drag.current = undefined; }}
+        onPointerCancel={() => { drag.current = undefined; }}
+      >
+        <div
+          className="tool-art"
+          style={{ width: fit.w, height: fit.h, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+        >
+          <div ref={art} className="tool-art-svg" role="img" aria-label={label} />
+        </div>
+        <div className="tool-zoom" role="group" aria-label="Zoom">
+          <button type="button" onClick={() => step(-1)} aria-label="Zoom out" title="Zoom out (−)"><ZoomOut size={14} aria-hidden="true" /></button>
+          <button type="button" className="tool-zoom-level" onClick={reset} title="Fit (0)">{Math.round(zoom * 100)}%</button>
+          <button type="button" onClick={() => step(1)} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={14} aria-hidden="true" /></button>
+          <button type="button" onClick={reset} aria-label="Fit to screen" title="Fit (0)"><Maximize2 size={14} aria-hidden="true" /></button>
+        </div>
+      </div>
+      {actions && <div className="row tool-actions">{actions}</div>}
+    </div>
+  );
+}
+
+/** Two dials side by side: the panel is short when the dials are. */
+export function DialGrid({ children }: { children: ReactNode }): ReactElement {
+  return <div className="dial-grid">{children}</div>;
 }

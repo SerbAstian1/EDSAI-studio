@@ -54,6 +54,7 @@ const LOADERS = {
   projects: () => import('./screens/Projects.js'),
   discovery: () => import('./screens/Discovery.js'),
   brands: () => import('./screens/Brands.js'),
+  brandHubs: () => import('./screens/BrandHubs.js'),
   portals: () => import('./screens/Portals.js'),
   assets: () => import('./screens/FileLibrary.js'),
   templates: () => import('./screens/Templates.js'),
@@ -79,6 +80,7 @@ const ClientDetail = lazy(LOADERS.client);
 const Projects = lazy(LOADERS.projects);
 const Discovery = lazy(LOADERS.discovery);
 const Brands = lazy(LOADERS.brands);
+const BrandHubs = lazy(LOADERS.brandHubs);
 const Portals = lazy(LOADERS.portals);
 const FileLibrary = lazy(LOADERS.assets);
 const Templates = lazy(LOADERS.templates);
@@ -91,7 +93,7 @@ const Planned = lazy(LOADERS.planned);
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'direction' | 'scorecard' | 'review' | 'finalize'
-  | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
+  | 'runs' | 'brands' | 'brandHubs' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'campaigns'
   | 'processBuilder' | 'clientPortal';
 
@@ -120,6 +122,7 @@ const SECTION_SCREENS: Record<string, Screen> = {
   projects: 'projects',
   discovery: 'discovery',
   brands: 'brands',
+  'brand-hub': 'brandHubs',
   portals: 'portals',
   assets: 'assets',
   activity: 'activity',
@@ -157,6 +160,7 @@ export function activeSection(route: Route): string {
   if (route.screen === 'workspace') return 'overview';
   if (route.screen === 'client') return 'clients';
   if (route.screen === 'processBuilder') return 'process-builder';
+  if (route.screen === 'brandHubs') return 'brand-hub';
   if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
     || route.screen === 'direction' || route.screen === 'review' || route.screen === 'finalize'
     || route.screen === 'runs') return 'runs';
@@ -268,6 +272,7 @@ const TITLES: Record<Screen, string> = {
   review: 'Review',
   finalize: 'Finalise',
   brands: 'Brands',
+  brandHubs: 'Brand Hub',
   portals: 'Portals',
   assets: 'Files',
   activity: 'Activity',
@@ -331,6 +336,7 @@ function Shell(): ReactElement {
             {route.screen === 'projects' && <Projects />}
             {route.screen === 'discovery' && <Discovery />}
             {route.screen === 'brands' && <Brands />}
+            {route.screen === 'brandHubs' && <BrandHubs />}
             {route.screen === 'portals' && <Portals />}
             {route.screen === 'assets' && <FileLibrary />}
             {route.screen === 'templates' && <Templates />}

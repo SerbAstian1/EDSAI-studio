@@ -3,8 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, Save } from 'lucide-react';
 import { api, type Asset, type BrandProject, type BrandValue } from '../api.js';
 import {
-  AssetPicker, Dial, Preview, Segmented, Swatches, brandColours, brandFonts, escapeXml, exportPng,
-  isImageAsset, safeBasename, wrap,
+  AssetPicker, Dial, Segmented, Stage, Swatches, Workspace, brandColours, brandFonts, escapeXml,
+  exportPng, isImageAsset, safeBasename, wrap,
 } from './toolkit.js';
 
 /**
@@ -172,19 +172,19 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
     finally { setExporting(false); }
   };
 
-  return (
-    <div className="pattern-studio">
-      <div className="pattern-preview">
-        <Preview svg={svg} label={`${size.label} preview`} aspect={`${size.w} / ${size.h}`} />
-        <div className="row pattern-actions">
-          <span className="muted" style={{ fontSize: 13 }}>{size.w} × {size.h} px · type and colours are the brand's</span>
-          <button type="button" style={{ marginLeft: 'auto' }} disabled={exporting} onClick={() => void doExport()}>
-            <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'PNG'}
-          </button>
-        </div>
-      </div>
+  const stage = (
+    <Stage svg={svg} label={`${size.label} preview`} width={size.w} height={size.h} actions={(
+      <>
+        <span className="muted" style={{ fontSize: 13 }}>{size.w} × {size.h} px · type and colours are the brand's</span>
+        <button type="button" style={{ marginLeft: 'auto' }} disabled={exporting} onClick={() => void doExport()}>
+          <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'PNG'}
+        </button>
+      </>
+    )} />
+  );
 
-      <aside className="pattern-controls stack">
+  const panel = (
+    <>
         <label className="field">
           <span className="label">Design name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Launch post" />
@@ -242,8 +242,11 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
         )}
 
         {error && <p className="err">{error}</p>}
+    </>
+  );
 
-        <div className="row" style={{ marginTop: 'auto' }}>
+  const footer = (
+        <div className="row">
           <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate(false)}>
             <Save size={14} aria-hidden="true" /> {save.isPending ? 'Saving…' : project ? 'Save' : 'Save design'}
           </button>
@@ -251,9 +254,8 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
             <button type="button" onClick={() => setSaveAs(true)}><Copy size={14} aria-hidden="true" /> Duplicate</button>
           )}
           {saveAs && <button type="button" disabled={save.isPending} onClick={() => save.mutate(true)}>Save as a copy</button>}
-          <button type="button" className="link" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
         </div>
-      </aside>
-    </div>
   );
+
+  return <Workspace title={format === 'poster' ? 'Poster Maker' : 'Social Post Maker'} name={name} onClose={onClose} stage={stage} panel={panel} footer={footer} />;
 }

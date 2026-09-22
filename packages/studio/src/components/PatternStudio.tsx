@@ -3,8 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, RotateCcw, Save, Shuffle } from 'lucide-react';
 import { api, type Asset, type BrandProject, type BrandValue, type PatternConfiguration } from '../api.js';
 import {
-  AssetPicker, Dial, Preview, Swatches, brandColours, exportPng, exportSvg, isImageAsset,
-  safeBasename, tintedImage,
+  AssetPicker, Dial, DialGrid, Stage, Swatches, Workspace, brandColours, exportPng, exportSvg,
+  isImageAsset, safeBasename, tintedImage,
 } from './toolkit.js';
 
 /**
@@ -140,25 +140,25 @@ export default function PatternStudio({ clientId, assets, values, project, onSav
     );
   }
 
-  return (
-    <div className="pattern-studio">
-      <div className="pattern-preview">
-        <Preview svg={svg} label="Pattern preview" aspect="1 / 1" />
-        <div className="row pattern-actions">
-          <button type="button" onClick={randomise}><Shuffle size={14} aria-hidden="true" /> Randomise</button>
-          <button type="button" onClick={() => setConfig(initial())}><RotateCcw size={14} aria-hidden="true" /> Reset</button>
-          <span style={{ marginLeft: 'auto' }} className="row">
-            <button type="button" disabled={Boolean(exporting)} onClick={() => void doExport('png')}>
-              <Download size={14} aria-hidden="true" /> {exporting === 'png' ? 'Exporting…' : 'PNG'}
-            </button>
-            <button type="button" disabled={Boolean(exporting)} onClick={() => void doExport('svg')}>
-              <Download size={14} aria-hidden="true" /> {exporting === 'svg' ? 'Exporting…' : 'SVG'}
-            </button>
-          </span>
-        </div>
-      </div>
+  const stage = (
+    <Stage svg={svg} label="Pattern preview" width={CANVAS} height={CANVAS} actions={(
+      <>
+        <button type="button" onClick={randomise}><Shuffle size={14} aria-hidden="true" /> Randomise</button>
+        <button type="button" onClick={() => setConfig(initial())}><RotateCcw size={14} aria-hidden="true" /> Reset</button>
+        <span style={{ marginLeft: 'auto' }} className="row">
+          <button type="button" disabled={Boolean(exporting)} onClick={() => void doExport('png')}>
+            <Download size={14} aria-hidden="true" /> {exporting === 'png' ? 'Exporting…' : 'PNG'}
+          </button>
+          <button type="button" disabled={Boolean(exporting)} onClick={() => void doExport('svg')}>
+            <Download size={14} aria-hidden="true" /> {exporting === 'svg' ? 'Exporting…' : 'SVG'}
+          </button>
+        </span>
+      </>
+    )} />
+  );
 
-      <aside className="pattern-controls stack">
+  const panel = (
+    <>
         <label className="field">
           <span className="label">Design name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer wrap" />
@@ -167,12 +167,14 @@ export default function PatternStudio({ clientId, assets, values, project, onSav
         <AssetPicker label="Pattern" assets={patterns} value={config.assetId}
                      onChange={(id) => set({ assetId: id })} src={api.downloadPath} />
 
-        <Dial label="Scale" value={config.scale} min={16} max={600} step={2} unit="px" onChange={(v) => set({ scale: v })} />
-        <Dial label="Spacing" value={config.spacing} min={0} max={400} step={2} unit="px" onChange={(v) => set({ spacing: v })} />
-        <Dial label="Rotation" value={config.rotation} min={-180} max={180} step={1} unit="°" onChange={(v) => set({ rotation: v })} />
-        <Dial label="Opacity" value={config.opacity} min={0} max={1} step={0.01} onChange={(v) => set({ opacity: v })} />
-        <Dial label="Shift across" value={config.offsetX} min={0} max={1} step={0.05} onChange={(v) => set({ offsetX: v })} />
-        <Dial label="Shift down" value={config.offsetY} min={0} max={1} step={0.05} onChange={(v) => set({ offsetY: v })} />
+        <DialGrid>
+          <Dial label="Scale" value={config.scale} min={16} max={600} step={2} unit="px" onChange={(v) => set({ scale: v })} />
+          <Dial label="Spacing" value={config.spacing} min={0} max={400} step={2} unit="px" onChange={(v) => set({ spacing: v })} />
+          <Dial label="Rotation" value={config.rotation} min={-180} max={180} step={1} unit="°" onChange={(v) => set({ rotation: v })} />
+          <Dial label="Opacity" value={config.opacity} min={0} max={1} step={0.01} onChange={(v) => set({ opacity: v })} />
+          <Dial label="Shift across" value={config.offsetX} min={0} max={1} step={0.05} onChange={(v) => set({ offsetX: v })} />
+          <Dial label="Shift down" value={config.offsetY} min={0} max={1} step={0.05} onChange={(v) => set({ offsetY: v })} />
+        </DialGrid>
         {colours.length > 0 ? (
           <>
             <Swatches label="Colour" colours={colours} value={config.tint} onChange={(hex) => set({ tint: hex })} allowNone />
@@ -185,8 +187,11 @@ export default function PatternStudio({ clientId, assets, values, project, onSav
         )}
 
         {error && <p className="err">{error}</p>}
+    </>
+  );
 
-        <div className="row" style={{ marginTop: 'auto' }}>
+  const footer = (
+        <div className="row">
           <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate(false)}>
             <Save size={14} aria-hidden="true" /> {save.isPending ? 'Saving…' : project ? 'Save' : 'Save design'}
           </button>
@@ -198,9 +203,8 @@ export default function PatternStudio({ clientId, assets, values, project, onSav
           {saveAs && (
             <button type="button" disabled={save.isPending} onClick={() => save.mutate(true)}>Save as a copy</button>
           )}
-          <button type="button" className="link" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
         </div>
-      </aside>
-    </div>
   );
+
+  return <Workspace title="Pattern Studio" name={name} onClose={onClose} stage={stage} panel={panel} footer={footer} />;
 }

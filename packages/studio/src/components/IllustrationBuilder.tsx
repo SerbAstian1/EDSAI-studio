@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Copy, Download, FlipHorizontal2, Plus, Save, Shuffle, Trash2 } from 'lucide-react';
 import { api, type Asset, type BrandProject, type BrandValue } from '../api.js';
 import {
-  Dial, Preview, Swatches, brandColours, exportPng, exportSvg, isImageAsset, safeBasename, tintedImage,
+  Dial, DialGrid, Stage, Swatches, Workspace, brandColours, exportPng, exportSvg, isImageAsset,
+  safeBasename, tintedImage,
 } from './toolkit.js';
 
 /**
@@ -168,23 +169,30 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
 
   const nameOf = (id: string): string => parts.find((p) => p.id === id)?.filename.replace(/\.[^.]+$/, '') ?? id;
 
-  return (
-    <div className="pattern-studio">
-      <div className="pattern-preview">
-        <Preview svg={svg} label="Scene preview" aspect="1 / 1" />
-        <div className="row pattern-actions">
-          <button type="button" onClick={shuffle} disabled={config.layers.length === 0}><Shuffle size={14} aria-hidden="true" /> Shuffle</button>
-          <span style={{ marginLeft: 'auto' }} className="row">
-            <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('png')}>
-              <Download size={14} aria-hidden="true" /> {exporting === 'png' ? 'Exporting…' : 'PNG'}
-            </button>
-            <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('svg')}>
-              <Download size={14} aria-hidden="true" /> {exporting === 'svg' ? 'Exporting…' : 'SVG'}
-            </button>
-          </span>
-        </div>
+  const stage = (
+    <Stage svg={svg} label="Scene preview" width={CANVAS} height={CANVAS} actions={(
+      <>
+        <button type="button" onClick={shuffle} disabled={config.layers.length === 0}><Shuffle size={14} aria-hidden="true" /> Shuffle</button>
+        <span style={{ marginLeft: 'auto' }} className="row">
+          <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('png')}>
+            <Download size={14} aria-hidden="true" /> {exporting === 'png' ? 'Exporting…' : 'PNG'}
+          </button>
+          <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('svg')}>
+            <Download size={14} aria-hidden="true" /> {exporting === 'svg' ? 'Exporting…' : 'SVG'}
+          </button>
+        </span>
+      </>
+    )} />
+  );
 
-        {/* The scene's parts, back to front. Selecting one brings its dials up on the right. */}
+  const panel = (
+    <>
+        <label className="field">
+          <span className="label">Design name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Morning scene" />
+        </label>
+
+        {/* The scene's parts, back to front. Selecting one brings its dials up. */}
         {config.layers.length > 0 && (
           <ol className="layer-list" aria-label="Parts in the scene">
             {config.layers.map((l, i) => (
@@ -202,13 +210,6 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
             ))}
           </ol>
         )}
-      </div>
-
-      <aside className="pattern-controls stack">
-        <label className="field">
-          <span className="label">Design name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Morning scene" />
-        </label>
 
         {groups.map(([group, items]) => (
           <div key={group} className="dial">
@@ -228,10 +229,12 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
         {current && selected !== undefined ? (
           <div className="stack" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <span className="label">{nameOf(current.assetId)}</span>
-            <Dial label="Size" value={current.scale} min={0.1} max={4} step={0.05} onChange={(v) => setLayer(selected, { scale: v })} />
-            <Dial label="Across" value={current.x} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { x: v })} />
-            <Dial label="Down" value={current.y} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { y: v })} />
-            <Dial label="Turn" value={current.rotation} min={-180} max={180} step={1} unit="°" onChange={(v) => setLayer(selected, { rotation: v })} />
+            <DialGrid>
+              <Dial label="Size" value={current.scale} min={0.1} max={4} step={0.05} onChange={(v) => setLayer(selected, { scale: v })} />
+              <Dial label="Turn" value={current.rotation} min={-180} max={180} step={1} unit="°" onChange={(v) => setLayer(selected, { rotation: v })} />
+              <Dial label="Across" value={current.x} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { x: v })} />
+              <Dial label="Down" value={current.y} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { y: v })} />
+            </DialGrid>
             <button type="button" onClick={() => setLayer(selected, { flip: !current.flip })} aria-pressed={current.flip}>
               <FlipHorizontal2 size={14} aria-hidden="true" /> {current.flip ? 'Facing left' : 'Facing right'}
             </button>
@@ -248,8 +251,11 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
         )}
 
         {error && <p className="err">{error}</p>}
+    </>
+  );
 
-        <div className="row" style={{ marginTop: 'auto' }}>
+  const footer = (
+        <div className="row">
           <button type="button" className="primary" disabled={save.isPending || config.layers.length === 0} onClick={() => save.mutate(false)}>
             <Save size={14} aria-hidden="true" /> {save.isPending ? 'Saving…' : project ? 'Save' : 'Save scene'}
           </button>
@@ -257,9 +263,8 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
             <button type="button" onClick={() => setSaveAs(true)}><Copy size={14} aria-hidden="true" /> Duplicate</button>
           )}
           {saveAs && <button type="button" disabled={save.isPending} onClick={() => save.mutate(true)}>Save as a copy</button>}
-          <button type="button" className="link" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
         </div>
-      </aside>
-    </div>
   );
+
+  return <Workspace title="Illustration Builder" name={name} onClose={onClose} stage={stage} panel={panel} footer={footer} />;
 }

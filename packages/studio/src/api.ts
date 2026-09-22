@@ -286,6 +286,19 @@ export interface BrandHubView {
   brandValues?: number;
 }
 
+export interface BrandHubSummary {
+  clientId: string;
+  clientName: string;
+  status: BrandHubStatus;
+  enabled: boolean;
+  tools: string[];
+  approvedAssets: number;
+  brandValues: number;
+  designs: number;
+  recent: { id: string; name: string; toolId: string; updatedAt: string }[];
+  updatedAt: string;
+}
+
 export interface BrandProject {
   id: string;
   clientId: string;
@@ -672,6 +685,8 @@ export const api = {
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
 
+  /** Every hub in the studio, with what is in it. */
+  brandHubs: () => call<{ hubs: BrandHubSummary[] }>('/api/brand-hubs').then((r) => r.hubs),
   brandHub: (clientId: string) => call<BrandHubView>(`/api/clients/${clientId}/brand-hub`),
   setBrandHub: (clientId: string, input: { status?: BrandHubStatus; tools?: string[] }) =>
     call<{ hub: BrandHubView['hub']; enabled: boolean }>(`/api/clients/${clientId}/brand-hub`, {

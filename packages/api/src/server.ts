@@ -1868,6 +1868,37 @@ export class ApiServer {
       /* ----------------------------------------------------------- brand hub */
 
       /**
+       * Every hub in the studio, with what is in it — the studio-wide view
+       * that the Brand Hub section lists. Studio only: a portal has one hub
+       * and reads it by its own client.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/brand-hubs$/,
+        run: ({ res, principal }) => {
+          if (principal?.kind !== 'studio') {
+            send(res, 200, { hubs: [] });
+            return;
+          }
+          const clients = new Map(this.store.listClients().map((c) => [c.id, c]));
+          const hubs = this.store.listBrandHubs().map((hub) => {
+            const designs = this.store.listBrandProjects(hub.clientId);
+            return {
+              ...hub,
+              enabled: hubEnabled(hub),
+              clientName: clients.get(hub.clientId)?.name ?? hub.clientId,
+              approvedAssets: this.store.listAssets(hub.clientId).filter((a) => a.approved).length,
+              brandValues: this.store.listBrandValues(hub.clientId).length,
+              designs: designs.length,
+              recent: designs.slice(0, 3).map((d) => ({
+                id: d.id, name: d.name, toolId: d.toolId, updatedAt: d.updatedAt,
+              })),
+            };
+          });
+          send(res, 200, { hubs });
+        },
+      },
+
+      /**
        * The hub as whoever is asking may see it. A studio session gets the
        * record whatever its status, plus every tool with whether it is built;
        * a portal session gets `enabled: false` and nothing else unless the
