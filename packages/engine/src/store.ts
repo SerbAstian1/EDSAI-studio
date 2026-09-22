@@ -178,6 +178,9 @@ CREATE TABLE IF NOT EXISTS comparators (
   name TEXT NOT NULL,
   note TEXT,
   positions TEXT NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'studio',
+  run_id TEXT,
+  department_id INTEGER,
   created_at TEXT NOT NULL
 );
 
@@ -470,6 +473,11 @@ export class RunStore {
     }
     if (!columns('deliverables').includes('figma_url')) {
       this.db.exec('ALTER TABLE deliverables ADD COLUMN figma_url TEXT');
+    }
+    if (!columns('comparators').includes('origin')) {
+      this.db.exec("ALTER TABLE comparators ADD COLUMN origin TEXT NOT NULL DEFAULT 'studio'");
+      this.db.exec('ALTER TABLE comparators ADD COLUMN run_id TEXT');
+      this.db.exec('ALTER TABLE comparators ADD COLUMN department_id INTEGER');
     }
     this.attachOrphanedRuns();
   }
@@ -1036,13 +1044,16 @@ export class RunStore {
   saveComparator(comparator: ComparatorType): void {
     Comparator.parse(comparator);
     this.db.prepare(`
-      INSERT INTO comparators (id, client_id, name, note, positions, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO comparators (id, client_id, name, note, positions, origin, run_id, department_id,
+                               created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name, note = excluded.note, positions = excluded.positions
+        name = excluded.name, note = excluded.note, positions = excluded.positions,
+        origin = excluded.origin, run_id = excluded.run_id, department_id = excluded.department_id
     `).run(
       comparator.id, comparator.clientId, comparator.name, comparator.note ?? null,
-      JSON.stringify(comparator.positions), comparator.createdAt,
+      JSON.stringify(comparator.positions), comparator.origin, comparator.runId ?? null,
+      comparator.departmentId ?? null, comparator.createdAt,
     );
   }
 
@@ -1579,6 +1590,10 @@ function hydrateComparator(row: Record<string, unknown>): ComparatorType {
     name: row['name'],
     ...(row['note'] ? { note: row['note'] } : {}),
     positions: JSON.parse(String(row['positions'])) as Record<string, number>,
+    origin: row['origin'] ?? 'studio',
+    ...(row['run_id'] ? { runId: row['run_id'] } : {}),
+    ...(row['department_id'] !== null && row['department_id'] !== undefined
+      ? { departmentId: row['department_id'] } : {}),
     createdAt: row['created_at'],
   });
 }

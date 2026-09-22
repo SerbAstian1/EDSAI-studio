@@ -1,4 +1,6 @@
-import { runInstrument, type RunContext, type InstrumentCall } from '@edsai/engine';
+import {
+  runInstrument, comparatorFromProposal, type RunContext, type InstrumentCall,
+} from '@edsai/engine';
 import {
   Executor, TurnRefused, addUsage, costOf, diagnose, NO_USAGE, type Usage,
 } from '@edsai/executor';
@@ -84,6 +86,19 @@ export async function runPipeline(options: {
       usage = addUsage(usage, result.usage);
       const accepted = context.accept(runId, turn.department.id, result.submission, calls);
       completed.push(turn.department.id);
+
+      // Brands the department placed on the positioning chart. Saved as
+      // proposals under the run and department that made them, so the chart
+      // draws them apart from the client's computed point and the studio's
+      // own placements, and a department run again replaces its own.
+      const run = context.store.getRun(runId);
+      for (const proposal of result.submission.comparators ?? []) {
+        const comparator = run && comparatorFromProposal({
+          clientId: run.clientId, runId, departmentId: turn.department.id,
+          proposal, now: new Date().toISOString(),
+        });
+        if (comparator) context.store.saveComparator(comparator);
+      }
 
       events.emit(runId, 'department.accepted', {
         departmentId: turn.department.id,

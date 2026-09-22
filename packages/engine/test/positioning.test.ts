@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AXES, axis, positionOf, positionsOf, matrixFor, type Comparator,
+  AXES, axis, positionOf, positionsOf, matrixFor, comparatorFromProposal, type Comparator,
 } from '../src/positioning.js';
 import type { Answer } from '../src/onboarding.js';
 
@@ -88,9 +88,38 @@ describe('building one chart', () => {
     const matrix = matrixFor({
       xAxis: 'E4', yAxis: 'E6', brandName: 'Acme', answers, comparators: [],
     });
-    expect(matrix?.points).toEqual([
-      { id: 'brand', label: 'Acme', x: 15, y: 70, source: 'computed' },
-    ]);
+    expect(matrix?.points).toHaveLength(1);
+    expect(matrix?.points[0]).toMatchObject({ id: 'brand', label: 'Acme', x: 15, y: 70, source: 'computed' });
+    // The dot shows its working: the sentence chosen on each axis.
+    expect(matrix?.points[0]?.evidence?.x).toContain('A long table');
+    expect(matrix?.points[0]?.evidence?.y).toBeTruthy();
+  });
+
+  it('draws a department’s proposal apart from the studio’s own placement', () => {
+    const proposal = comparatorFromProposal({
+      clientId: 'acme', runId: 'r1', departmentId: 1, now: '2026-09-22T00:00:00.000Z',
+      proposal: { name: 'Rival Co', note: 'The category default.',
+        positions: [{ axis: 'E4', value: 80 }, { axis: 'E6', value: 130 }, { axis: 'E9', value: 5 }] },
+    });
+    expect(proposal?.id).toBe('cmp-r1-1-rival-co');
+    expect(proposal?.origin).toBe('run');
+    // Clamped to the scale, unknown axes dropped.
+    expect(proposal?.positions).toEqual({ E4: 80, E6: 100 });
+    const matrix = matrixFor({
+      xAxis: 'E4', yAxis: 'E6', brandName: 'Acme', answers, comparators: proposal ? [proposal] : [],
+    });
+    expect(matrix?.points[1]).toMatchObject({ label: 'Rival Co', source: 'proposed', runId: 'r1', departmentId: 1 });
+  });
+
+  it('drops a proposal that could never appear on a chart', () => {
+    expect(comparatorFromProposal({
+      clientId: 'acme', runId: 'r1', departmentId: 1, now: '2026-09-22T00:00:00.000Z',
+      proposal: { name: 'One-axis', note: '', positions: [{ axis: 'E4', value: 10 }] },
+    })).toBeUndefined();
+    expect(comparatorFromProposal({
+      clientId: 'acme', runId: 'r1', departmentId: 1, now: '2026-09-22T00:00:00.000Z',
+      proposal: 'not an object',
+    })).toBeUndefined();
   });
 
   it('marks a studio-placed brand as placed, never as computed', () => {

@@ -6,6 +6,11 @@ import { assemble, estimatePrompt, type AssembledPrompt } from '@edsai/prompts';
 import { INSTRUMENT_TOOLS } from '@edsai/instruments';
 import { RunStore } from './store.js';
 import { verifyTargets, type InstrumentCall, type Violation } from './verify.js';
+import { AXES, positionsOf } from './positioning.js';
+import { decisionFor } from './onboarding.js';
+
+/** Brand Strategy Intelligence: the one department asked to place brands on the chart. */
+const POSITIONING_DEPARTMENT = 1;
 import {
   DepartmentOutput, Run, Score, Target,
   type Composition, type Decision, type DepartmentOutput as OutputType,
@@ -65,6 +70,13 @@ export interface Submission {
   targets?: readonly TargetType[];
   compositions?: readonly Composition[];
   decisions?: readonly Decision[];
+  /**
+   * Brands the client will be compared with, placed on the positioning
+   * axes. Not part of the department's output record — they land on the
+   * client's chart as proposals, drawn apart from the client's own computed
+   * point and from anything the studio placed by hand.
+   */
+  comparators?: readonly unknown[];
 }
 
 export interface AcceptResult {
@@ -155,11 +167,15 @@ export class RunContext {
         body: o.body,
       }));
 
+    const positioning = department.id === POSITIONING_DEPARTMENT
+      ? this.positioningFor(run.clientId) : undefined;
+
     const prompt = assemble(this.rubric, department, {
       brief: run.brief,
       level: run.level,
       ...(this.scope.id !== 'full' ? { scopeNote: this.scope.description } : {}),
       upstream,
+      ...(positioning ? { positioning } : {}),
     });
 
     return {
@@ -255,6 +271,37 @@ export class RunContext {
     }
 
     return { output, violations: verification.violations, rejected };
+  }
+
+  /**
+   * The chart as a department is told it: the axes, the client's own
+   * computed point with the sentence behind each coordinate, and who they
+   * refuse to be mistaken for. Read from their latest discovery, preferring
+   * a submitted one; nothing here is guessed.
+   */
+  private positioningFor(clientId: string): {
+    axes: { id: string; label: string; low: string; high: string }[];
+    own: { axis: string; value: number; evidence: string }[];
+    antiReference?: string;
+  } {
+    const onboardings = [...this.store.listOnboardings(clientId)].sort((a, b) => {
+      if (Boolean(a.submittedAt) !== Boolean(b.submittedAt)) return a.submittedAt ? -1 : 1;
+      return (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt);
+    });
+    const latest = onboardings[0];
+    const answers = latest ? this.store.getAnswers(latest.id) : [];
+    const positions = positionsOf(answers);
+    const own = AXES.flatMap((a) => {
+      const value = positions[a.id];
+      const evidence = decisionFor(answers, a.questionId);
+      return value !== undefined && evidence ? [{ axis: a.id, value, evidence }] : [];
+    });
+    const worst = answers.find((a) => a.questionId === 'd-worst')?.value;
+    return {
+      axes: AXES.map((a) => ({ id: a.id, label: a.label, low: a.low, high: a.high })),
+      own,
+      ...(typeof worst === 'string' && worst.trim() ? { antiReference: worst.trim() } : {}),
+    };
   }
 
   private requireRun(runId: string): RunType {

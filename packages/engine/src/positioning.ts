@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { RATIO_STRENGTHS, question, answerIsValid, type Answer } from './onboarding.js';
+import {
+  RATIO_STRENGTHS, question, answerIsValid, decisionFor, type Answer,
+} from './onboarding.js';
 
 /**
  * Where a brand sits, and who says so.
@@ -155,9 +157,66 @@ export const Comparator = z.object({
   /** Why it is on the chart. Optional, and worth having. */
   note: z.string().max(400).optional(),
   positions: z.record(z.string(), z.number().min(AXIS_MIN).max(AXIS_MAX)),
+  /**
+   * Who placed it. The studio, by clicking a chart; or a run's department,
+   * proposing where the brands the client will be compared with sit. Both
+   * are judgements, and a chart that drew them alike would hide which
+   * judgement is whose.
+   */
+  origin: z.enum(['studio', 'run']).default('studio'),
+  runId: z.string().optional(),
+  departmentId: z.number().int().optional(),
   createdAt: z.string(),
 });
 export type Comparator = z.infer<typeof Comparator>;
+
+/** What a department may put on the chart: a name, a reason, positions. */
+export const ProposedComparator = z.object({
+  name: z.string().min(1).max(80),
+  note: z.string().max(400),
+  // Any finite number: an out-of-range value is clamped below rather than
+  // costing the whole proposal, and an unknown axis is simply dropped.
+  positions: z.array(z.object({ axis: z.string(), value: z.number().finite() })),
+});
+export type ProposedComparator = z.infer<typeof ProposedComparator>;
+
+/**
+ * A department's proposal as a stored comparator.
+ *
+ * Only real axes survive, values are clamped to the scale, and a proposal
+ * with fewer than two axes is dropped — it could never appear on a chart.
+ * The id is derived from the run, department and name, so a department run
+ * again replaces its own earlier proposal rather than stacking a second
+ * dot on top of it.
+ */
+export function comparatorFromProposal(input: {
+  clientId: string;
+  runId: string;
+  departmentId: number;
+  proposal: unknown;
+  now: string;
+}): Comparator | undefined {
+  const parsed = ProposedComparator.safeParse(input.proposal);
+  if (!parsed.success) return undefined;
+  const positions: Record<string, number> = {};
+  for (const { axis: id, value } of parsed.data.positions) {
+    if (!axis(id)) continue;
+    positions[id] = Math.min(AXIS_MAX, Math.max(AXIS_MIN, Math.round(value)));
+  }
+  if (Object.keys(positions).length < 2) return undefined;
+  const slug = parsed.data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return {
+    id: `cmp-${input.runId}-${input.departmentId}-${slug}`,
+    clientId: input.clientId,
+    name: parsed.data.name.trim(),
+    ...(parsed.data.note.trim() ? { note: parsed.data.note.trim() } : {}),
+    positions,
+    origin: 'run',
+    runId: input.runId,
+    departmentId: input.departmentId,
+    createdAt: input.now,
+  };
+}
 
 /** A point on a two-axis chart, with where it came from attached. */
 export interface Plotted {
@@ -165,9 +224,17 @@ export interface Plotted {
   label: string;
   x: number;
   y: number;
-  /** `computed` from the client's own answers; `placed` by the studio. */
-  source: 'computed' | 'placed';
+  /**
+   * `computed` from the client's own answers; `placed` by the studio;
+   * `proposed` by a run's department.
+   */
+  source: 'computed' | 'placed' | 'proposed';
   note?: string;
+  /** For a computed point: the sentence the client chose on each axis. */
+  evidence?: { x: string; y: string };
+  /** For a proposed point: which run and department said so. */
+  runId?: string;
+  departmentId?: number;
 }
 
 export interface Matrix {
@@ -202,8 +269,12 @@ export function matrixFor(input: {
   const ownX = own[x.id];
   const ownY = own[y.id];
   if (ownX !== undefined && ownY !== undefined) {
+    // The two sentences that put them here, so the dot can show its working.
+    const ex = decisionFor(input.answers, x.questionId);
+    const ey = decisionFor(input.answers, y.questionId);
     points.push({
       id: 'brand', label: input.brandName, x: ownX, y: ownY, source: 'computed',
+      ...(ex && ey ? { evidence: { x: ex, y: ey } } : {}),
     });
   }
 
@@ -216,8 +287,10 @@ export function matrixFor(input: {
       label: comparator.name,
       x: cx,
       y: cy,
-      source: 'placed',
+      source: comparator.origin === 'run' ? 'proposed' : 'placed',
       ...(comparator.note ? { note: comparator.note } : {}),
+      ...(comparator.runId ? { runId: comparator.runId } : {}),
+      ...(comparator.departmentId !== undefined ? { departmentId: comparator.departmentId } : {}),
     });
   }
 

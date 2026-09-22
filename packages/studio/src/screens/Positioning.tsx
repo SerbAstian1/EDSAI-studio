@@ -52,7 +52,8 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
   if (error) return <p className="err">Could not load the chart. {(error as Error).message}</p>;
 
   const { matrix, axes, answersFrom } = data;
-  const placed = matrix.points.filter((p) => p.source === 'placed');
+  // Both kinds of judgement can be taken off the chart; the computed point cannot.
+  const placed = matrix.points.filter((p) => p.source !== 'computed');
 
   /** A click anywhere in the plot is a position on the two axes on screen. */
   const takeClick = (event: React.MouseEvent<HTMLDivElement>): void => {

@@ -27,7 +27,7 @@ export const SUBMIT_TOOL: Anthropic.Tool = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['body', 'scores', 'targets', 'compositions', 'decisions'],
+    required: ['body', 'scores', 'targets', 'compositions', 'decisions', 'comparators'],
     properties: {
       body: {
         type: 'string',
@@ -110,6 +110,36 @@ export const SUBMIT_TOOL: Anthropic.Tool = {
           },
         },
       },
+      comparators: {
+        type: 'array',
+        description:
+          'Brands the client will be compared with, placed on the positioning axes '
+          + '(E2 plain–story-led, E3 quiet–loud, E4 minimal–expressive, E5 of-its-time–timeless, '
+          + 'E6 corporate–artistic, E7 structured–organic; 0 is the first pole, 100 the second). '
+          + 'Empty for a department that does not position brands.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'note', 'positions'],
+          properties: {
+            name: { type: 'string', description: 'The brand, as the client would recognise it.' },
+            note: { type: 'string', description: 'One sentence: why it sits there.' },
+            positions: {
+              type: 'array',
+              description: 'At least two axes, or the brand appears on no chart.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['axis', 'value'],
+                properties: {
+                  axis: { type: 'string', enum: ['E2', 'E3', 'E4', 'E5', 'E6', 'E7'] },
+                  value: { type: 'integer', minimum: 0, maximum: 100 },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
 };
@@ -130,6 +160,7 @@ export function submissionFrom(input: unknown): Submission {
     targets?: unknown[];
     compositions?: unknown[];
     decisions?: unknown[];
+    comparators?: unknown[];
   };
 
   const filled = (list: unknown): boolean => Array.isArray(list) && list.length > 0;
@@ -143,5 +174,6 @@ export function submissionFrom(input: unknown): Submission {
     submission.compositions = raw.compositions as NonNullable<Submission['compositions']>;
   }
   if (filled(raw?.decisions)) submission.decisions = raw.decisions as NonNullable<Submission['decisions']>;
+  if (filled(raw?.comparators)) submission.comparators = raw.comparators as unknown[];
   return submission;
 }

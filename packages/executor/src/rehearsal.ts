@@ -148,7 +148,21 @@ export class RehearsalClient implements ModelClient {
       + 'and submits — usually a minute or two, and a cost shown on this row.',
     ].join('\n');
 
-    return { body, scores, targets, compositions: [], decisions: [] };
+    // Department 1 places brands on the chart. The rehearsal proposes the one
+    // the client named as "not us", at a placeholder position, so the chart
+    // shows what a proposed point looks like — and says it is a placeholder.
+    const anti = brief.match(/\*\*Would hate to be mistaken for\.\*\*\s*(.+)/)?.[1]?.trim();
+    const comparators = departmentId === 1 && anti
+      ? [{
+        // "Heineken — too corporate" → "Heineken": the name is what comes before
+        // the first dash, comma or full stop.
+        name: anti.split(/\s[—–-]\s|[,.;]|\s�\s/)[0]?.trim().slice(0, 80) || anti.slice(0, 80),
+        note: 'Rehearsal placeholder — a real turn states why it sits here.',
+        positions: [{ axis: 'E4', value: 75 }, { axis: 'E6', value: 25 }, { axis: 'E3', value: 70 }],
+      }]
+      : [];
+
+    return { body, scores, targets, compositions: [], decisions: [], comparators };
   }
 }
 

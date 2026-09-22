@@ -384,6 +384,35 @@ export interface DiscoveryBrief {
   markdown: string;
 }
 
+/**
+ * The sentence a client chose, for one question.
+ *
+ * Answers are stored as option ids, 1–5 integers and side/strength pairs;
+ * this turns one back into the words that were on the screen — the only
+ * form in which it is evidence a reader can check against the chart.
+ */
+export function decisionFor(answers: readonly Answer[], questionId: string): string | undefined {
+  const q = question(questionId);
+  const answer = answers.find((a) => a.questionId === questionId);
+  if (!q || !answer || !answerIsValid(questionId, answer.value)) return undefined;
+  const value = answer.value;
+  if (q.kind === 'binary') return q.options?.find((o) => o.id === value)?.label;
+  if (q.kind === 'scale' && q.anchors) {
+    const n = value as number;
+    return n === 1 ? q.anchors.low
+      : n === 2 ? `Closer to ${q.anchors.low}`
+        : n === 3 ? `Halfway between ${q.anchors.low} and ${q.anchors.high}`
+          : n === 4 ? `Closer to ${q.anchors.high}`
+            : q.anchors.high;
+  }
+  if (q.kind === 'ratio' && q.sides) {
+    const v = value as { side: 'a' | 'b'; strength: string };
+    const strength = RATIO_STRENGTHS.find((s) => s.id === v.strength);
+    return `${q.sides[v.side]} (${strength?.label.toLowerCase() ?? v.strength}, ${strength?.ratio ?? ''})`.trim();
+  }
+  return undefined;
+}
+
 export function discoveryBrief(answers: readonly Answer[]): DiscoveryBrief {
   const byId = new Map(answers.map((a) => [a.questionId, a.value]));
   const text = (id: string): string | undefined => {
@@ -404,22 +433,7 @@ export function discoveryBrief(answers: readonly Answer[]): DiscoveryBrief {
   const decisions: DiscoveryFacts['decisions'] = [];
   for (const q of QUESTIONS) {
     if (!q.axis?.startsWith('E')) continue;
-    const value = byId.get(q.id);
-    if (value === undefined || !answerIsValid(q.id, value)) continue;
-    let answer: string | undefined;
-    if (q.kind === 'binary') answer = labelOf(q, value);
-    else if (q.kind === 'scale' && q.anchors) {
-      const n = value as number;
-      answer = n === 1 ? q.anchors.low
-        : n === 2 ? `Closer to ${q.anchors.low}`
-          : n === 3 ? `Halfway between ${q.anchors.low} and ${q.anchors.high}`
-            : n === 4 ? `Closer to ${q.anchors.high}`
-              : q.anchors.high;
-    } else if (q.kind === 'ratio' && q.sides) {
-      const v = value as { side: 'a' | 'b'; strength: string };
-      const strength = RATIO_STRENGTHS.find((s) => s.id === v.strength);
-      answer = `${q.sides[v.side]} (${strength?.label.toLowerCase() ?? v.strength}, ${strength?.ratio ?? ''})`.trim();
-    }
+    const answer = decisionFor(answers, q.id);
     if (answer) decisions.push({ axis: q.axis, question: q.prompt, answer });
   }
 

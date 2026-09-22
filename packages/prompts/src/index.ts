@@ -55,6 +55,42 @@ export interface VolatileContext {
   scopeNote?: string;
   /** Upstream department outputs, in pipeline order. Each becomes its own block. */
   upstream: readonly { departmentId: number; name: string; body: string }[];
+  /**
+   * The positioning chart, for the department that places brands on it.
+   * The client's own point is computed from their answers and stated here
+   * as a fact; the department is asked for the others.
+   */
+  positioning?: {
+    axes: readonly { id: string; label: string; low: string; high: string }[];
+    own: readonly { axis: string; value: number; evidence: string }[];
+    /** Who the client would hate to be mistaken for, in their words. */
+    antiReference?: string;
+  };
+}
+
+function positioningBlock(p: NonNullable<VolatileContext['positioning']>): string {
+  return [
+    '# Positioning chart',
+    '',
+    'The studio draws the client and the brands they will be compared with on two-axis',
+    'charts. Every axis runs 0–100 from its first pole to its second:',
+    '',
+    ...p.axes.map((a) => `- **${a.id}** ${a.label}: 0 = ${a.low}, 100 = ${a.high}`),
+    '',
+    p.own.length > 0
+      ? 'The client\'s own point is **computed from their discovery answers** and is not yours to move:'
+      : 'The client has not answered discovery yet, so their own point is absent.',
+    ...p.own.map((o) => `- ${o.axis} = ${o.value} — they chose: "${o.evidence}"`),
+    '',
+    ...(p.antiReference ? [`They would hate to be mistaken for: ${p.antiReference}`, ''] : []),
+    '## What to submit',
+    '',
+    'In `comparators`, name two to four brands the client will actually be compared with —',
+    'the one above if it is a real brand, direct competitors, the category default — and',
+    'place each on at least two of the axes with one sentence saying why. These are drawn as',
+    '*proposed* points, apart from the client\'s computed one and from anything the studio',
+    'placed by hand, so state a judgement, not a measurement.',
+  ].join('\n');
 }
 
 export function volatileBlocks(context: VolatileContext): PromptBlock[] {
@@ -80,6 +116,9 @@ export function volatileBlocks(context: VolatileContext): PromptBlock[] {
       label: `upstream-${upstream.departmentId}`,
       text: `# Department ${upstream.departmentId} — ${upstream.name} (output)\n\n${upstream.body}`,
     });
+  }
+  if (context.positioning) {
+    blocks.push({ stable: false, label: 'positioning', text: positioningBlock(context.positioning) });
   }
   return blocks;
 }

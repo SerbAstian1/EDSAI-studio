@@ -38,7 +38,7 @@ export interface PortalPoint {
   label: string;
   x: number;
   y: number;
-  source: 'computed' | 'placed';
+  source: 'computed' | 'placed' | 'proposed';
   note?: string;
 }
 
@@ -133,7 +133,7 @@ function renderMatrix(matrix: PortalMatrix): string {
   <td>${escapeHtml(point.label)}</td>
   <td>${Math.round(point.x)}</td>
   <td>${Math.round(point.y)}</td>
-  <td>${point.source === 'computed' ? 'Your own answers' : 'Placed by the studio'}</td>
+  <td>${point.source === 'computed' ? 'Your own answers' : point.source === 'proposed' ? 'Proposed by the studio’s process' : 'Placed by the studio'}</td>
 </tr>`).join('');
 
   return `<figure class="matrix">

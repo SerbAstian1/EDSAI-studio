@@ -2108,11 +2108,13 @@ describe('the positioning chart', () => {
     const { status, body } = await json(`/api/clients/${clientId}/positioning?x=E4&y=E6`);
     expect(status).toBe(200);
     const matrix = body['matrix'] as unknown as {
-      points: { label: string; x: number; y: number; source: string }[];
+      points: { label: string; x: number; y: number; source: string; evidence?: { x: string; y: string } }[];
     };
-    expect(matrix.points).toEqual([
-      { id: 'brand', label: 'Plotted Co', x: 15, y: 70, source: 'computed' },
-    ]);
+    expect(matrix.points).toHaveLength(1);
+    expect(matrix.points[0]).toMatchObject({ id: 'brand', label: 'Plotted Co', x: 15, y: 70, source: 'computed' });
+    // The point carries the two sentences that put it there.
+    expect(matrix.points[0]?.evidence?.x).toBeTruthy();
+    expect(matrix.points[0]?.evidence?.y).toBeTruthy();
   });
 
   it('will not take a position for the client from the request', async () => {

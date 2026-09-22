@@ -386,8 +386,13 @@ export interface Plotted {
   label: string;
   x: number;
   y: number;
-  source: 'computed' | 'placed';
+  /** Computed from the client's answers; placed by the studio; proposed by a run's department. */
+  source: 'computed' | 'placed' | 'proposed';
   note?: string;
+  /** For a computed point: the sentence the client chose on each axis. */
+  evidence?: { x: string; y: string };
+  runId?: string;
+  departmentId?: number;
 }
 
 export interface Matrix {

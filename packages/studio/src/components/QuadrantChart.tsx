@@ -61,6 +61,11 @@ const py = (value: number): number => PAD + ((100 - value) / 100) * PLOT;
  */
 const LINE = 13;
 const CHAR = 6.2;
+/** A chart label is a name, not a sentence; the full text lives in the table and the read-out. */
+const LABEL_MAX = 24;
+export function shortLabel(label: string): string {
+  return label.length > LABEL_MAX ? `${label.slice(0, LABEL_MAX - 1).trimEnd()}…` : label;
+}
 
 export function layOutLabels(points: readonly Plotted[]): Map<string, { dy: number; flip: boolean }> {
   const placed: { left: number; right: number; top: number; bottom: number }[] = [];
@@ -70,7 +75,7 @@ export function layOutLabels(points: readonly Plotted[]): Map<string, { dy: numb
     const cx = px(point.x);
     const cy = py(point.y);
     const flip = point.x > 62;
-    const width = point.label.length * CHAR;
+    const width = shortLabel(point.label).length * CHAR;
 
     let dy = 0;
     for (const candidate of [0, -LINE, LINE, -LINE * 2, LINE * 2]) {
@@ -91,6 +96,16 @@ export function layOutLabels(points: readonly Plotted[]): Map<string, { dy: numb
   }
 
   return layout;
+}
+
+/** Who says a point sits where it sits. */
+export function originOf(point: Plotted): string {
+  if (point.source === 'computed') return 'their own answers';
+  if (point.source === 'proposed') {
+    return `proposed by Department ${point.departmentId ?? '?'}`
+      + (point.runId ? ` in run ${point.runId}` : '');
+  }
+  return 'placed by the studio';
 }
 
 export interface QuadrantChartProps {
@@ -146,6 +161,7 @@ export default function QuadrantChart({ x, y, points }: QuadrantChartProps): Rea
           const cx = px(point.x);
           const cy = py(point.y);
           const computed = point.source === 'computed';
+          const proposed = point.source === 'proposed';
           // Flipped to the inside near the right edge so a label never leaves
           // the plot, and nudged vertically where it would sit on another.
           const { dy, flip } = labels.get(point.id) ?? { dy: 0, flip: false };
@@ -160,19 +176,31 @@ export default function QuadrantChart({ x, y, points }: QuadrantChartProps): Rea
               {/* A 28px target over a 10px dot: the mark is small on purpose
                   and the thing you have to hit is not. */}
               <circle cx={cx} cy={cy} r={14} fill="transparent" />
-              <circle
-                cx={cx} cy={cy} r={5}
-                fill={computed ? 'var(--accent)' : 'var(--surface-elevated)'}
-                stroke={computed ? 'var(--surface-elevated)' : 'var(--text-muted)'}
-                strokeWidth="2"
-              />
+              {/* Three marks for three kinds of claim: a filled dot was
+                  computed, a hollow dot was placed by a person, a hollow
+                  diamond was proposed by a run. Shape, not colour, tells them
+                  apart. */}
+              {proposed ? (
+                <rect
+                  x={cx - 5} y={cy - 5} width={10} height={10}
+                  transform={`rotate(45 ${cx} ${cy})`}
+                  fill="var(--surface-elevated)" stroke="var(--text-muted)" strokeWidth="2"
+                />
+              ) : (
+                <circle
+                  cx={cx} cy={cy} r={5}
+                  fill={computed ? 'var(--accent)' : 'var(--surface-elevated)'}
+                  stroke={computed ? 'var(--surface-elevated)' : 'var(--text-muted)'}
+                  strokeWidth="2"
+                />
+              )}
               <text
                 x={flip ? cx - 11 : cx + 11}
                 y={cy + dy + 4}
                 className="point-label"
                 textAnchor={flip ? 'end' : 'start'}
               >
-                {point.label}
+                {shortLabel(point.label)}
               </text>
             </g>
           );
@@ -187,22 +215,28 @@ export default function QuadrantChart({ x, y, points }: QuadrantChartProps): Rea
               {' · '}{x.label} {Math.round(shown.x)}{' · '}{y.label} {Math.round(shown.y)}
             </span>
             <span className="muted">
-              {' · '}
-              {shown.source === 'computed'
-                ? 'from their own answers'
-                : 'placed by the studio'}
+              {' · '}{originOf(shown)}
             </span>
+            {/* A computed point shows its working: the sentence the client
+                chose on each axis is what put it where it is. */}
+            {shown.evidence && (
+              <span className="evidence">
+                <span><em>{x.label}:</em> “{shown.evidence.x}”</span>
+                <span><em>{y.label}:</em> “{shown.evidence.y}”</span>
+              </span>
+            )}
             {shown.note && <span className="note">{shown.note}</span>}
           </>
         ) : (
           <span className="muted">
-            Point at a brand, or move through the table below, to read its position.
+            Point at a brand, or move through the table below, to read its position — and why.
           </span>
         )}
       </figcaption>
       <div className="matrix-legend">
         <span><i className="key computed" aria-hidden="true" /> From their own answers</span>
         <span><i className="key placed" aria-hidden="true" /> Placed by the studio</span>
+        <span><i className="key proposed" aria-hidden="true" /> Proposed by a run</span>
       </div>
     </figure>
 
@@ -231,9 +265,7 @@ export default function QuadrantChart({ x, y, points }: QuadrantChartProps): Rea
             <td data-label="Brand"><strong>{point.label}</strong></td>
             <td className="mono" data-label={x.label}>{Math.round(point.x)}</td>
             <td className="mono" data-label={y.label}>{Math.round(point.y)}</td>
-            <td className="muted" data-label="Where this came from">
-              {point.source === 'computed' ? 'Their own answers' : 'Placed by the studio'}
-            </td>
+            <td className="muted" data-label="Where this came from">{originOf(point)}</td>
           </tr>
         ))}
       </tbody>

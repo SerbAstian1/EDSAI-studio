@@ -1135,6 +1135,7 @@ export class ApiServer {
             name: name.slice(0, 80),
             ...(input?.note?.trim() ? { note: input.note.trim().slice(0, 400) } : {}),
             positions,
+            origin: 'studio' as const,
             createdAt: new Date().toISOString(),
           };
           scoped.saveComparator(comparator);

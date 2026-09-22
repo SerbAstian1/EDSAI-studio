@@ -968,6 +968,21 @@ button.choice.chosen {
   background: var(--surface-elevated);
   box-shadow: inset 0 0 0 2px var(--text-muted);
 }
+.matrix-legend .key.proposed {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.85);
+  background: var(--surface-elevated);
+  box-shadow: inset 0 0 0 2px var(--text-muted);
+}
+/* The sentences behind a computed point, one per axis. */
+.matrix figcaption .evidence {
+  display: grid;
+  gap: 2px;
+  margin-top: calc(var(--step) * 1.5);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.matrix figcaption .evidence em { font-style: normal; color: var(--text-muted); }
 
 /* — brand values ———————————————————————————————————————————————— */
 
