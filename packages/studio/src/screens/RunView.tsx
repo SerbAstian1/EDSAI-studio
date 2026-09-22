@@ -81,6 +81,13 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
               && ' — retrying won\'t change this on its own; it needs the cause fixed first.'}
           </p>
         )}
+        {health?.rehearsal && (
+          <p className="muted" style={{ marginTop: 10 }}>
+            <strong>Rehearsal.</strong> This server moves runs without a model: each department
+            lands with a placeholder output and placeholder scores, so the whole pipeline can be
+            watched before a key is spent. Nothing it produces is a finding about the client.
+          </p>
+        )}
         {health && !health.executionEnabled && next?.done === false && (
           <p className="muted" style={{ marginTop: 10 }}>
             This server has no model configured, so this run will not proceed on its own.

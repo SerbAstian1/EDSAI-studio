@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import { RunContext, RunStore, ensureLocalProject } from '@edsai/engine';
-import { Executor, TurnRefused, NO_USAGE, type ModelClient } from '@edsai/executor';
+import {
+  Executor, RehearsalClient, REHEARSAL_MODEL, TurnRefused, NO_USAGE, type ModelClient,
+} from '@edsai/executor';
 import type Anthropic from '@anthropic-ai/sdk';
 import { runPipeline } from '../src/pipeline.js';
 import { RunEvents } from '../src/events.js';
@@ -219,6 +221,40 @@ describe('running a whole run', () => {
 
     expect(result.completed.length).toBeLessThan(run.activatedDepartments.length);
     expect(result.halted).toBeUndefined();
+    store.close();
+  });
+
+  it('rehearses a whole run without a model, and every output passes the engine', async () => {
+    // The point of a rehearsal is that the engine cannot tell: every scored
+    // department scores every dimension the rubric expects, no target claims a
+    // measurement, and nothing is rejected on the way in.
+    const { context, run, store } = fixture();
+    const rejected: number[] = [];
+    const events = new RunEvents();
+    const original = events.emit.bind(events);
+    events.emit = (runId, type, data) => {
+      if (type === 'department.accepted') rejected.push((data as { rejected: number }).rejected);
+      return original(runId, type, data);
+    };
+
+    const result = await runPipeline({
+      context,
+      executor: new Executor({
+        model: REHEARSAL_MODEL, client: new RehearsalClient({ rubric, delayMs: 0 }),
+      }),
+      events,
+      runId: run.id,
+    });
+
+    expect(result.completed).toEqual(run.activatedDepartments);
+    expect(result.halted).toBeUndefined();
+    expect(rejected.every((n) => n === 0)).toBe(true);
+    // No published rate for a model that is not one, so no invented cost.
+    expect(result.cost).toBeUndefined();
+    // A rehearsal never becomes a brand.
+    expect(store.getRun(run.id)?.determination ?? 'V1').not.toBe('FINAL');
+    const first = store.getOutputs(run.id)[0];
+    expect(first?.body.startsWith('> **Rehearsal.**')).toBe(true);
     store.close();
   });
 

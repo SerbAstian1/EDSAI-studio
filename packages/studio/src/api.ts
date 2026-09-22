@@ -474,7 +474,7 @@ export interface DepartmentOverride {
 
 export const api = {
   health: () => call<{ ok: boolean; departments: number; needsSetup: boolean; authDisabled: boolean;
-    executionEnabled: boolean }>('/api/health'),
+    executionEnabled: boolean; rehearsal?: boolean }>('/api/health'),
 
   session: () => call<{ principal: Principal; user?: { name: string; email: string } }>('/api/session'),
   signIn: (email: string, password: string) =>

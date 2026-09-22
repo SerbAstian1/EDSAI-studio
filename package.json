@@ -5,6 +5,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:rehearse": "node scripts/dev.mjs --rehearse",
     "dev:studio-only": "pnpm --filter @edsai/studio dev",
     "build": "pnpm -r build",
     "start": "node packages/api/dist/bin/serve.js",

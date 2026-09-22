@@ -9,7 +9,7 @@ import {
   ClientSummaryRefused, clientSummary, handoffPack, internalDocument, type RunBundle,
 } from '@edsai/export';
 import { renderPortal, escapeHtml, STYLE } from '@edsai/hub';
-import type { Executor } from '@edsai/executor';
+import { REHEARSAL_MODEL, type Executor } from '@edsai/executor';
 import { runPipeline } from './pipeline.js';
 import { StaticApp } from './static.js';
 import { RunEvents } from './events.js';
@@ -552,6 +552,10 @@ export class ApiServer {
           // isn't moving — "created but not executed" and "stuck" look
           // identical from the outside otherwise.
           executionEnabled: Boolean(this.executor),
+          // A rehearsal executes runs without a model. The Studio says so on
+          // every run it moves, because a scorecard of placeholders that
+          // looked like findings would be worse than no scorecard.
+          rehearsal: this.executor?.model === REHEARSAL_MODEL,
         }),
       },
 

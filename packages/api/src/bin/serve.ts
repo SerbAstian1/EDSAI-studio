@@ -2,7 +2,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DiskAssetStore, RunStore } from '@edsai/engine';
-import { Executor } from '@edsai/executor';
+import { Executor, RehearsalClient, REHEARSAL_MODEL } from '@edsai/executor';
+import { buildRubric } from '@edsai/rubric';
 import { ApiServer } from '../server.js';
 
 /**
@@ -23,15 +24,33 @@ import { ApiServer } from '../server.js';
  * execute a run, and says so when asked to rather than accepting one and
  * leaving it stalled.
  */
-const executor = process.env['ANTHROPIC_API_KEY']
+const rubric = buildRubric();
+
+/**
+ * A rehearsal moves runs without a model. It wins over a key when both are
+ * set, because it is the more deliberate of the two: a key sits in `.env`
+ * for weeks, and the person who typed `EDSAI_REHEARSAL=1` meant it now.
+ */
+const rehearsal = process.env['EDSAI_REHEARSAL'] === '1';
+const rehearsalDelay = Number.parseInt(process.env['EDSAI_REHEARSAL_DELAY_MS'] ?? '', 10);
+
+const executor = rehearsal
   ? new Executor({
-    ...(process.env['EDSAI_MODEL'] ? { model: process.env['EDSAI_MODEL'] } : {}),
-    // Needed only for an organisation-level key; a workspace-scoped key
-    // carries its workspace already and the API refuses the header on it.
-    ...(process.env['ANTHROPIC_WORKSPACE_ID']
-      ? { workspaceId: process.env['ANTHROPIC_WORKSPACE_ID'] } : {}),
+    model: REHEARSAL_MODEL,
+    client: new RehearsalClient({
+      rubric,
+      ...(Number.isFinite(rehearsalDelay) ? { delayMs: rehearsalDelay } : {}),
+    }),
   })
-  : undefined;
+  : process.env['ANTHROPIC_API_KEY']
+    ? new Executor({
+      ...(process.env['EDSAI_MODEL'] ? { model: process.env['EDSAI_MODEL'] } : {}),
+      // Needed only for an organisation-level key; a workspace-scoped key
+      // carries its workspace already and the API refuses the header on it.
+      ...(process.env['ANTHROPIC_WORKSPACE_ID']
+        ? { workspaceId: process.env['ANTHROPIC_WORKSPACE_ID'] } : {}),
+    })
+    : undefined;
 
 const port = Number.parseInt(process.env['PORT'] ?? '4317', 10);
 const db = process.env['EDSAI_DB'] ?? '.edsai/runs.db';
@@ -60,6 +79,7 @@ const app = existsSync(appRoot) ? appRoot : undefined;
 const server = new ApiServer({
   store: new RunStore(db),
   assets: new DiskAssetStore(assetRoot),
+  rubric,
   ...(app ? { app } : {}),
   ...(process.env['EDSAI_SCOPE'] ? { scopeId: process.env['EDSAI_SCOPE'] } : {}),
   origins: (process.env['EDSAI_ORIGINS'] ?? '').split(',').filter(Boolean),
@@ -80,9 +100,11 @@ process.stdout.write(`  files    ${resolve(assetRoot)}\n`);
 process.stdout.write(app
   ? `  studio   ${app}\n`
   : `  studio   not built (${appRoot} is missing), so this serves the API only\n`);
-process.stdout.write(executor
-  ? `  runs execute on ${executor.model}\n`
-  : '  no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
+process.stdout.write(rehearsal
+  ? '  runs     REHEARSAL (EDSAI_REHEARSAL=1) — departments produce placeholders, no model is called\n'
+  : executor
+    ? `  runs execute on ${executor.model}\n`
+    : '  no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
 process.stdout.write(server.devOwnerCreated
   ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`
     + `           an owner account was still created, for when this is turned back on:\n`

@@ -50,8 +50,15 @@ if (!existsSync('packages/api/dist/bin/serve.js')) {
   });
 }
 
+// `--rehearse` runs the pipeline without a model: every department lands
+// with a labelled placeholder, so the whole flow can be watched for a real
+// client before a key is spent. A flag rather than only an env var because
+// `VAR=1 npm run dev` is not a thing on a Windows shell.
+const rehearse = process.argv.includes('--rehearse') || process.env.EDSAI_REHEARSAL === '1';
+
 const env = {
   ...process.env,
+  ...(rehearse ? { EDSAI_REHEARSAL: '1' } : {}),
   EDSAI_ORIGINS: process.env.EDSAI_ORIGINS || devOrigins,
   // Off only for plain-http local development — see packages/auth/src/cookie.ts.
   EDSAI_INSECURE_COOKIES: process.env.EDSAI_INSECURE_COOKIES || '1',
