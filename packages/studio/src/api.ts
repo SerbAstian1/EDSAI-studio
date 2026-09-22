@@ -262,6 +262,16 @@ export interface DiscoveryForm {
   };
 }
 
+/** One of the eight fixed document slots, held or empty. */
+export interface ClientDocument {
+  slot: string;
+  label: string;
+  group: 'commercial' | 'brand';
+  figmaUrl?: string;
+  note?: string;
+  updatedAt?: string;
+}
+
 export interface DiscoveryFacts {
   what?: string;
   who?: string;
@@ -608,6 +618,14 @@ export const api = {
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
 
+  documents: (clientId: string) =>
+    call<{ documents: ClientDocument[] }>(`/api/clients/${clientId}/documents`).then((r) => r.documents),
+  setDocument: (clientId: string, slot: string, input: { figmaUrl: string; note?: string }) =>
+    call<{ document: ClientDocument }>(`/api/clients/${clientId}/documents/${slot}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }).then((r) => r.document),
+  clearDocument: (clientId: string, slot: string) =>
+    call<{ removed: string }>(`/api/clients/${clientId}/documents/${slot}`, { method: 'DELETE' }),
   /** The client's discovery, translated: facts a designer reads, and a brief a run reads. */
   discovery: (clientId: string) => call<Discovery>(`/api/clients/${clientId}/discovery`),
   positioning: (clientId: string, x: string, y: string) =>

@@ -1,5 +1,6 @@
 import { useState, type ReactElement } from 'react';
 import type { Client } from '../api.js';
+import DocumentsSection from './sections/Documents.js';
 import DeliverablesSection from './sections/Deliverables.js';
 import TimelineSection from './sections/Timeline.js';
 import MilestonesSection from './sections/Milestones.js';
@@ -9,7 +10,7 @@ import InvoicesSection from './sections/Invoices.js';
 import MessagesSection from './sections/Messages.js';
 
 /**
- * The portal's own shell — a numbered rail, seven sections, one client.
+ * The portal's own shell — a numbered rail, eight sections, one client.
  *
  * Deliberately not routed through the studio's hash router: a client's
  * session is one visit at a time, not something worth deep-linking into a
@@ -20,6 +21,7 @@ import MessagesSection from './sections/Messages.js';
 interface Section { id: string; label: string; render: (props: { client: Client; canWrite: boolean }) => ReactElement }
 
 const SECTIONS: Section[] = [
+  { id: 'documents', label: 'Documents', render: (p) => <DocumentsSection {...p} /> },
   { id: 'deliverables', label: 'Deliverables', render: (p) => <DeliverablesSection {...p} /> },
   { id: 'timeline', label: 'Timeline', render: (p) => <TimelineSection {...p} /> },
   { id: 'milestones', label: 'Milestones', render: (p) => <MilestonesSection {...p} /> },

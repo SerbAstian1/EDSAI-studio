@@ -10,6 +10,7 @@ import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 import type { Deliverable } from './deliverables.js';
+import type { ClientDocument } from './documents.js';
 import type { Milestone } from './milestones.js';
 import type { Invoice } from './invoices.js';
 import type { Message } from './messages.js';
@@ -288,6 +289,23 @@ export class ScopedStore {
     if (!existing) return;
     this.mustWrite('deliverable', existing.clientId);
     this.store.deleteDeliverable(id);
+  }
+
+  /* --------------------------------------------------------------- documents */
+
+  listDocuments(clientId: string): ClientDocument[] {
+    if (!this.mayRead('document', clientId)) return [];
+    return this.store.listDocuments(clientId);
+  }
+
+  saveDocument(document: ClientDocument): void {
+    this.mustWrite('document', document.clientId);
+    this.store.saveDocument(document);
+  }
+
+  deleteDocument(clientId: string, slot: string): void {
+    this.mustWrite('document', clientId);
+    this.store.deleteDocument(clientId, slot);
   }
 
   /* -------------------------------------------------------------- milestones */

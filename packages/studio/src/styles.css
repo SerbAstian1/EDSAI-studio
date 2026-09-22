@@ -616,7 +616,8 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .palette li { padding: 0; }
 .palette li button {
   width: 100%; text-align: left; border: 0; background: none; border-radius: var(--radius);
-  display: flex; align-items: center; gap: calc(var(--step) * 2.5); padding: 8px 10px;
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: calc(var(--step) * 2.5); padding: 8px 10px;
 }
 .palette li[aria-selected="true"] button { background: var(--surface); }
 .palette li[aria-selected="true"] button .glyph { color: var(--aw-orange); }
@@ -669,6 +670,10 @@ th, td { text-align: left; padding: var(--row-y) 10px; border-bottom: 1px solid 
 /* Controls in a cell sit in a row of their own, never on the cell itself —
    a `display: flex` cell stops being a table cell. */
 td > .row { gap: calc(var(--step) * 1.5); flex-wrap: nowrap; }
+/* The actions column hugs the right edge and takes only what it needs, so
+   the columns that carry information get the width. */
+td.actions { width: 1%; white-space: nowrap; text-align: right; }
+td.actions > .row { justify-content: flex-end; }
 th { font-weight: 500; }
 tbody tr:hover { background: var(--surface); }
 
@@ -893,6 +898,7 @@ button.choice.chosen {
   width: 100%;
   display: flex;
   align-items: baseline;
+  justify-content: flex-start;
   gap: calc(var(--step) * 2);
   text-align: left;
   border: 0;
@@ -1199,6 +1205,68 @@ button.choice.chosen {
    one third of a grid is a thumbnail, not a preview. */
 .project-card.wide { grid-column: 1 / -1; }
 
+/* — overflow menu ——————————————————————————————————————————————— */
+
+/* The list floats: the one thing here that sits above the page, so it
+   takes the floating tier. It hangs off the button's right edge because the
+   button sits at the end of a row; `.up` mirrors it when the row is at the
+   foot of the viewport. */
+.overflow { position: relative; display: inline-flex; flex: none; }
+.overflow-button {
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.overflow-button.row { width: 32px; height: 32px; min-height: 32px; }
+.overflow-button.bar { width: var(--control); height: var(--control); border-color: var(--border-strong); background: var(--surface-elevated); }
+.overflow-button:hover:not([disabled]),
+.overflow-button[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+.overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  margin: 0;
+  padding: calc(var(--step) * 1);
+  list-style: none;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+.overflow.up .overflow-menu { top: auto; bottom: calc(100% + 4px); }
+.overflow-menu li + li.danger { margin-top: calc(var(--step) * 1); padding-top: calc(var(--step) * 1); border-top: 1px solid var(--border); }
+.overflow-menu button[role="menuitem"] {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  justify-content: flex-start;
+  gap: calc(var(--step) * 2);
+  font-weight: 400;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius);
+  box-shadow: none;
+  text-align: left;
+}
+.overflow-menu button[role="menuitem"]:hover,
+.overflow-menu button[role="menuitem"]:focus-visible {
+  background: var(--surface);
+  border-color: transparent;
+  box-shadow: none;
+}
+.overflow-menu button[role="menuitem"]:focus-visible { outline-offset: -2px; }
+.overflow-menu button[role="menuitem"].danger { color: var(--error); }
+.overflow-menu button[role="menuitem"][aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+
 /* — markdown (department outputs, briefs) ————————————————————————— */
 
 /* Rendered from a safe subset, so the elements here are the only ones that
@@ -1258,6 +1326,60 @@ button.choice.chosen {
 .direction-output > .row { margin-bottom: calc(var(--step) * 2); }
 .direction-pending { padding: calc(var(--step) * 3) 0 0; border-top: 1px solid var(--border); margin: 0; }
 .direction-pending .label { color: var(--text-muted); }
+
+/* — document shelf ———————————————————————————————————————————————— */
+
+/* Large tiles, because these are the eight things a client comes back
+   for. A tile is a button first: it rests at the card tier, lifts on
+   hover, and the open one carries the accent rule so the viewer under the
+   shelf reads as belonging to it. Empty tiles are dashed, like the drop
+   zone — the shape of a thing that is not here yet. */
+.shelf-group { display: grid; gap: calc(var(--step) * 2); }
+.shelf-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: calc(var(--step) * 3);
+}
+.shelf-tile {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: calc(var(--step) * 2);
+  min-height: 124px;
+  padding: calc(var(--step) * 4);
+  text-align: left;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  font-weight: 400;
+  transition: box-shadow var(--transition), border-color var(--transition), transform var(--transition);
+}
+.shelf-tile:hover:not([disabled]) { box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.shelf-tile.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-2); }
+.shelf-tile.empty { border-style: dashed; background: var(--surface); box-shadow: none; }
+.shelf-tile.empty .shelf-icon { color: var(--text-muted); }
+.shelf-tile[disabled] { opacity: 0.55; cursor: default; }
+.shelf-icon { color: var(--accent); }
+.shelf-label { font-size: var(--text-base); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.shelf-meta { font-size: var(--text-xs); color: var(--text-muted); margin-top: auto; }
+
+.shelf-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 4);
+  background: var(--surface-elevated);
+}
+.shelf-viewer {
+  display: grid;
+  gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 4);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-1);
+}
 
 /* — figma embed —————————————————————————————————————————————————— */
 
@@ -1414,6 +1536,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 .portal-nav-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: calc(var(--step) * 3);
   width: 100%;
   padding: 9px calc(var(--step) * 2.5);

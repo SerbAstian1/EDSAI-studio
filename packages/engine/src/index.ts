@@ -13,6 +13,7 @@ export * from './brand.js';
 export * from './assets.js';
 export * from './positioning.js';
 export * from './deliverables.js';
+export * from './documents.js';
 export * from './milestones.js';
 export * from './invoices.js';
 export * from './messages.js';

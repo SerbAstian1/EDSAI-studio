@@ -63,6 +63,45 @@ describe('store round-trips', () => {
     expect(store.getDeliverable('d2')).toEqual(withoutFigma);
   });
 
+  it('keeps one document per slot per client, and replaces rather than duplicates', () => {
+    const store = fixture();
+    store.saveDocument({
+      clientId: 'acme', slot: 'contract', figmaUrl: 'https://www.figma.com/design/c1/Contract',
+      updatedAt: NOW,
+    });
+    store.saveDocument({
+      clientId: 'acme', slot: 'contract', figmaUrl: 'https://www.figma.com/design/c2/Contract-v2',
+      note: 'v2', updatedAt: NOW,
+    });
+    const docs = store.listDocuments('acme');
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.figmaUrl).toContain('c2');
+    expect(docs[0]?.note).toBe('v2');
+    expect(store.listDocuments('morrow')).toEqual([]);
+    store.deleteDocument('acme', 'contract');
+    expect(store.listDocuments('acme')).toEqual([]);
+  });
+
+  it('refuses a document in a slot that does not exist', () => {
+    const store = fixture();
+    expect(() => store.saveDocument({
+      clientId: 'acme', slot: 'moodboard' as never, figmaUrl: 'https://www.figma.com/x', updatedAt: NOW,
+    })).toThrow();
+  });
+
+  it('a portal reads the shelf and never writes it', () => {
+    const store = fixture();
+    new ScopedStore(store, studio).saveDocument({
+      clientId: 'acme', slot: 'proposal', figmaUrl: 'https://www.figma.com/design/p/Proposal', updatedAt: NOW,
+    });
+    const viewer = new ScopedStore(store, acmeViewer);
+    expect(viewer.listDocuments('acme')).toHaveLength(1);
+    expect(() => new ScopedStore(store, acmeEditor).saveDocument({
+      clientId: 'acme', slot: 'invoice', figmaUrl: 'https://www.figma.com/design/i/Invoice', updatedAt: NOW,
+    })).toThrow(Forbidden);
+    expect(new ScopedStore(store, morrowEditor).listDocuments('acme')).toEqual([]);
+  });
+
   it('only frames figma.com', () => {
     expect(isFigmaUrl('https://www.figma.com/design/abc/Brand')).toBe(true);
     expect(isFigmaUrl('https://figma.com/proto/abc')).toBe(true);

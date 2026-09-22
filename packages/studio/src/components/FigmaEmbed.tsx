@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { ExternalLink, PenTool } from 'lucide-react';
 
 /**
@@ -33,6 +33,13 @@ export function figmaEmbedSrc(url: string): string {
 
 export default function FigmaEmbed({ url, title }: { url: string; title: string }): ReactElement | null {
   const [loaded, setLoaded] = useState(false);
+  // A frame whose load event never comes (a blocked request, a file Figma
+  // refuses) would otherwise sit behind "Loading…" for good. After a while
+  // the frame is shown regardless, so whatever Figma has to say is visible.
+  useEffect(() => {
+    const timer = setTimeout(() => setLoaded(true), 8000);
+    return () => clearTimeout(timer);
+  }, [url]);
   if (!isFigmaUrl(url)) return null;
 
   return (

@@ -17,13 +17,13 @@ export type Action = typeof ACTIONS[number];
 
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
-  'deliverable', 'milestone', 'invoice', 'message', 'feedback', 'support', 'process',
+  'deliverable', 'document', 'milestone', 'invoice', 'message', 'feedback', 'support', 'process',
 ] as const;
 export type ResourceKind = typeof RESOURCES[number];
 
 /** Studio-only writes: a client portal reads its own status, never sets it. */
 const STUDIO_MANAGED: readonly ResourceKind[] = [
-  'deliverable', 'milestone', 'invoice', 'contact', 'project',
+  'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project',
 ];
 
 export interface Resource {

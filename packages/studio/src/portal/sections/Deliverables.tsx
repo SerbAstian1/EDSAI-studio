@@ -32,7 +32,7 @@ export default function DeliverablesSection({ client }: { client: Client }): Rea
   return (
     <section className="stack">
       <div>
-        <p className="label mono">01</p>
+        <p className="label mono">02</p>
         <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Deliverables</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           Everything the studio is producing for this project, and where each one stands.

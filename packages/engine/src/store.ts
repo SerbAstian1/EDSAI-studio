@@ -11,6 +11,7 @@ import { Comparator, type Comparator as ComparatorType } from './positioning.js'
 import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import { Asset, type Asset as AssetType } from './assets.js';
 import { Deliverable, type Deliverable as DeliverableType } from './deliverables.js';
+import { ClientDocument, type ClientDocument as ClientDocumentType } from './documents.js';
 import { Milestone, type Milestone as MilestoneType } from './milestones.js';
 import { Invoice, type Invoice as InvoiceType } from './invoices.js';
 import { Message, type Message as MessageType } from './messages.js';
@@ -280,6 +281,15 @@ CREATE TABLE IF NOT EXISTS deliverables (
 );
 
 CREATE INDEX IF NOT EXISTS deliverables_by_client ON deliverables (client_id);
+
+CREATE TABLE IF NOT EXISTS client_documents (
+  client_id TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  figma_url TEXT NOT NULL,
+  note TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (client_id, slot)
+);
 
 CREATE TABLE IF NOT EXISTS milestones (
   id TEXT PRIMARY KEY,
@@ -706,6 +716,28 @@ export class RunStore {
 
   deleteDeliverable(id: string): void {
     this.db.prepare('DELETE FROM deliverables WHERE id = ?').run(id);
+  }
+
+  /* --------------------------------------------------------------- documents */
+
+  saveDocument(document: ClientDocumentType): void {
+    ClientDocument.parse(document);
+    this.db.prepare(`
+      INSERT INTO client_documents (client_id, slot, figma_url, note, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(client_id, slot) DO UPDATE SET
+        figma_url = excluded.figma_url, note = excluded.note, updated_at = excluded.updated_at
+    `).run(document.clientId, document.slot, document.figmaUrl, document.note ?? null,
+      document.updatedAt);
+  }
+
+  listDocuments(clientId: string): ClientDocumentType[] {
+    return (this.db.prepare('SELECT * FROM client_documents WHERE client_id = ?')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateDocument);
+  }
+
+  deleteDocument(clientId: string, slot: string): void {
+    this.db.prepare('DELETE FROM client_documents WHERE client_id = ? AND slot = ?').run(clientId, slot);
   }
 
   /* -------------------------------------------------------------- milestones */
@@ -1575,6 +1607,14 @@ function hydrateAsset(row: Record<string, unknown>): AssetType {
     ...(row['description'] ? { description: row['description'] } : {}),
     approved: row['approved'] === 1,
     uploadedAt: row['uploaded_at'],
+  });
+}
+
+function hydrateDocument(row: Record<string, unknown>): ClientDocumentType {
+  return ClientDocument.parse({
+    clientId: row['client_id'], slot: row['slot'], figmaUrl: row['figma_url'],
+    ...(row['note'] ? { note: row['note'] } : {}),
+    updatedAt: row['updated_at'],
   });
 }
 

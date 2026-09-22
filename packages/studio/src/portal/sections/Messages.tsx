@@ -38,7 +38,7 @@ export default function MessagesSection({ client, canWrite }: { client: Client; 
   return (
     <section className="stack">
       <div>
-        <p className="label mono">07</p>
+        <p className="label mono">08</p>
         <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Messages</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           Keep the conversation going. Ask questions, share updates, and stay aligned throughout the project.

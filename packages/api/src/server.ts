@@ -21,6 +21,7 @@ import {
   PORTAL_KEY_DAYS, portalUserId,
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   orderMilestones, invoiceStatus, invoiceTotals, isFigmaUrl,
+  DOCUMENT_SLOTS, isDocumentSlot, type ClientDocument,
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
@@ -1752,6 +1753,76 @@ export class ApiServer {
           if (!scoped) return;
           scoped.deleteDeliverable(params['id'] ?? '');
           send(res, 200, { removed: params['id'] ?? '' });
+        },
+      },
+
+      /* ----------------------------------------------------------- documents */
+
+      /**
+       * The eight fixed documents, every slot listed whether or not it holds
+       * anything yet — a shelf with an empty space says more than a list with
+       * a row missing.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/documents$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const held = new Map(scoped.listDocuments(clientId).map((d) => [d.slot, d]));
+          send(res, 200, {
+            documents: DOCUMENT_SLOTS.map((slot) => ({
+              slot: slot.id, label: slot.label, group: slot.group,
+              ...(held.get(slot.id) ?? {}),
+            })),
+          });
+        },
+      },
+
+      {
+        method: 'PUT', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/documents\/(?<slot>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const slot = params['slot'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          if (!isDocumentSlot(slot)) {
+            send(res, 404, { error: 'not_found', message: 'No document slot by that name.' });
+            return;
+          }
+          const input = body as { figmaUrl?: string; note?: string };
+          const figmaUrl = input?.figmaUrl?.trim() ?? '';
+          if (!isFigmaUrl(figmaUrl)) {
+            send(res, 400, { error: 'bad_request', message: 'Only figma.com links can be previewed in place.' });
+            return;
+          }
+          const document: ClientDocument = {
+            clientId, slot, figmaUrl, updatedAt: new Date().toISOString(),
+            ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+          };
+          scoped.saveDocument(document);
+          send(res, 200, { document });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/documents\/(?<slot>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const slot = params['slot'] ?? '';
+          if (!scoped.getClient(clientId) || !isDocumentSlot(slot)) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          scoped.deleteDocument(clientId, slot);
+          send(res, 200, { removed: slot });
         },
       },
 
