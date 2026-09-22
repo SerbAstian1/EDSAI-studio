@@ -94,13 +94,17 @@ ENV EDSAI_APP=/app/packages/studio/dist
 ENV PORT=4317
 RUN mkdir -p /data && chown -R node:node /data
 
-# Unprivileged, because nothing here needs root and the server takes uploads
-# from strangers.
-USER node
+# The server runs unprivileged, because nothing in it needs root and it takes
+# uploads from strangers. The container nonetheless *starts* as root: a volume
+# a host mounts at /data arrives owned by root, and someone has to hand it to
+# `node` before the first write. The entrypoint does exactly that and then
+# drops privileges for good — see scripts/docker-entrypoint.sh.
+COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/edsai-entrypoint
 EXPOSE 4317
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4317)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
+ENTRYPOINT ["edsai-entrypoint"]
 CMD ["node", "packages/api/dist/bin/serve.js"]

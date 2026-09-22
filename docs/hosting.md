@@ -71,6 +71,35 @@ outside the machine.
 The image runs as an unprivileged user. Nothing in it needs root, and it takes
 file uploads from people outside the studio.
 
+## On Railway
+
+The least work of the options here. Railway builds the `Dockerfile`, keeps
+one container running, and mounts a disk; `railway.json` tells it where the
+health check is and never to run more than one replica.
+
+1. **New Project → Deploy from GitHub repo.** Pick this repository. Railway
+   detects the Dockerfile and starts a build.
+2. **Variables** on the service:
+
+   | Variable | Value |
+   | --- | --- |
+   | `ANTHROPIC_API_KEY` | the key |
+   | `PORT` | `4317` |
+   | `EDSAI_ORIGINS` | the Studio's address on Vercel, once it exists (see below) |
+
+3. **Volume.** Service → Volumes → Add Volume, mount path **`/data`**. That
+   is the database and every upload. Without it, a redeploy is a new studio.
+4. **Domain.** Settings → Networking → Generate Domain. Open it once, create
+   the owner account, and note the host for `vercel.json`.
+
+The container handles the volume's ownership itself: a Railway volume
+arrives owned by root, so the image starts as root, hands `/data` to the
+unprivileged `node` user, and drops to `node` before the server starts.
+Nothing to set for that.
+
+Railway does not sleep the service, which matters: a stopped container is a
+portal link that does not open.
+
 ## On Fly.io
 
 ```
@@ -103,8 +132,8 @@ So the layout is two parts that the browser sees as one:
 ```
 browser ──▶ studio.example.com (Vercel, static)
                 │
-                ├── /api/*     ─── rewrite ──▶ edsai-studio.fly.dev/api/*
-                └── /portal/*  ─── rewrite ──▶ edsai-studio.fly.dev/portal/*
+                ├── /api/*     ─── rewrite ──▶ <api host>/api/*
+                └── /portal/*  ─── rewrite ──▶ <api host>/portal/*
 ```
 
 `vercel.json` rewrites every `/api` and `/portal` request to the API host.
@@ -115,18 +144,21 @@ Vercel address.
 
 ### Steps
 
-1. **Deploy the API** on Fly (above), or anywhere with a disk. Note its
-   address.
+1. **Deploy the API** on Railway or Fly (above), or anywhere with a disk.
+   Note its address.
 2. **Point the rewrites at it.** In `vercel.json`, replace
-   `edsai-studio.fly.dev` with the API's host in all three rewrites. Vercel
-   cannot read that from an environment variable; it has to be in the file.
+   `REPLACE-WITH-YOUR-API-HOST` with the API's host in all three rewrites.
+   Vercel cannot read that from an environment variable; it has to be in the
+   file. Commit it.
 3. **Tell the API about the Studio's origin.** The API refuses a write whose
    `Origin` it does not know, and through the proxy the browser's origin is
    the Vercel one:
 
    ```
-   fly secrets set EDSAI_ORIGINS=https://studio.example.com,https://edsai-studio.vercel.app
+   EDSAI_ORIGINS=https://studio.example.com,https://edsai-studio.vercel.app
    ```
+
+   (a Variable on Railway; `fly secrets set` on Fly.)
 
    Every address the Studio is served from — the `*.vercel.app` one and any
    custom domain — goes in that list. Forgetting one produces the failure
@@ -142,7 +174,7 @@ Vercel address.
 
 ### What to know
 
-- The API still serves its own copy of the Studio at the Fly address. Both
+- The API still serves its own copy of the Studio at its own address. Both
   work; the Vercel one is the one to give people.
 - Preview deployments each get their own `*.vercel.app` origin. Either add
   them to `EDSAI_ORIGINS` as you go, or treat previews as read-only — every
