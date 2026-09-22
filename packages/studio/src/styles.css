@@ -107,6 +107,11 @@
   --radius-lg: 6px;
   --sidebar-w: 216px;
   --step: 4px;
+  /* One height for every control that can sit beside another: button, input,
+     select, header search, icon buttons, avatar. Nine steps. Neighbours that
+     share a height share a centre line for free; ones that do not never will,
+     whatever the alignment rule says. */
+  --control: 36px;
 
   /* — elevation —————————————————————————————————————————————————— */
   /* No material layer: every surface here is opaque. Depth is a hairline of
@@ -266,9 +271,11 @@ button {
   border: 1px solid var(--border-strong);
   background: var(--surface-elevated);
   color: var(--text-primary);
-  padding: 6px 12px;
-  min-height: 32px;
-  display: inline-flex; align-items: center; gap: calc(var(--step) * 1.5);
+  padding: 0 12px;
+  min-height: var(--control);
+  line-height: 1.4;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: calc(var(--step) * 1.5);
   transition: background var(--transition), border-color var(--transition),
               box-shadow var(--transition);
 }
@@ -293,8 +300,14 @@ input, textarea, select {
   background: var(--surface-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 7px 10px;
+  padding: 0 10px;
+  min-height: var(--control);
+  line-height: 1.4;
   width: 100%;
+}
+textarea { padding: calc(var(--step) * 2) 10px; min-height: 0; line-height: 1.5; }
+input[type="checkbox"], input[type="radio"], input[type="range"], input[type="color"] {
+  width: auto; min-height: 0; padding: 0;
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -302,8 +315,8 @@ input, textarea, select {
    does not, so controls keep a floor on touch — tightening a desktop layout
    is not a reason to make a phone harder to use. */
 @media (pointer: coarse) {
-  button, input, select { min-height: 44px; }
-  button { padding: 10px 14px; }
+  :root { --control: 44px; }
+  button { padding: 0 14px; }
   .nav-item { padding: 9px 10px; }
   .wordmark { min-height: 44px; }
 }
@@ -387,7 +400,10 @@ input, textarea, select {
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: var(--space-page) calc(var(--step) * 2.5);
+  /* Top padding matches the header's, and the wordmark is one control tall,
+     so the wordmark and the header's search share a centre line across the
+     sidebar's edge. */
+  padding: calc(var(--step) * 3) calc(var(--step) * 2.5) var(--space-page);
   display: flex;
   flex-direction: column;
   gap: var(--space-section);
@@ -407,6 +423,7 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: calc(var(--step) * 2);
+  min-height: var(--control);
 }
 .wordmark::before {
   content: "";
@@ -617,7 +634,15 @@ input, textarea, select {
   margin-bottom: var(--space-block);
   box-shadow: var(--shadow-1);
 }
-.row { display: flex; gap: var(--space-block); align-items: baseline; flex-wrap: wrap; }
+/* Centred, not baseline: a row here is nearly always a heading or a text
+   beside controls of differing heights (a 23px pill, a 36px button), and
+   baseline puts each one's text on a line while their boxes sit at three
+   different heights. Centre lines agree; baselines only look like they do
+   when every neighbour is the same size. `.row.top` is for a row whose first
+   child is a multi-line block the controls should sit at the top of. */
+.row { display: flex; gap: var(--space-block); align-items: center; flex-wrap: wrap; }
+.row.top { align-items: flex-start; }
+.row > h1, .row > h2, .row > h3 { margin: 0; }
 .stack { display: grid; gap: var(--space-block); }
 
 .stat-row {
@@ -636,7 +661,14 @@ input, textarea, select {
 .empty p { max-width: 46ch; margin: 0 auto var(--space-block); color: var(--text-muted); }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: var(--row-y) 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+/* Middle, not top: a row that holds a 36px button beside one line of text
+   would otherwise put the text seven pixels above the button's centre. A cell
+   whose content is deliberately stacked (title over a description) still
+   reads correctly centred against its neighbours' controls. */
+th, td { text-align: left; padding: var(--row-y) 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+/* Controls in a cell sit in a row of their own, never on the cell itself —
+   a `display: flex` cell stops being a table cell. */
+td > .row { gap: calc(var(--step) * 1.5); flex-wrap: nowrap; }
 th { font-weight: 500; }
 tbody tr:hover { background: var(--surface); }
 
@@ -646,8 +678,10 @@ tbody tr:hover { background: var(--surface); }
    width of the card. Harmless everywhere else: the property does nothing
    outside a grid or flex parent. */
 .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
-        border: 1px solid currentColor; letter-spacing: 0.03em;
-        justify-self: start; align-self: start; }
+        border: 1px solid currentColor; letter-spacing: 0.03em; line-height: 1.5;
+        justify-self: start; align-self: center; }
+/* A status `<select>` dressed as a pill stays pill-sized, not control-sized. */
+select.pill { min-height: 0; width: auto; padding: 2px 24px 2px 8px; background-color: transparent; }
 .Blocker, .blocker, .err { color: var(--error); }
 .Major, .major { color: var(--warning); }
 .Minor, .minor, .Nitpick, .nitpick { color: var(--text-muted); }
@@ -753,6 +787,10 @@ tbody tr:hover { background: var(--surface); }
 /* A link that is a direct child of a stack would otherwise be stretched by the
    grid and read as centred. */
 .stack > .link { justify-self: start; }
+/* A grid stretches its items, so a button dropped straight into a stack
+   became as wide as the card — a full-width bar for "Change password". A
+   button is the width of its label; a bar is a different thing. */
+.stack > button, .stack > a > button { justify-self: start; }
 
 /* A radio and its explanation. `.row` cannot do this: the explanation is a
    block, so it takes the full line and pushes the control onto its own row —
@@ -984,9 +1022,12 @@ button.choice.chosen {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 9px 14px;
+  padding: 0 14px;
+  min-height: var(--control);
+  font-weight: 400;
   color: var(--text-muted);
   text-align: left;
+  justify-content: flex-start;
 }
 .header-search:hover:not([disabled]) { border-color: var(--border-strong); color: var(--text-primary); }
 .header-search-glyph { color: var(--text-muted); }
@@ -998,7 +1039,7 @@ button.choice.chosen {
 .header-icon-button {
   display: grid;
   place-items: center;
-  width: 34px; height: 34px; min-height: 34px; padding: 0;
+  width: var(--control); height: var(--control); min-height: var(--control); padding: 0;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--surface-elevated);
@@ -1023,7 +1064,7 @@ button.choice.chosen {
 .header-role { font-size: 12px; }
 
 .avatar {
-  width: 34px; height: 34px;
+  width: var(--control); height: var(--control);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -1068,6 +1109,12 @@ button.choice.chosen {
   margin-bottom: -1px;
   color: var(--text-muted);
   font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  /* A tab is a `<button>` on one screen and an `<a>` on another; the reset
+     keeps the two the same height. */
+  min-height: 0;
+  display: inline-flex;
   border-bottom: 2px solid transparent;
   text-decoration: none;
 }

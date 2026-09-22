@@ -54,11 +54,11 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
                  aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
         </td>
         <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
-        <td colSpan={2} className="row" style={{ gap: 6 }}>
+        <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!title.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -86,10 +86,10 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
           <option value="completed">Completed</option>
         </select>
       </td>
-      <td className="row" style={{ gap: 6 }}>
+      <td><div className="row">
         <button type="button" onClick={() => setEditing(true)}>Edit</button>
         <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
-      </td>
+      </div></td>
     </tr>
   );
 }

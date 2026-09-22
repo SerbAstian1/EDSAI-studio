@@ -77,11 +77,11 @@ function KeyRow({ clientId, keyRecord, onChanged }: {
         <td colSpan={2} className="row">
           <input value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Given to" />
         </td>
-        <td colSpan={2} className="row" style={{ gap: 6 }}>
+        <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!label.trim() || rename.isPending}
                   onClick={() => rename.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -95,10 +95,10 @@ function KeyRow({ clientId, keyRecord, onChanged }: {
           : 'Everything approved'}
       </td>
       <td className="muted" data-label="Use">{describeKey(keyRecord)}</td>
-      <td className="row" style={{ gap: 6 }}>
+      <td><div className="row">
         <button type="button" onClick={() => setEditing(true)}>Rename</button>
         <button type="button" disabled={revoke.isPending} onClick={onRevoke}>Revoke</button>
-      </td>
+      </div></td>
     </tr>
   );
 }

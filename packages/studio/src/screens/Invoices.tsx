@@ -47,11 +47,11 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
                    aria-label="Description" /></td>
         <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
         <td className="mono muted">{formatCents(invoice.amountCents, invoice.currency)}</td>
-        <td colSpan={2} className="row" style={{ gap: 6 }}>
+        <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!description.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -63,7 +63,7 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
       <td className="muted">{invoice.dueDate}</td>
       <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
       <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
-      <td className="row" style={{ gap: 6 }}>
+      <td><div className="row">
         <button type="button" onClick={() => setPaid.mutate(!invoice.paid)}>
           {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
         </button>
@@ -72,7 +72,7 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
           <button type="button">View</button>
         </a>
         <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
-      </td>
+      </div></td>
     </tr>
   );
 }

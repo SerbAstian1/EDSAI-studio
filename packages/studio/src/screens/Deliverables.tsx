@@ -79,11 +79,11 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
         </td>
         <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
         <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
-        <td colSpan={2} className="row" style={{ gap: 6 }}>
+        <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!title.trim() || !figmaOk || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -112,7 +112,7 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
             <option value="delivered">Delivered</option>
           </select>
         </td>
-        <td className="row" style={{ gap: 6 }}>
+        <td><div className="row">
           {d.figmaUrl && (
             <button type="button" onClick={() => setPreviewing((p) => !p)}
                     aria-expanded={previewing} aria-label={previewing ? 'Hide preview' : 'Preview'}>
@@ -129,7 +129,7 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
                   aria-label={`Remove ${d.title}`}>
             <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
-        </td>
+        </div></td>
       </tr>
       {previewing && d.figmaUrl && (
         <tr>

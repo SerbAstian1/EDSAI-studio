@@ -222,11 +222,11 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
             decides
           </label>
         </td>
-        <td className="row" style={{ gap: 6 }}>
+        <td><div className="row">
           <button type="button" className="primary" disabled={!name.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -237,10 +237,10 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
       <td className="muted">{contact.title ?? '—'}</td>
       <td className="muted">{contact.email ?? '—'}</td>
       <td>{contact.decisionMaker ? <span className="pill pass">yes</span> : ''}</td>
-      <td className="row" style={{ gap: 6 }}>
+      <td><div className="row">
         <button type="button" onClick={() => setEditing(true)}>Edit</button>
         <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
-      </td>
+      </div></td>
     </tr>
   );
 }
@@ -292,11 +292,11 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
           <input value={figmaUrl} onChange={(e) => setFigmaUrl(e.target.value)}
                  aria-label="Figma file" placeholder="https://figma.com/file/…" />
         </td>
-        <td className="row" style={{ gap: 6 }}>
+        <td><div className="row">
           <button type="button" className="primary" disabled={!name.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
