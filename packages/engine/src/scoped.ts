@@ -11,6 +11,7 @@ import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 import type { Deliverable } from './deliverables.js';
 import type { ClientDocument } from './documents.js';
+import { hubEnabled, type BrandHub, type BrandProject } from './brand-hub.js';
 import type { Milestone } from './milestones.js';
 import type { Invoice } from './invoices.js';
 import type { Message } from './messages.js';
@@ -289,6 +290,55 @@ export class ScopedStore {
     if (!existing) return;
     this.mustWrite('deliverable', existing.clientId);
     this.store.deleteDeliverable(id);
+  }
+
+  /* --------------------------------------------------------------- brand hub */
+
+  /**
+   * A portal reads its hub only while it is active — a draft or suspended
+   * hub is the studio's business and reads as "no hub" from outside, which
+   * is also what a client who never bought one sees.
+   */
+  getBrandHub(clientId: string): BrandHub | undefined {
+    if (!this.mayRead('brand-hub', clientId)) return undefined;
+    const hub = this.store.getBrandHub(clientId);
+    if (this.principal.kind === 'portal' && !hubEnabled(hub)) return undefined;
+    return hub;
+  }
+
+  saveBrandHub(hub: BrandHub): void {
+    this.mustWrite('brand-hub', hub.clientId);
+    this.store.saveBrandHub(hub);
+  }
+
+  /** Projects exist only inside an enabled hub, on both sides. */
+  listBrandProjects(clientId: string): BrandProject[] {
+    if (!this.mayRead('brand-project', clientId)) return [];
+    if (!this.getBrandHub(clientId)) return [];
+    return this.store.listBrandProjects(clientId);
+  }
+
+  getBrandProject(id: string): BrandProject | undefined {
+    const project = this.store.getBrandProject(id);
+    if (!project || !this.mayRead('brand-project', project.clientId)) return undefined;
+    if (!this.getBrandHub(project.clientId)) return undefined;
+    return project;
+  }
+
+  saveBrandProject(project: BrandProject): void {
+    this.mustWrite('brand-project', project.clientId);
+    if (!this.getBrandHub(project.clientId)) {
+      throw new Forbidden('write', { kind: 'brand-project', clientId: project.clientId },
+        'this client has no active Brand Hub, so nothing can be made in one');
+    }
+    this.store.saveBrandProject(project);
+  }
+
+  deleteBrandProject(id: string): void {
+    const existing = this.store.getBrandProject(id);
+    if (!existing) return;
+    this.mustWrite('brand-project', existing.clientId);
+    this.store.deleteBrandProject(id);
   }
 
   /* --------------------------------------------------------------- documents */

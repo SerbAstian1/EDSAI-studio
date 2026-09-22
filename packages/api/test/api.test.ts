@@ -2297,3 +2297,157 @@ describe('support notes', () => {
     cookie = saved;
   });
 });
+
+describe('the Brand Hub, over the wire', () => {
+  const client = async (name: string) => {
+    const { body } = await json('/api/clients', { method: 'POST', body: JSON.stringify({ name }) });
+    return body['id'] as unknown as string;
+  };
+  const enter = async (token: string): Promise<string> => {
+    const res = await fetch(`${base}/api/portal/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    });
+    expect(res.status).toBe(200);
+    return (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  };
+  const portalCookie = async (clientId: string, role = 'editor'): Promise<string> => {
+    const { body } = await json(`/api/clients/${clientId}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', role }),
+    });
+    return enter((body['link'] as unknown as { token: string }).token);
+  };
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64',
+  );
+  const approvedPattern = async (clientId: string): Promise<string> => {
+    const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST', headers: { cookie, 'content-type': 'image/png', 'x-filename': 'dot.png' }, body: png,
+    });
+    const asset = (await res.json() as { asset: { id: string } }).asset;
+    await json(`/api/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ kind: 'pattern', approved: true }) });
+    return asset.id;
+  };
+  const configuration = (assetId: string) => ({
+    assetId, scale: 120, spacing: 10, rotation: 15, opacity: 0.9, tint: '#eb5e28',
+    background: '#14161a', offsetX: 0, offsetY: 0,
+  });
+
+  it('is off for every client until the studio sets it up', async () => {
+    const id = await client('Plain Co');
+    const { body } = await json(`/api/clients/${id}/brand-hub`);
+    expect(body['enabled']).toBe(false);
+    expect(body['hub']).toBeUndefined();
+    // A portal for that client is told nothing more than "no".
+    const saved = cookie;
+    cookie = await portalCookie(id);
+    const seen = await json(`/api/clients/${id}/brand-hub`);
+    expect(seen.body).toMatchObject({ enabled: false, tools: [] });
+    cookie = saved;
+  });
+
+  it('only the studio switches it on, and only built tools can be offered', async () => {
+    const id = await client('Hub Co');
+    const saved = cookie;
+    cookie = await portalCookie(id);
+    const refused = await json(`/api/clients/${id}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) });
+    expect(refused.status).toBe(403);
+    cookie = saved;
+    const { body } = await json(`/api/clients/${id}/brand-hub`, {
+      method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio', 'poster', 'nonsense'] }),
+    });
+    expect(body['enabled']).toBe(true);
+    expect((body['hub'] as unknown as { tools: string[] }).tools).toEqual(['pattern-studio', 'poster']);
+  });
+
+  it('lets a client save, reopen and delete a design, and never another client’s', async () => {
+    const a = await client('Maker Co');
+    const b = await client('Other Co');
+    const pattern = await approvedPattern(a);
+    const foreign = await approvedPattern(b);
+    await json(`/api/clients/${a}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio'] }) });
+    await json(`/api/clients/${b}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio'] }) });
+
+    const saved = cookie;
+    cookie = await portalCookie(a);
+    const created = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'pattern-studio', name: 'Wrap', configuration: configuration(pattern) }),
+    });
+    expect(created.status).toBe(201);
+    const project = created.body['project'] as unknown as { id: string; configuration: { rotation: number } };
+    expect(project.configuration.rotation).toBe(15);
+
+    // A design may not point at another client's file, even an approved one.
+    const stolen = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'pattern-studio', name: 'Theirs', configuration: configuration(foreign) }),
+    });
+    expect(stolen.status).toBe(400);
+
+    // The other client sees nothing of it. (Keys are issued by the studio.)
+    cookie = saved;
+    cookie = await portalCookie(b);
+    expect((await json(`/api/clients/${a}/brand-projects`)).status).toBe(404);
+    expect((await json(`/api/brand-projects/${project.id}`, { method: 'PUT', body: JSON.stringify({ name: 'Mine now' }) })).status).toBe(404);
+    expect((await json(`/api/brand-projects/${project.id}`, { method: 'DELETE' })).status).toBe(404);
+
+    // Back as the owner: reopen, edit, delete.
+    cookie = saved;
+    cookie = await portalCookie(a);
+    const list = await json(`/api/clients/${a}/brand-projects`);
+    expect((list.body['projects'] as unknown as unknown[]).length).toBe(1);
+    const edited = await json(`/api/brand-projects/${project.id}`, {
+      method: 'PUT', body: JSON.stringify({ configuration: { ...configuration(pattern), rotation: 45 } }),
+    });
+    expect((edited.body['project'] as unknown as { configuration: { rotation: number } }).configuration.rotation).toBe(45);
+    expect((await json(`/api/brand-projects/${project.id}`, { method: 'DELETE' })).status).toBe(200);
+    cookie = saved;
+  });
+
+  it('checks every file a scene or a post refers to, not just the first', async () => {
+    const a = await client('Scene Co');
+    const b = await client('Elsewhere Co');
+    const mine = await approvedPattern(a);
+    const theirs = await approvedPattern(b);
+    await json(`/api/clients/${a}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['illustration-builder', 'social-post'] }) });
+    const saved = cookie;
+    cookie = await portalCookie(a);
+    const layer = (assetId: string) => ({ assetId, x: 0.5, y: 0.5, scale: 1, rotation: 0, flip: false, tint: '' });
+    const ok = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'illustration-builder', name: 'Scene',
+        configuration: { background: '#ffffff', layers: [layer(mine), layer(mine)] } }),
+    });
+    expect(ok.status).toBe(201);
+    const smuggled = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'illustration-builder', name: 'Scene',
+        configuration: { background: '#ffffff', layers: [layer(mine), layer(theirs)] } }),
+    });
+    expect(smuggled.status).toBe(400);
+    const post = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'social-post', name: 'Post', configuration: {
+        templateAssetId: '', photoAssetId: theirs, logoAssetId: '', headline: 'Hi', body: '', cta: '',
+        layout: 'bottom', align: 'left', logoCorner: 'none', background: '#ffffff', textColor: '#000000',
+        accent: '#eb5e28', scrim: 0.3 } }),
+    });
+    expect(post.status).toBe(400);
+    // A tool the hub does not offer is refused even though it exists.
+    const notOffered = await json(`/api/clients/${a}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'poster', name: 'P', configuration: {} }),
+    });
+    expect(notOffered.status).toBe(400);
+    cookie = saved;
+  });
+
+  it('closes the tools the moment the hub is suspended', async () => {
+    const id = await client('Paused Co');
+    const pattern = await approvedPattern(id);
+    await json(`/api/clients/${id}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio'] }) });
+    await json(`/api/clients/${id}/brand-hub`, { method: 'PUT', body: JSON.stringify({ status: 'suspended' }) });
+    const saved = cookie;
+    cookie = await portalCookie(id);
+    expect((await json(`/api/clients/${id}/brand-hub`)).body['enabled']).toBe(false);
+    const refused = await json(`/api/clients/${id}/brand-projects`, {
+      method: 'POST', body: JSON.stringify({ toolId: 'pattern-studio', name: 'Wrap', configuration: configuration(pattern) }),
+    });
+    expect(refused.status).toBe(404);
+    cookie = saved;
+  });
+});

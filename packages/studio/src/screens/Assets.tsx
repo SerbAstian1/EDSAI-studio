@@ -30,6 +30,7 @@ import OverflowMenu from '../components/OverflowMenu.js';
 
 const KIND_GLYPH: Record<Asset['kind'], string> = {
   logo: '✦', photography: '◫', video: '▷', font: 'Aa', icon: '◆', illustration: '✎',
+  pattern: '▩', texture: '▨', guideline: '▥',
   document: '▤', presentation: '▦', template: '▧', other: '◇',
 };
 

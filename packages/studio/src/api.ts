@@ -262,6 +262,54 @@ export interface DiscoveryForm {
   };
 }
 
+/* ------------------------------------------------------------- brand hub */
+
+export type BrandHubStatus = 'draft' | 'active' | 'suspended' | 'archived';
+
+export interface BrandTool {
+  id: string;
+  name: string;
+  description: string;
+  /** Built and switchable; false for a tool that is named but not yet made. */
+  available: boolean;
+  exports: readonly string[];
+  /** Switched on for this client's hub. */
+  enabled: boolean;
+}
+
+export interface BrandHubView {
+  enabled: boolean;
+  hub?: { clientId: string; status: BrandHubStatus; tools: string[]; createdAt: string; updatedAt: string };
+  tools: BrandTool[];
+  /** Studio only: what the hub has to work with. */
+  approvedAssets?: number;
+  brandValues?: number;
+}
+
+export interface BrandProject {
+  id: string;
+  clientId: string;
+  toolId: string;
+  name: string;
+  configuration: Record<string, unknown>;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What Pattern Studio saves and reopens. */
+export interface PatternConfiguration {
+  assetId: string;
+  scale: number;
+  spacing: number;
+  rotation: number;
+  opacity: number;
+  tint: string;
+  background: string;
+  offsetX: number;
+  offsetY: number;
+}
+
 /** One of the eight fixed document slots, held or empty. */
 export interface ClientDocument {
   slot: string;
@@ -321,6 +369,7 @@ export interface Asset {
   digest: string;
   filename: string;
   kind: 'logo' | 'photography' | 'video' | 'font' | 'icon' | 'illustration'
+    | 'pattern' | 'texture' | 'guideline'
     | 'document' | 'presentation' | 'template' | 'other';
   contentType: string;
   bytes: number;
@@ -622,6 +671,24 @@ export const api = {
   revokePortalKey: (clientId: string, keyId: string) =>
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
+
+  brandHub: (clientId: string) => call<BrandHubView>(`/api/clients/${clientId}/brand-hub`),
+  setBrandHub: (clientId: string, input: { status?: BrandHubStatus; tools?: string[] }) =>
+    call<{ hub: BrandHubView['hub']; enabled: boolean }>(`/api/clients/${clientId}/brand-hub`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  brandProjects: (clientId: string) =>
+    call<{ projects: BrandProject[] }>(`/api/clients/${clientId}/brand-projects`).then((r) => r.projects),
+  createBrandProject: (clientId: string, input: { toolId: string; name: string; configuration: unknown }) =>
+    call<{ project: BrandProject }>(`/api/clients/${clientId}/brand-projects`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.project),
+  updateBrandProject: (id: string, input: { name?: string; configuration?: unknown }) =>
+    call<{ project: BrandProject }>(`/api/brand-projects/${id}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }).then((r) => r.project),
+  deleteBrandProject: (id: string) =>
+    call<{ removed: string }>(`/api/brand-projects/${id}`, { method: 'DELETE' }),
 
   documents: (clientId: string) =>
     call<{ documents: ClientDocument[] }>(`/api/clients/${clientId}/documents`).then((r) => r.documents),

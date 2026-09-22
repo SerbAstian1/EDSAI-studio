@@ -28,6 +28,7 @@ import { z } from 'zod';
 
 export const AssetKind = z.enum([
   'logo', 'photography', 'video', 'font', 'icon', 'illustration',
+  'pattern', 'texture', 'guideline',
   'document', 'presentation', 'template', 'other',
 ]);
 export type AssetKind = z.infer<typeof AssetKind>;

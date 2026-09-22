@@ -22,6 +22,8 @@ import {
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   orderMilestones, invoiceStatus, invoiceTotals, isFigmaUrl,
   DOCUMENT_SLOTS, isDocumentSlot, type ClientDocument,
+  BRAND_TOOLS, BrandHubStatus, assetsInConfiguration, hubEnabled, isBrandToolId,
+  type BrandHub, type BrandProject, type BrandToolId,
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
   type Deliverable, type Milestone, type Invoice, type Message, type Feedback,
@@ -469,6 +471,42 @@ export class ApiServer {
   private invited(token: string): Onboarding | undefined {
     const onboardingId = this.store.getInvited(digestToken(token));
     return onboardingId ? this.store.getOnboarding(onboardingId) : undefined;
+  }
+
+  /**
+   * Whether a design may be saved: the hub is active, the tool is one this
+   * hub offers and one that exists, the name is there, and the configuration
+   * is the tool's own shape pointing only at assets this session may see.
+   * Checked on both create and update, because a project edited to point at
+   * another client's asset is the same leak as one created that way.
+   */
+  private checkBrandProject(
+    scoped: ScopedStore, clientId: string,
+    input: { toolId?: string; name?: string; configuration?: unknown },
+  ): { status: number; body: unknown } | undefined {
+    const hub = scoped.getBrandHub(clientId);
+    if (!hubEnabled(hub)) {
+      return { status: 404, body: { error: 'not_found', message: 'This client has no active Brand Hub.' } };
+    }
+    const toolId = input.toolId ?? '';
+    const tool = BRAND_TOOLS.find((t) => t.id === toolId);
+    if (!tool || !tool.available || !hub?.tools.includes(tool.id)) {
+      return { status: 400, body: { error: 'bad_request', message: 'That tool is not offered in this Brand Hub.' } };
+    }
+    if (!(input.name ?? '').trim()) {
+      return { status: 400, body: { error: 'bad_request', message: 'A design needs a name.' } };
+    }
+    const referenced = assetsInConfiguration(tool.id, input.configuration);
+    if (!referenced) {
+      return { status: 400, body: { error: 'bad_request', message: `That is not a ${tool.name} configuration.` } };
+    }
+    for (const assetId of referenced) {
+      const asset = scoped.getAsset(assetId);
+      if (!asset || asset.clientId !== clientId || !asset.approved) {
+        return { status: 400, body: { error: 'bad_request', message: 'Every file in a design must be one of this client’s approved files.' } };
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -1824,6 +1862,150 @@ export class ApiServer {
           }
           scoped.deleteDocument(clientId, slot);
           send(res, 200, { removed: slot });
+        },
+      },
+
+      /* ----------------------------------------------------------- brand hub */
+
+      /**
+       * The hub as whoever is asking may see it. A studio session gets the
+       * record whatever its status, plus every tool with whether it is built;
+       * a portal session gets `enabled: false` and nothing else unless the
+       * hub is active, and then only the tools switched on for it.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-hub$/,
+        run: ({ res, params, scoped, principal }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const hub = scoped.getBrandHub(clientId);
+          const enabled = hubEnabled(hub);
+          const tools = BRAND_TOOLS
+            .filter((t) => principal?.kind !== 'portal' || (t.available && hub?.tools.includes(t.id)))
+            .map((t) => ({
+              id: t.id, name: t.name, description: t.description, available: t.available,
+              exports: t.exports, enabled: Boolean(hub?.tools.includes(t.id)),
+            }));
+          send(res, 200, {
+            enabled,
+            ...(hub ? { hub } : {}),
+            tools,
+            // What the hub has to work with, so the studio can see at a
+            // glance whether switching it on would show the client anything.
+            ...(principal?.kind !== 'portal' ? {
+              approvedAssets: this.store.listAssets(clientId).filter((a) => a.approved).length,
+              brandValues: this.store.listBrandValues(clientId).length,
+            } : {}),
+          });
+        },
+      },
+
+      {
+        method: 'PUT', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-hub$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { status?: string; tools?: unknown };
+          const existing = this.store.getBrandHub(clientId);
+          const status = input?.status ?? existing?.status ?? 'draft';
+          if (!BrandHubStatus.safeParse(status).success) {
+            send(res, 400, { error: 'bad_request', message: 'That is not a Brand Hub status.' });
+            return;
+          }
+          // Only tools that exist can be switched on; a tool that is named
+          // but not built is shown to the studio, never given to a client.
+          const tools = Array.isArray(input?.tools)
+            ? input.tools.filter((t): t is BrandToolId => typeof t === 'string' && isBrandToolId(t)
+                && BRAND_TOOLS.some((b) => b.id === t && b.available))
+            : existing?.tools ?? [];
+          const now = new Date().toISOString();
+          const hub: BrandHub = {
+            clientId, status: status as BrandHubStatus, tools: [...new Set(tools)],
+            createdAt: existing?.createdAt ?? now, updatedAt: now,
+          };
+          scoped.saveBrandHub(hub);
+          send(res, 200, { hub, enabled: hubEnabled(hub) });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-projects$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { projects: scoped.listBrandProjects(clientId) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-projects$/,
+        run: ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
+          const clientId = params['clientId'] ?? '';
+          const input = body as { toolId?: string; name?: string; configuration?: unknown };
+          const refused = this.checkBrandProject(scoped, clientId, input);
+          if (refused) { send(res, refused.status, refused.body); return; }
+          const now = new Date().toISOString();
+          const project: BrandProject = {
+            id: newId('design'), clientId, toolId: input.toolId as BrandToolId,
+            name: (input.name ?? '').trim().slice(0, 120),
+            configuration: input.configuration as Record<string, unknown>,
+            createdBy: principal.userId, createdAt: now, updatedAt: now,
+          };
+          scoped.saveBrandProject(project);
+          send(res, 201, { project });
+        },
+      },
+
+      {
+        method: 'PUT', pattern: /^\/api\/brand-projects\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getBrandProject(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such design for this session.' });
+            return;
+          }
+          const input = body as { name?: string; configuration?: unknown };
+          const refused = this.checkBrandProject(scoped, existing.clientId, {
+            toolId: existing.toolId,
+            name: input?.name ?? existing.name,
+            configuration: input?.configuration ?? existing.configuration,
+          });
+          if (refused) { send(res, refused.status, refused.body); return; }
+          const project: BrandProject = {
+            ...existing,
+            name: (input?.name ?? existing.name).trim().slice(0, 120),
+            configuration: (input?.configuration ?? existing.configuration) as Record<string, unknown>,
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveBrandProject(project);
+          send(res, 200, { project });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/brand-projects\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          if (!scoped.getBrandProject(params['id'] ?? '')) {
+            send(res, 404, { error: 'not_found', message: 'No such design for this session.' });
+            return;
+          }
+          scoped.deleteBrandProject(params['id'] ?? '');
+          send(res, 200, { removed: params['id'] ?? '' });
         },
       },
 

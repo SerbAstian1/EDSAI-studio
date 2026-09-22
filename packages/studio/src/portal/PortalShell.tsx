@@ -1,5 +1,7 @@
 import { useState, type ReactElement } from 'react';
-import type { Client } from '../api.js';
+import { useQuery } from '@tanstack/react-query';
+import { api, type Client } from '../api.js';
+import BrandHubSection from './sections/BrandHub.js';
 import DocumentsSection from './sections/Documents.js';
 import DeliverablesSection from './sections/Deliverables.js';
 import TimelineSection from './sections/Timeline.js';
@@ -31,10 +33,19 @@ const SECTIONS: Section[] = [
   { id: 'messages', label: 'Messages', render: (p) => <MessagesSection {...p} /> },
 ];
 
+/** The one section that exists only for a client who has it. */
+const BRAND_HUB: Section = {
+  id: 'brand-hub', label: 'Brand Hub', render: (p) => <BrandHubSection {...p} />,
+};
+
 export function PortalShell({ client, role }: { client: Client; role: string }): ReactElement {
   const [active, setActive] = useState(SECTIONS[0]?.id ?? 'deliverables');
-  const index = SECTIONS.findIndex((s) => s.id === active);
-  const section = SECTIONS[index] ?? SECTIONS[0];
+  // Asked once, here: the server says `enabled: false` unless the hub is
+  // active, so a client without one never sees the room at all.
+  const hub = useQuery({ queryKey: ['brand-hub', client.id], queryFn: () => api.brandHub(client.id) });
+  const sections = hub.data?.enabled ? [...SECTIONS, BRAND_HUB] : SECTIONS;
+  const index = sections.findIndex((s) => s.id === active);
+  const section = sections[index] ?? sections[0];
   // `limited` never reaches this shell in practice (its links open the file
   // library directly), but the check costs nothing and keeps every section's
   // write controls honest about what the session in front of it can do.
@@ -51,7 +62,7 @@ export function PortalShell({ client, role }: { client: Client; role: string }):
         </div>
 
         <nav className="portal-nav" aria-label="Portal sections">
-          {SECTIONS.map((s, i) => (
+          {sections.map((s, i) => (
             <button
               key={s.id}
               type="button"

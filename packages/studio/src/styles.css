@@ -1405,6 +1405,149 @@ button.choice.chosen {
   box-shadow: var(--shadow-1);
 }
 
+/* — brand hub ———————————————————————————————————————————————————— */
+
+.hub-hero { display: flex; align-items: center; gap: calc(var(--step) * 5); }
+.hub-logo {
+  width: 72px; height: 72px; object-fit: contain; flex: none;
+  padding: calc(var(--step) * 2);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+.hub-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: calc(var(--step) * 3); }
+.hub-swatch {
+  display: grid; gap: calc(var(--step) * 1);
+  padding: calc(var(--step) * 3);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  font-size: var(--text-sm);
+}
+.hub-swatch i { display: block; height: 64px; border-radius: var(--radius); border: 1px solid rgba(20,22,26,0.08); margin-bottom: calc(var(--step) * 1); }
+.hub-type { display: grid; gap: calc(var(--step) * 3); }
+.hub-type-sample {
+  display: grid; gap: 2px;
+  padding: calc(var(--step) * 4);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+}
+.hub-type-specimen { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: calc(var(--step) * 2); }
+.facts-row { display: contents; }
+.hub-assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: calc(var(--step) * 3); }
+.hub-asset {
+  display: grid; gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 2);
+  min-height: 0;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  text-align: left;
+  font-weight: 400;
+  justify-items: stretch;
+}
+.hub-asset:hover:not([disabled]) { box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.hub-asset-thumb {
+  display: grid; place-items: center;
+  aspect-ratio: 1; border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-muted);
+  overflow: hidden;
+}
+.hub-asset-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.hub-asset-name { font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* — pattern studio ———————————————————————————————————————————————— */
+
+/* The canvas takes the room; the dials sit beside it in one column. Below
+   ~900px they stack, canvas first, because the picture is the point. */
+.pattern-studio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-block);
+  align-items: start;
+}
+@media (max-width: 900px) { .pattern-studio { grid-template-columns: 1fr; } }
+.pattern-preview { display: grid; gap: calc(var(--step) * 3); }
+.pattern-canvas {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.pattern-canvas svg { display: block; width: 100%; height: 100%; }
+.pattern-controls {
+  padding: calc(var(--step) * 4);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  gap: calc(var(--step) * 4);
+}
+.dial { display: grid; gap: calc(var(--step) * 1.5); }
+.dial input[type="range"] { width: 100%; min-height: 0; padding: 0; accent-color: var(--accent); }
+.pattern-picker { display: flex; flex-wrap: wrap; gap: calc(var(--step) * 2); }
+.pattern-thumb {
+  width: 56px; height: 56px; min-height: 0; padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.pattern-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.pattern-thumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.swatch-row { display: flex; flex-wrap: wrap; gap: calc(var(--step) * 2); }
+.swatch-pick {
+  display: grid; justify-items: center; gap: 4px;
+  min-height: 0; padding: 4px; width: 56px;
+  background: transparent; border-color: transparent; box-shadow: none;
+  font-size: 10px; color: var(--text-muted); font-weight: 400;
+}
+.swatch-pick i { display: block; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(20,22,26,0.12); }
+.swatch-pick.none i, .swatch-pick.none::before {
+  content: ""; display: block; width: 28px; height: 28px; border-radius: 50%;
+  border: 1px dashed var(--border-strong);
+}
+.swatch-pick.on { color: var(--text-primary); }
+.swatch-pick.on i, .swatch-pick.none.on::before { box-shadow: 0 0 0 2px var(--surface-elevated), 0 0 0 4px var(--accent); }
+.swatch-pick-label { max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pattern-thumb { position: relative; }
+.pattern-thumb.none { display: grid; place-items: center; }
+.pattern-thumb-plus {
+  position: absolute; right: 2px; bottom: 2px;
+  width: 16px; height: 16px; padding: 2px;
+  border-radius: 50%; background: var(--accent); color: var(--accent-on);
+}
+
+/* One of a few choices — top / centre / bottom, left / centred. */
+.segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; background: var(--surface); border-radius: var(--radius); }
+.segmented button {
+  flex: 1 1 auto; min-height: 28px; padding: 0 8px;
+  background: transparent; border-color: transparent; box-shadow: none;
+  font-size: var(--text-xs); font-weight: 500; color: var(--text-muted);
+}
+.segmented button.on { background: var(--surface-elevated); color: var(--text-primary); box-shadow: var(--shadow-1); }
+
+/* The scene's parts, in draw order. */
+.layer-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.layer-list li {
+  display: flex; align-items: center; gap: calc(var(--step) * 2);
+  padding: 2px 4px; border-radius: var(--radius);
+}
+.layer-list li.on { background: var(--surface); }
+.layer-pick {
+  flex: 1; min-height: 32px; padding: 2px 6px; justify-content: flex-start;
+  background: transparent; border-color: transparent; box-shadow: none; font-weight: 400; text-align: left;
+}
+.layer-pick img { width: 24px; height: 24px; object-fit: contain; }
+.layer-pick[aria-pressed="true"] { font-weight: 600; }
+
 /* — figma embed —————————————————————————————————————————————————— */
 
 /* Recessed, not raised: an embedded document sits *in* the page the way a

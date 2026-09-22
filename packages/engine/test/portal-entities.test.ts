@@ -6,6 +6,7 @@ import { invoiceStatus, invoiceTotals, type Invoice } from '../src/invoices.js';
 import { orderMilestones, type Milestone } from '../src/milestones.js';
 import type { Client } from '../src/entities.js';
 import { isFigmaUrl, type Deliverable } from '../src/deliverables.js';
+import type { BrandHub, BrandProject } from '../src/brand-hub.js';
 import type { Message } from '../src/messages.js';
 import type { Feedback } from '../src/feedback.js';
 
@@ -297,5 +298,77 @@ describe('messages and feedback are two-way', () => {
     expect(() => asStudio.respondToFeedback({ ...feedback, response: 'Thanks!' }))
       .not.toThrow();
     expect(store.getFeedback('f1')?.response).toBe('Thanks!');
+  });
+});
+
+describe('the Brand Hub is optional, and a client’s own', () => {
+  const hub = (clientId: string, status: 'draft' | 'active' | 'suspended' | 'archived'): BrandHub => ({
+    clientId, status, tools: ['pattern-studio'], createdAt: NOW, updatedAt: NOW,
+  });
+  const design = (clientId: string, id = 'd1'): BrandProject => ({
+    id, clientId, toolId: 'pattern-studio', name: 'Wrap', configuration: { scale: 100 },
+    createdBy: 'p2', createdAt: NOW, updatedAt: NOW,
+  });
+
+  it('does not exist for a client nobody set it up for', () => {
+    const store = fixture();
+    expect(store.getBrandHub('acme')).toBeUndefined();
+    expect(new ScopedStore(store, acmeViewer).getBrandHub('acme')).toBeUndefined();
+    expect(new ScopedStore(store, acmeViewer).listBrandProjects('acme')).toEqual([]);
+  });
+
+  it('is invisible to the client until it is active, and visible to the studio throughout', () => {
+    const store = fixture();
+    for (const status of ['draft', 'suspended', 'archived'] as const) {
+      store.saveBrandHub(hub('acme', status));
+      expect(new ScopedStore(store, acmeViewer).getBrandHub('acme')).toBeUndefined();
+      expect(new ScopedStore(store, studio).getBrandHub('acme')?.status).toBe(status);
+    }
+    store.saveBrandHub(hub('acme', 'active'));
+    expect(new ScopedStore(store, acmeViewer).getBrandHub('acme')?.status).toBe('active');
+  });
+
+  it('only the studio switches a hub on', () => {
+    const store = fixture();
+    expect(() => new ScopedStore(store, acmeEditor).saveBrandHub(hub('acme', 'active'))).toThrow(Forbidden);
+    expect(() => new ScopedStore(store, studio).saveBrandHub(hub('acme', 'active'))).not.toThrow();
+  });
+
+  it('a client editor saves designs inside an active hub, a viewer only looks', () => {
+    const store = fixture();
+    store.saveBrandHub(hub('acme', 'active'));
+    expect(() => new ScopedStore(store, acmeEditor).saveBrandProject(design('acme'))).not.toThrow();
+    expect(new ScopedStore(store, acmeViewer).listBrandProjects('acme')).toHaveLength(1);
+    expect(() => new ScopedStore(store, acmeViewer).saveBrandProject(design('acme', 'd2'))).toThrow(Forbidden);
+  });
+
+  it('nothing can be made in a hub that is not active', () => {
+    const store = fixture();
+    store.saveBrandHub(hub('acme', 'suspended'));
+    expect(() => new ScopedStore(store, acmeEditor).saveBrandProject(design('acme'))).toThrow(Forbidden);
+  });
+
+  it('one client’s designs never reach another client', () => {
+    const store = fixture();
+    store.saveBrandHub(hub('acme', 'active'));
+    store.saveBrandHub(hub('morrow', 'active'));
+    new ScopedStore(store, acmeEditor).saveBrandProject(design('acme'));
+    const morrow = new ScopedStore(store, morrowEditor);
+    expect(morrow.listBrandProjects('acme')).toEqual([]);
+    expect(morrow.getBrandProject('d1')).toBeUndefined();
+    expect(() => morrow.saveBrandProject({ ...design('acme'), name: 'Taken' })).toThrow(Forbidden);
+    expect(() => morrow.deleteBrandProject('d1')).toThrow(Forbidden);
+    expect(store.getBrandProject('d1')).toBeDefined();
+  });
+
+  it('keeps the configuration, not a picture, so a design reopens as it was left', () => {
+    const store = fixture();
+    store.saveBrandHub(hub('acme', 'active'));
+    const scoped = new ScopedStore(store, acmeEditor);
+    scoped.saveBrandProject({ ...design('acme'), configuration: { scale: 72, rotation: 15, tint: '#eb5e28' } });
+    expect(scoped.getBrandProject('d1')?.configuration).toEqual({ scale: 72, rotation: 15, tint: '#eb5e28' });
+    scoped.saveBrandProject({ ...design('acme'), configuration: { scale: 80 }, updatedAt: '2026-09-23T00:00:00.000Z' });
+    expect(store.listBrandProjects('acme')).toHaveLength(1);
+    expect(store.getBrandProject('d1')?.configuration).toEqual({ scale: 80 });
   });
 });

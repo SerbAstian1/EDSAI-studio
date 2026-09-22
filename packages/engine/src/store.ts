@@ -12,6 +12,10 @@ import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import { Asset, type Asset as AssetType } from './assets.js';
 import { Deliverable, type Deliverable as DeliverableType } from './deliverables.js';
 import { ClientDocument, type ClientDocument as ClientDocumentType } from './documents.js';
+import {
+  BrandHub, BrandProject,
+  type BrandHub as BrandHubType, type BrandProject as BrandProjectType,
+} from './brand-hub.js';
 import { Milestone, type Milestone as MilestoneType } from './milestones.js';
 import { Invoice, type Invoice as InvoiceType } from './invoices.js';
 import { Message, type Message as MessageType } from './messages.js';
@@ -284,6 +288,27 @@ CREATE TABLE IF NOT EXISTS deliverables (
 );
 
 CREATE INDEX IF NOT EXISTS deliverables_by_client ON deliverables (client_id);
+
+CREATE TABLE IF NOT EXISTS brand_hubs (
+  client_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'draft',
+  tools TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS brand_projects (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  configuration TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS brand_projects_by_client ON brand_projects (client_id);
 
 CREATE TABLE IF NOT EXISTS client_documents (
   client_id TEXT NOT NULL,
@@ -724,6 +749,58 @@ export class RunStore {
 
   deleteDeliverable(id: string): void {
     this.db.prepare('DELETE FROM deliverables WHERE id = ?').run(id);
+  }
+
+  /* --------------------------------------------------------------- brand hub */
+
+  getBrandHub(clientId: string): BrandHubType | undefined {
+    const row = this.db.prepare('SELECT * FROM brand_hubs WHERE client_id = ?')
+      .get(clientId) as Record<string, unknown> | undefined;
+    return row ? hydrateBrandHub(row) : undefined;
+  }
+
+  saveBrandHub(hub: BrandHubType): void {
+    BrandHub.parse(hub);
+    this.db.prepare(`
+      INSERT INTO brand_hubs (client_id, status, tools, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(client_id) DO UPDATE SET
+        status = excluded.status, tools = excluded.tools, updated_at = excluded.updated_at
+    `).run(hub.clientId, hub.status, JSON.stringify(hub.tools), hub.createdAt, hub.updatedAt);
+  }
+
+  /** Every client with a hub, for the studio's own overview. */
+  listBrandHubs(): BrandHubType[] {
+    return (this.db.prepare('SELECT * FROM brand_hubs ORDER BY updated_at DESC')
+      .all() as Record<string, unknown>[]).map(hydrateBrandHub);
+  }
+
+  saveBrandProject(project: BrandProjectType): void {
+    BrandProject.parse(project);
+    this.db.prepare(`
+      INSERT INTO brand_projects (id, client_id, tool_id, name, configuration, created_by,
+                                  created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name, configuration = excluded.configuration, updated_at = excluded.updated_at
+    `).run(project.id, project.clientId, project.toolId, project.name,
+      JSON.stringify(project.configuration), project.createdBy, project.createdAt, project.updatedAt);
+  }
+
+  listBrandProjects(clientId: string): BrandProjectType[] {
+    return (this.db.prepare(
+      'SELECT * FROM brand_projects WHERE client_id = ? ORDER BY updated_at DESC',
+    ).all(clientId) as Record<string, unknown>[]).map(hydrateBrandProject);
+  }
+
+  getBrandProject(id: string): BrandProjectType | undefined {
+    const row = this.db.prepare('SELECT * FROM brand_projects WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateBrandProject(row) : undefined;
+  }
+
+  deleteBrandProject(id: string): void {
+    this.db.prepare('DELETE FROM brand_projects WHERE id = ?').run(id);
   }
 
   /* --------------------------------------------------------------- documents */
@@ -1622,6 +1699,22 @@ function hydrateAsset(row: Record<string, unknown>): AssetType {
     ...(row['description'] ? { description: row['description'] } : {}),
     approved: row['approved'] === 1,
     uploadedAt: row['uploaded_at'],
+  });
+}
+
+function hydrateBrandHub(row: Record<string, unknown>): BrandHubType {
+  return BrandHub.parse({
+    clientId: row['client_id'], status: row['status'],
+    tools: JSON.parse(String(row['tools'] ?? '[]')) as unknown,
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateBrandProject(row: Record<string, unknown>): BrandProjectType {
+  return BrandProject.parse({
+    id: row['id'], clientId: row['client_id'], toolId: row['tool_id'], name: row['name'],
+    configuration: JSON.parse(String(row['configuration'])) as unknown,
+    createdBy: row['created_by'], createdAt: row['created_at'], updatedAt: row['updated_at'],
   });
 }
 

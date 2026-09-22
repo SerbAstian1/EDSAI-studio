@@ -5,6 +5,7 @@ import { api, type ApiError, type Client, type Contact, type Project } from '../
 import { RunTable } from '../components/RunTable.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import DocumentShelf from '../components/DocumentShelf.js';
+import BrandHubAdmin from './BrandHubAdmin.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
@@ -347,7 +348,7 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
   );
 }
 
-export type ClientTab = 'overview' | 'discovery' | 'brand' | 'delivery' | 'client';
+export type ClientTab = 'overview' | 'discovery' | 'brand' | 'delivery' | 'client' | 'hub';
 
 /** In the order the work actually flows: set up, discover, define, deliver, talk. */
 const TABS: { id: ClientTab; label: string }[] = [
@@ -356,6 +357,7 @@ const TABS: { id: ClientTab; label: string }[] = [
   { id: 'brand', label: 'Brand' },
   { id: 'delivery', label: 'Delivery' },
   { id: 'client', label: 'Client' },
+  { id: 'hub', label: 'Brand Hub' },
 ];
 
 export default function ClientDetail({ clientId, tab }: {
@@ -507,6 +509,8 @@ export default function ClientDetail({ clientId, tab }: {
         <Invoices clientId={clientId} />
         <PortalAccess clientId={clientId} />
       </>)}
+
+      {current === 'hub' && <BrandHubAdmin clientId={clientId} />}
     </section>
   );
 }

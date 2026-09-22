@@ -18,12 +18,15 @@ export type Action = typeof ACTIONS[number];
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
   'deliverable', 'document', 'milestone', 'invoice', 'message', 'feedback', 'support', 'process',
+  // The hub's own switch and tool list are the studio's; the designs a
+  // client makes inside it are the client's, written like a message is.
+  'brand-hub', 'brand-project',
 ] as const;
 export type ResourceKind = typeof RESOURCES[number];
 
 /** Studio-only writes: a client portal reads its own status, never sets it. */
 const STUDIO_MANAGED: readonly ResourceKind[] = [
-  'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project',
+  'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project', 'brand-hub',
 ];
 
 export interface Resource {
