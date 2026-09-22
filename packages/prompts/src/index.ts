@@ -99,6 +99,13 @@ export function instruction(rubric: Rubric, department: Department): string {
     '',
     'Reason through this department in full, using its reference file above. Then report.',
     '',
+    '## Body',
+    '',
+    'Open the body with a `## Summary` section: three to six bullets stating what this',
+    'department decided, in plain words a designer can act on without reading the rest —',
+    'the positioning line, the tone words, the type scale, the mark directions, whatever',
+    'this department owns. Then the full reasoning under its own headings.',
+    '',
   ];
 
   if (department.mode === 'scored') {

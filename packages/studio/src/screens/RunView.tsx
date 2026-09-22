@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState , type ReactElement } from 'react';
 import { api, type ApiError, type DepartmentOutput } from '../api.js';
+import Markdown from '../components/Markdown.js';
 import { progress } from '../scorecard.js';
 
 /**
@@ -20,6 +21,7 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
     queryKey: ['next', runId], queryFn: () => api.next(runId),
   });
   const { data: health } = useQuery({ queryKey: ['health'], queryFn: api.health });
+  const rubric = useQuery({ queryKey: ['rubric'], queryFn: api.rubric });
   // A run's own heading used to be its project's id. Nobody calls it that.
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
@@ -67,7 +69,12 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
             )}
           </p>
         )}
-        {next?.done && <p className="pass">Every activated department has an output.</p>}
+        {next?.done && (
+          <p className="pass">
+            Every activated department has an output.{' '}
+            <a href={`#/run/${runId}/direction`} style={{ color: 'inherit' }}>Read it as direction →</a>
+          </p>
+        )}
         {p.remaining.length > 0 && (
           <p className="muted mono" style={{ fontSize: 13 }}>
             remaining: {p.remaining.join(', ')}
@@ -133,8 +140,13 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
       {data.outputs.map((output: DepartmentOutput) => (
         <div className="card" key={output.departmentId}>
           <div className="row">
-            <strong>{output.departmentId}</strong>
-            <span>{output.scores.length} scores · {output.targets.length} targets</span>
+            <strong>
+              {output.departmentId}
+              <span className="muted" style={{ fontWeight: 400 }}>
+                {' '}{rubric.data?.departments.find((d) => d.id === output.departmentId)?.name ?? ''}
+              </span>
+            </strong>
+            <span className="muted">{output.scores.length} scores · {output.targets.length} targets</span>
             <button style={{ marginLeft: 'auto' }}
               aria-expanded={open === output.departmentId}
               onClick={() => setOpen(open === output.departmentId ? undefined : output.departmentId)}>
@@ -144,7 +156,7 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
 
           {open === output.departmentId && (
             <div style={{ marginTop: 12 }}>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{output.body}</p>
+              <Markdown text={output.body} />
 
               {output.targets.length > 0 && (
                 <table>

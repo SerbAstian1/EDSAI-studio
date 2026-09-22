@@ -15,7 +15,7 @@ import { StaticApp } from './static.js';
 import { RunEvents } from './events.js';
 import {
   ScopedStore, ensureLocalProject, slugify,
-  QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject,
+  QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject, discoveryBrief,
   measure, applyEdit, seedFromRun, forClient, EditRefused,
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
@@ -468,6 +468,32 @@ export class ApiServer {
   private invited(token: string): Onboarding | undefined {
     const onboardingId = this.store.getInvited(digestToken(token));
     return onboardingId ? this.store.getOnboarding(onboardingId) : undefined;
+  }
+
+  /**
+   * A client's most recent discovery, preferring a submitted one.
+   *
+   * Submitted-only would leave everything blank for a client halfway through
+   * answering, and that gate buys nothing: a missing answer already drops
+   * out rather than being invented. So the latest is shown, and `answersFrom`
+   * says whether it is final.
+   */
+  private latestDiscovery(scoped: ScopedStore, clientId: string): {
+    latest: Onboarding | undefined;
+    answers: Answer[];
+    answersFrom: 'submitted' | 'in-progress' | 'none';
+  } {
+    const onboardings = [...scoped.listOnboardings(clientId)].sort((a, b) => {
+      if (Boolean(a.submittedAt) !== Boolean(b.submittedAt)) return a.submittedAt ? -1 : 1;
+      return (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt);
+    });
+    const latest = onboardings[0];
+    const answers = latest ? this.store.getAnswers(latest.id) : [];
+    return {
+      latest,
+      answers,
+      answersFrom: !latest ? 'none' : latest.submittedAt ? 'submitted' : 'in-progress',
+    };
   }
 
   /* -------------------------------------------------------------- principals */
@@ -985,13 +1011,7 @@ export class ApiServer {
           // than inventing a position. Withholding what has been decided so far
           // hides real information; the honest move is to show it and say it is
           // not final.
-          const onboardings = [...scoped.listOnboardings(clientId)].sort((a, b) => {
-            if (Boolean(a.submittedAt) !== Boolean(b.submittedAt)) return a.submittedAt ? -1 : 1;
-            return (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt);
-          });
-          const latest = onboardings[0];
-          const answers = latest ? this.store.getAnswers(latest.id) : [];
-          const answersFrom = !latest ? 'none' : latest.submittedAt ? 'submitted' : 'in-progress';
+          const { answers, answersFrom } = this.latestDiscovery(scoped, clientId);
 
           const matrix = matrixFor({
             xAxis,
@@ -1010,6 +1030,38 @@ export class ApiServer {
           }
 
           send(res, 200, { matrix, axes: AXES, answersFrom });
+        },
+      },
+
+      /**
+       * Discovery as a run reads it and as a designer reads it: the client's
+       * answers translated back into the sentences they chose, plus the
+       * Markdown a run's brief carries. One source for "Start a run from
+       * discovery" and for the Direction view's scope and tone.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/discovery$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const { latest, answers, answersFrom } = this.latestDiscovery(scoped, clientId);
+          if (!latest) {
+            send(res, 200, { answersFrom });
+            return;
+          }
+          const brief = discoveryBrief(answers);
+          send(res, 200, {
+            answersFrom,
+            onboardingId: latest.id,
+            ...(latest.projectId ? { projectId: latest.projectId } : {}),
+            progress: progressOf(answers),
+            facts: brief.facts,
+            brief: brief.markdown,
+          });
         },
       },
 

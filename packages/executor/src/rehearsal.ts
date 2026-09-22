@@ -110,6 +110,15 @@ export class RehearsalClient implements ModelClient {
       + 'pipeline can be walked end to end before a key is spent. Nothing below is a finding '
       + 'about the client.',
       '',
+      '## Summary',
+      '',
+      `- In a real run, ${department.name} states its decisions here in three to six lines.`,
+      ...(firstLine ? [`- It would reason from the brief — "${firstLine}" — and every upstream output.`] : []),
+      ...(department.measurableTargets.length > 0
+        ? [`- It reports against: ${department.measurableTargets.slice(0, 3).join('; ')}.`]
+        : []),
+      '- Rehearsal: no decision was made.',
+      '',
       `## What ${department.name} produces here`,
       '',
       department.mode === 'scored'

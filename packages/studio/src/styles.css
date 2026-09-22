@@ -1199,6 +1199,66 @@ button.choice.chosen {
    one third of a grid is a thumbnail, not a preview. */
 .project-card.wide { grid-column: 1 / -1; }
 
+/* — markdown (department outputs, briefs) ————————————————————————— */
+
+/* Rendered from a safe subset, so the elements here are the only ones that
+   ever appear. Headings step down the same scale as the app's own; a
+   department's `## Summary` should not shout over the screen it sits in. */
+.markdown { line-height: 1.6; max-width: 72ch; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2 { font-size: var(--text-base); font-weight: 600; letter-spacing: -0.01em; margin: calc(var(--step) * 5) 0 calc(var(--step) * 2); }
+.markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-size: var(--text-sm); font-weight: 600; margin: calc(var(--step) * 4) 0 calc(var(--step) * 1.5); }
+.markdown p { margin: 0 0 calc(var(--step) * 3); }
+.markdown ul, .markdown ol { margin: 0 0 calc(var(--step) * 3); padding-left: 1.4em; }
+.markdown li { margin: 0 0 calc(var(--step) * 1); }
+.markdown blockquote {
+  margin: 0 0 calc(var(--step) * 3);
+  padding: calc(var(--step) * 2) calc(var(--step) * 3.5);
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+}
+.markdown code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface); padding: 1px 5px; border-radius: 3px; }
+.markdown pre { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: calc(var(--step) * 3); overflow-x: auto; margin: 0 0 calc(var(--step) * 3); }
+.markdown pre code { background: none; padding: 0; font-size: 13px; }
+.markdown table { margin: 0 0 calc(var(--step) * 3); }
+.markdown hr { border: 0; border-top: 1px solid var(--border); margin: calc(var(--step) * 4) 0; }
+.markdown a { color: var(--accent); }
+
+/* — facts (scope, tone, audience — the client's own answers) —————— */
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: calc(var(--step) * 2) calc(var(--step) * 5);
+  margin: calc(var(--step) * 3) 0 0;
+  align-items: baseline;
+}
+.facts dt { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: 500; padding-top: 3px; }
+.facts dd { margin: 0; }
+.facts .chips { display: flex; flex-wrap: wrap; gap: calc(var(--step) * 1.5); }
+.facts .chips .pill { color: var(--text-secondary); }
+@media (max-width: 640px) { .facts { grid-template-columns: 1fr; gap: calc(var(--step) * 1) 0; } .facts dt { margin-top: calc(var(--step) * 2); } }
+
+.discovery-pull {
+  border-top: 1px solid var(--border);
+  padding-top: calc(var(--step) * 3);
+}
+.discovery-pull .facts { margin-top: calc(var(--step) * 3); }
+
+.direction-facts { margin-top: calc(var(--step) * 4); }
+.direction-decisions { margin: calc(var(--step) * 2) 0 0; padding-left: 1.2em; display: grid; gap: calc(var(--step) * 2); }
+.direction-brief { margin-top: calc(var(--step) * 3); padding-top: calc(var(--step) * 3); border-top: 1px solid var(--border); }
+.direction-blurb { margin: calc(var(--step) * 1) 0 calc(var(--step) * 3); font-size: var(--text-sm); }
+.direction-group > .row + .direction-blurb:last-child { margin-bottom: 0; }
+.direction-output { padding: calc(var(--step) * 3) 0; border-top: 1px solid var(--border); }
+.direction-output:last-child { padding-bottom: 0; }
+.direction-output > .row { margin-bottom: calc(var(--step) * 2); }
+.direction-pending { padding: calc(var(--step) * 3) 0 0; border-top: 1px solid var(--border); margin: 0; }
+.direction-pending .label { color: var(--text-muted); }
+
 /* — figma embed —————————————————————————————————————————————————— */
 
 /* Recessed, not raised: an embedded document sits *in* the page the way a

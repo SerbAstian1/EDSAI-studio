@@ -117,15 +117,23 @@ export default function ProjectField({
   // the ordinary sync can never race and clear each other's write on the
   // same render.
   const seeded = useRef(false);
+  // The project a pick or a seed put in the box, held by id. Two clients
+  // can each have a "Brand identity", and resolving the visible name alone
+  // would find both and clear the one that was just chosen. While the text
+  // still reads as that pick, the pick stands; typing anything else drops it.
+  const pinned = useRef<Project | undefined>(undefined);
   useEffect(() => {
     if (query === '' && value !== '' && !seeded.current) {
       const known = projectToSeed(projects, value, query);
-      if (known) { setQuery(known.name); seeded.current = true; }
+      if (known) { setQuery(known.name); pinned.current = known; seeded.current = true; }
       // Seeded just now, or the project hasn't loaded yet — either way,
       // don't fall through to the clearing logic below on this pass.
       return;
     }
-    const resolved = resolveProject(matches, query);
+    const held = pinned.current && pinned.current.name === query
+      && projects.some((p) => p.id === pinned.current?.id)
+      ? pinned.current : undefined;
+    const resolved = held ?? resolveProject(matches, query);
     const next = resolved?.id ?? '';
     if (next !== value) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,6 +151,7 @@ export default function ProjectField({
 
   const choose = (match: ProjectMatch | undefined): void => {
     if (!match) return;
+    pinned.current = match.project;
     setQuery(match.project.name);
     onChange(match.project.id);
     setOpen(false);

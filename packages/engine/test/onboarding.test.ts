@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject, question,
+  QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject, discoveryBrief, question,
   type Answer,
 } from '../src/onboarding.js';
 
@@ -203,5 +203,56 @@ describe('deriving a project', () => {
     const project = deriveProject('Disan', [...base, answer('f-deliverables', ['identity'])]);
     expect(project.notes).toContain('leaves those three for the studio');
     expect(project.notes.toLowerCase()).not.toContain('positioning statement:');
+  });
+});
+
+describe('discovery as a brief', () => {
+  const answers = [
+    answer('f-what', 'We make hand-finished boots.'),
+    answer('f-who', 'People who were reading a repair guide.'),
+    answer('f-deliverables', ['identity', 'website']),
+    answer('f-deadline', 'Before the autumn range, September.'),
+    answer('w-headline', 'The boots that outlived the shop.'),
+    answer('e1', 'directness'),
+    answer('e2', 4),
+    answer('e4', { side: 'a', strength: 'clearly' }),
+    answer('d-traits', ['precise', 'warm', 'crafted']),
+    answer('d-worst', 'A fast-fashion label — we would rather close.'),
+  ];
+
+  it('reads scope, tone and audience straight off the answers', () => {
+    const { facts } = discoveryBrief(answers);
+    expect(facts.deliverables.map((d) => d.label)).toEqual([
+      'A full visual identity', 'A website',
+    ]);
+    expect(facts.traits).toEqual(['precise', 'warm', 'crafted']);
+    expect(facts.who).toBe('People who were reading a repair guide.');
+    expect(facts.deadline).toContain('September');
+  });
+
+  it('translates each axis back into the sentence the client chose', () => {
+    const { facts } = discoveryBrief(answers);
+    const byAxis = new Map(facts.decisions.map((d) => [d.axis, d.answer]));
+    expect(byAxis.get('E1')).toBe('They get the number.');
+    expect(byAxis.get('E2')).toMatch(/^Closer to .*throw out/);
+    expect(byAxis.get('E4')).toContain('A long table');
+    expect(byAxis.get('E4')).toContain('70/30');
+    // Unanswered axes are absent, not invented.
+    expect(byAxis.has('E3')).toBe(false);
+  });
+
+  it('writes a brief in their words and leaves the studio’s three axes alone', () => {
+    const { markdown } = discoveryBrief(answers);
+    expect(markdown).toContain('**Scope of work.** A full visual identity; A website.');
+    expect(markdown).toContain('precise, warm, crafted');
+    expect(markdown).toContain('They get the number.');
+    expect(markdown).toContain('the studio drafts');
+    expect(markdown.toLowerCase()).not.toContain('positioning statement:');
+  });
+
+  it('ignores an answer that does not fit its question', () => {
+    const { facts } = discoveryBrief([answer('e2', 9), answer('f-deliverables', 'identity')]);
+    expect(facts.decisions).toEqual([]);
+    expect(facts.deliverables).toEqual([]);
   });
 });

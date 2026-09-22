@@ -10,7 +10,9 @@ import {
 import type { Asset, Client, DepartmentOutput, Issue, Plotted, Project } from '../src/api.js';
 import { groupByCollection, readableSize, shelve } from '../src/screens/Assets.js';
 import { shelves } from '../src/screens/FileLibrary.js';
-import { briefFrom, stillNeeded, missingSentence } from '../src/screens/NewRun.js';
+import {
+  briefFrom, stillNeeded, missingSentence, defaultTracks, trackIdsFor,
+} from '../src/screens/NewRun.js';
 import { matchProjects, resolveProject, projectToSeed } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
 import { dollarsToCents, formatCents } from '../src/screens/Invoices.js';
@@ -472,6 +474,46 @@ describe('the brief a run is started with', () => {
     const brief = briefFrom({ ...base, level: 1, why: 'A brochure site with a form.' });
     expect(brief).toContain('A brochure site with a form.');
     expect(brief).not.toContain('### Justification');
+  });
+
+  it('carries the client’s discovery inside the explicit section when it is used', () => {
+    const brief = briefFrom({ ...base, discovery: '## From discovery\n\n**Scope of work.** A website.' });
+    const explicit = brief.indexOf('## Explicit');
+    const discovery = brief.indexOf('## From discovery');
+    const implicit = brief.indexOf('## Implicit');
+    expect(explicit).toBeGreaterThanOrEqual(0);
+    expect(discovery).toBeGreaterThan(explicit);
+    expect(implicit).toBeGreaterThan(discovery);
+  });
+});
+
+describe('which tracks a run takes', () => {
+  it('follows the scope the client picked', () => {
+    expect(defaultTracks({ deliverables: ['identity', 'packaging'] })).toEqual(['brand-physical']);
+    expect(defaultTracks({ deliverables: ['website'] })).toEqual(['digital-product']);
+    expect(defaultTracks({ deliverables: ['logo', 'website'] }))
+      .toEqual(['brand-physical', 'digital-product']);
+  });
+
+  it('reads the project kind when there is no discovery', () => {
+    expect(defaultTracks({ deliverables: [], projectKind: 'brand-identity' })).toEqual(['brand-physical']);
+    expect(defaultTracks({ deliverables: [], projectKind: 'website' })).toEqual(['digital-product']);
+  });
+
+  it('runs digital when nothing is known, as before', () => {
+    expect(defaultTracks({ deliverables: [] })).toEqual(['digital-product']);
+  });
+
+  it('adds the engineering block to digital and always closes', () => {
+    expect(trackIdsFor(['brand-physical'])).toEqual(['brand-physical', 'closing']);
+    expect(trackIdsFor(['brand-physical', 'digital-product']))
+      .toEqual(['brand-physical', 'digital-product', 'frontend-block', 'closing']);
+    expect(trackIdsFor([])).toEqual(['closing']);
+  });
+
+  it('refuses to start with no track', () => {
+    expect(stillNeeded({ projectId: 'p', asked: 'x', level: 1, unanswered: 0, tracks: [] }))
+      .toContain('at least one track');
   });
 });
 

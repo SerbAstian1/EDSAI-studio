@@ -42,6 +42,7 @@ import Home from './screens/Home.js';
 const LOADERS = {
   intake: () => import('./screens/NewRun.js'),
   run: () => import('./screens/RunView.js'),
+  direction: () => import('./screens/Direction.js'),
   scorecard: () => import('./screens/Scorecard.js'),
   review: () => import('./screens/Review.js'),
   finalize: () => import('./screens/Finalize.js'),
@@ -66,6 +67,7 @@ const LOADERS = {
 
 const NewRun = lazy(LOADERS.intake);
 const RunView = lazy(LOADERS.run);
+const Direction = lazy(LOADERS.direction);
 const Scorecard = lazy(LOADERS.scorecard);
 const Review = lazy(LOADERS.review);
 const Finalize = lazy(LOADERS.finalize);
@@ -88,7 +90,7 @@ const Support = lazy(LOADERS.support);
 const Planned = lazy(LOADERS.planned);
 
 export type Screen =
-  | 'workspace' | 'intake' | 'run' | 'scorecard' | 'review' | 'finalize'
+  | 'workspace' | 'intake' | 'run' | 'direction' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'campaigns'
   | 'processBuilder' | 'clientPortal';
@@ -133,7 +135,7 @@ export function parseRoute(hash: string): Route {
   if (path[0] === 'new') return { screen: 'intake', ...(path[1] ? { projectId: path[1] } : {}) };
   if (path[0] === 'run' && path[1]) {
     const screen = path[2];
-    if (screen === 'scorecard' || screen === 'review' || screen === 'finalize') {
+    if (screen === 'direction' || screen === 'scorecard' || screen === 'review' || screen === 'finalize') {
       return { screen, runId: path[1] };
     }
     return { screen: 'run', runId: path[1] };
@@ -156,7 +158,7 @@ export function activeSection(route: Route): string {
   if (route.screen === 'client') return 'clients';
   if (route.screen === 'processBuilder') return 'process-builder';
   if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
-    || route.screen === 'review' || route.screen === 'finalize'
+    || route.screen === 'direction' || route.screen === 'review' || route.screen === 'finalize'
     || route.screen === 'runs') return 'runs';
   return route.screen;
 }
@@ -261,6 +263,7 @@ const TITLES: Record<Screen, string> = {
   clientPortal: 'Client Portal',
   intake: 'New run',
   run: 'Run',
+  direction: 'Direction',
   scorecard: 'Scorecard',
   review: 'Review',
   finalize: 'Finalise',
@@ -283,7 +286,7 @@ function Shell(): ReactElement {
 
   const tabs = route.runId
     ? [
-        ['run', 'Run'], ['scorecard', 'Scorecard'],
+        ['run', 'Run'], ['direction', 'Direction'], ['scorecard', 'Scorecard'],
         ['review', 'Review'], ['finalize', 'Finalise'],
       ] as const
     : [];
@@ -316,6 +319,7 @@ function Shell(): ReactElement {
             {route.screen === 'workspace' && <Home />}
             {route.screen === 'intake' && <NewRun projectId={route.projectId} />}
             {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
+            {route.screen === 'direction' && route.runId && <Direction runId={route.runId} />}
             {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
             {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
             {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}

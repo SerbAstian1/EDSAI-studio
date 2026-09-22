@@ -262,6 +262,27 @@ export interface DiscoveryForm {
   };
 }
 
+export interface DiscoveryFacts {
+  what?: string;
+  who?: string;
+  deliverables: { id: string; label: string }[];
+  deadline?: string;
+  headline?: string;
+  traits: string[];
+  worst?: string;
+  decisions: { axis: string; question: string; answer: string }[];
+}
+
+export interface Discovery {
+  answersFrom: 'submitted' | 'in-progress' | 'none';
+  onboardingId?: string;
+  projectId?: string;
+  progress?: DiscoveryForm['progress'];
+  facts?: DiscoveryFacts;
+  /** The Markdown a run's brief carries. */
+  brief?: string;
+}
+
 export interface Measured {
   ratio?: number;
   required?: number;
@@ -587,6 +608,8 @@ export const api = {
     call<{ revoked: string }>(`/api/clients/${clientId}/portal-keys/${keyId}`,
       { method: 'DELETE' }),
 
+  /** The client's discovery, translated: facts a designer reads, and a brief a run reads. */
+  discovery: (clientId: string) => call<Discovery>(`/api/clients/${clientId}/discovery`),
   positioning: (clientId: string, x: string, y: string) =>
     call<{ matrix: Matrix; axes: Axis[]; answersFrom: 'submitted' | 'in-progress' | 'none' }>(
       `/api/clients/${clientId}/positioning?x=${x}&y=${y}`),
@@ -620,7 +643,7 @@ export const api = {
   run: (id: string) => call<RunDetail>(`/api/runs/${id}`),
   next: (id: string) => call<NextTurn>(`/api/runs/${id}/next`),
 
-  startRun: (input: { projectId: string; brief: string; level: number }) =>
+  startRun: (input: { projectId: string; brief: string; level: number; tracks?: string[] }) =>
     call<Run>('/api/runs', { method: 'POST', body: JSON.stringify(input) }),
 
   /**

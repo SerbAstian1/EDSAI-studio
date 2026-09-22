@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import ProjectField from '../components/ProjectField.js';
@@ -128,6 +128,53 @@ const JUSTIFY: Question[] = [
 ];
 
 /**
+ * Which parts of the studio run.
+ *
+ * The rubric has two tracks that share a foundation and then diverge: the
+ * brand-and-physical one (mark directions, print, packaging, poster) and the
+ * digital one (copy, UX, interface, motion, engineering). Every run used to
+ * take the digital one, so an identity project never reached Department 12
+ * — the mind-mapping pass a designer starts from. The default now follows
+ * what the client asked for; the checkboxes are there to overrule it.
+ */
+export const TRACKS = [
+  {
+    id: 'brand-physical', label: 'Brand identity & collateral',
+    detail: 'Positioning, creative direction, mark directions, print & packaging, poster.',
+  },
+  {
+    id: 'digital-product', label: 'Digital product',
+    detail: 'Copy, UX, interface system, motion — and engineering, at the level chosen above.',
+  },
+] as const;
+
+/** The digital track brings its engineering block; closing always runs, last. */
+export function trackIdsFor(chosen: readonly string[]): string[] {
+  const out: string[] = [];
+  if (chosen.includes('brand-physical')) out.push('brand-physical');
+  if (chosen.includes('digital-product')) out.push('digital-product', 'frontend-block');
+  out.push('closing');
+  return out;
+}
+
+/** What the client asked for decides the default; nothing known means digital. */
+export function defaultTracks(input: {
+  deliverables: readonly string[];
+  projectKind?: string;
+}): string[] {
+  const brand = ['logo', 'identity', 'packaging', 'print', 'social'];
+  const wantsBrand = input.deliverables.some((d) => brand.includes(d))
+    || ['brand-identity', 'rebrand', 'collateral'].includes(input.projectKind ?? '');
+  const wantsDigital = input.deliverables.includes('website')
+    || ['website', 'campaign'].includes(input.projectKind ?? '');
+  if (!wantsBrand && !wantsDigital) return ['digital-product'];
+  return [
+    ...(wantsBrand ? ['brand-physical'] : []),
+    ...(wantsDigital ? ['digital-product'] : []),
+  ];
+}
+
+/**
  * Build the brief the engine reads.
  *
  * Kept as a pure function so the mapping from plain answers to protocol
@@ -141,9 +188,12 @@ export function briefFrom(input: {
   level: number;
   why: string;
   answers: Record<string, string>;
+  /** The client's own discovery answers, already translated, when they are being used. */
+  discovery?: string;
 }): string {
   const lines = [
     '## Explicit', input.asked.trim(),
+    ...(input.discovery ? ['', input.discovery.trim()] : []),
     '', '## Implicit (assumptions)', input.assumed.trim() || '(none stated)',
     '', '## Critical missing information', input.unknown.trim() || '(none stated)',
     '', '## Classification', `Level ${input.level}`,
@@ -177,10 +227,12 @@ export function stillNeeded(state: {
   asked: string;
   level: number;
   unanswered: number;
+  tracks?: readonly string[];
 }): string[] {
   const missing: string[] = [];
   if (!state.projectId) missing.push('a project');
   if (!state.asked.trim()) missing.push('what they asked for');
+  if (state.tracks && state.tracks.length === 0) missing.push('at least one track');
   if (state.level >= 2 && state.unanswered > 0) {
     missing.push(state.unanswered === JUSTIFY.length
       ? 'all six answers'
@@ -213,9 +265,50 @@ export default function NewRun(
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [pickingKind, setPickingKind] = useState(false);
   const [addingContext, setAddingContext] = useState(false);
+  // On by default once discovery exists: the whole point of asking the client
+  // is that the run reasons from their words. Unticking keeps it out.
+  const [useDiscovery, setUseDiscovery] = useState(true);
 
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+
+  const chosenProject = (projects.data ?? []).find((p) => p.id === projectId);
+  const chosenClient = chosenProject
+    ? (clients.data ?? []).find((c) => c.id === chosenProject.clientId) : undefined;
+  const discovery = useQuery({
+    queryKey: ['discovery', chosenProject?.clientId],
+    queryFn: () => api.discovery(chosenProject?.clientId ?? ''),
+    enabled: Boolean(chosenProject?.clientId),
+  });
+  const discoveryBrief = discovery.data?.answersFrom !== 'none' ? discovery.data?.brief : undefined;
+  const facts = discovery.data?.facts;
+
+  // A first line for "what they asked for", from the scope they picked — only
+  // into an empty field, and only once, so nothing anyone typed is replaced.
+  const suggested = facts && facts.deliverables.length > 0
+    ? `${facts.deliverables.map((d) => d.label).join('; ')}${facts.deadline ? ` — ${facts.deadline}` : ''}`
+      .replace(/[.!?]?$/, '.')
+    : undefined;
+  useEffect(() => {
+    if (suggested && !asked.trim()) setAsked(suggested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggested]);
+
+  // Tracks follow the scope once it is known; a person's own tick wins after.
+  const [tracks, setTracks] = useState<string[]>(['digital-product']);
+  const [tracksTouched, setTracksTouched] = useState(false);
+  const derivedTracks = defaultTracks({
+    deliverables: facts?.deliverables.map((d) => d.id) ?? [],
+    ...(chosenProject?.kind ? { projectKind: chosenProject.kind } : {}),
+  }).join(',');
+  useEffect(() => {
+    if (!tracksTouched) setTracks(derivedTracks.split(','));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedTracks]);
+  const toggleTrack = (id: string): void => {
+    setTracksTouched(true);
+    setTracks((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+  };
 
   const nothingToRunAgainst = projects.isSuccess && (projects.data?.length ?? 0) === 0;
 
@@ -226,7 +319,11 @@ export default function NewRun(
     mutationFn: () => api.startRun({
       projectId,
       level,
-      brief: briefFrom({ asked, assumed, unknown, level, why, answers }),
+      tracks: trackIdsFor(tracks),
+      brief: briefFrom({
+        asked, assumed, unknown, level, why, answers,
+        ...(useDiscovery && discoveryBrief ? { discovery: discoveryBrief } : {}),
+      }),
     }),
     onSuccess: (run) => {
       void client.invalidateQueries({ queryKey: ['runs'] });
@@ -235,7 +332,7 @@ export default function NewRun(
   });
 
   const missing = stillNeeded({
-    projectId, asked, level, unanswered: unanswered.length,
+    projectId, asked, level, unanswered: unanswered.length, tracks,
   });
   const blocked = missing.length > 0 || start.isPending;
 
@@ -280,6 +377,41 @@ export default function NewRun(
             placeholder="A new identity and a site to launch it on, by March."
           />
         </label>
+
+        {/*
+          The client already answered. Their discovery is the brief's best
+          material — the scope they picked, who buys from them, the words
+          they chose — so it rides along by default, in their own sentences,
+          and the run reasons from that rather than from a paraphrase.
+        */}
+        {discoveryBrief && facts && (
+          <div className="discovery-pull">
+            <label className="row" style={{ gap: 8 }}>
+              <input type="checkbox" checked={useDiscovery}
+                     onChange={(e) => setUseDiscovery(e.target.checked)} />
+              <span>
+                Include <strong>{chosenClient?.name ?? 'the client'}</strong>'s discovery answers
+                {discovery.data?.answersFrom === 'in-progress' && (
+                  <span className="muted"> (still in progress — {discovery.data.progress?.answered ?? 0} of {discovery.data.progress?.required ?? 0} answered)</span>
+                )}
+              </span>
+            </label>
+            {useDiscovery && (
+              <dl className="facts">
+                {facts.deliverables.length > 0 && (
+                  <><dt>Scope of work</dt><dd>{facts.deliverables.map((d) => d.label).join(' · ')}</dd></>
+                )}
+                {facts.who && <><dt>Who buys it</dt><dd>{facts.who}</dd></>}
+                {facts.traits.length > 0 && <><dt>Their words</dt><dd>{facts.traits.join(', ')}</dd></>}
+                {facts.worst && <><dt>Not to be mistaken for</dt><dd>{facts.worst}</dd></>}
+                {facts.deadline && <><dt>Deadline</dt><dd>{facts.deadline}</dd></>}
+                {facts.decisions.length > 0 && (
+                  <><dt>Decided</dt><dd>{facts.decisions.length} of 8 axes, in their own sentences</dd></>
+                )}
+              </dl>
+            )}
+          </div>
+        )}
       </div>
 
       {/*
@@ -318,6 +450,30 @@ export default function NewRun(
             </span>
           </label>
         ))}
+      </div>
+
+      {/*
+        Which halves of the studio run. Followed from the scope the client
+        picked, so an identity project reaches the mark-directions pass and a
+        site-only one does not sit through packaging.
+      */}
+      <div className="card stack">
+        <span className="label">What the studio works through</span>
+        {TRACKS.map((track) => (
+          <label key={track.id} className="choice">
+            <input
+              type="checkbox" checked={tracks.includes(track.id)}
+              onChange={() => toggleTrack(track.id)}
+            />
+            <span>
+              <strong>{track.label}</strong>
+              <span className="why">{track.detail}</span>
+            </span>
+          </label>
+        ))}
+        <span className="muted" style={{ fontSize: 13 }}>
+          Strategy and creative direction open every run; QA, the critic and arbitration close it.
+        </span>
       </div>
 
       {/*

@@ -164,9 +164,15 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
               )}
 
               {onboarding.projectId && (
-                <p className="muted" style={{ fontSize: 13 }}>
-                  Became the project{' '}
-                  <strong>{projectName.get(onboarding.projectId) ?? onboarding.projectId}</strong>.
+                <p className="muted row" style={{ fontSize: 13, gap: 8 }}>
+                  <span>
+                    Became the project{' '}
+                    <strong>{projectName.get(onboarding.projectId) ?? onboarding.projectId}</strong>.
+                  </span>
+                  {/* The answers are the brief: a run started from here carries them. */}
+                  <a href={`#/new/${onboarding.projectId}`}>
+                    <button type="button">Start a run from these answers</button>
+                  </a>
                 </p>
               )}
 

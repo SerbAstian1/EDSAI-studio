@@ -349,3 +349,115 @@ export function deriveProject(
     notes: lines.join('\n'),
   };
 }
+
+/**
+ * Discovery, as the facts a designer reads off it and as a brief a run reads.
+ *
+ * The questions were written so a client never has to speak design; the
+ * answers come back as option ids, 1–5 scales and side/strength pairs. This
+ * translates each one back into the sentence the client actually chose, so
+ * the run's brief carries their words and the Direction view can show
+ * "scope of work" and "tone" without anyone re-typing them.
+ *
+ * It does not draft positioning, emotional tone or motion law. Those are the
+ * three axes the flow leaves to the studio on purpose, and a brief that
+ * guessed at them would have the run confirm a guess.
+ */
+export interface DiscoveryFacts {
+  what?: string;
+  who?: string;
+  /** What they asked for at the end — the scope of work, in their labels. */
+  deliverables: { id: string; label: string }[];
+  deadline?: string;
+  headline?: string;
+  /** The three words they said belong to them. */
+  traits: string[];
+  /** Who they would hate to be mistaken for, and why. */
+  worst?: string;
+  /** Each enumerated axis they settled, as the sentence they chose. */
+  decisions: { axis: string; question: string; answer: string }[];
+}
+
+export interface DiscoveryBrief {
+  facts: DiscoveryFacts;
+  /** The same facts as the Markdown a run's brief carries. */
+  markdown: string;
+}
+
+export function discoveryBrief(answers: readonly Answer[]): DiscoveryBrief {
+  const byId = new Map(answers.map((a) => [a.questionId, a.value]));
+  const text = (id: string): string | undefined => {
+    const value = byId.get(id);
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    return trimmed || undefined;
+  };
+  const labelOf = (q: Question, id: unknown): string | undefined =>
+    q.options?.find((o) => o.id === id)?.label;
+
+  const deliverablesQ = question('f-deliverables');
+  const picked = byId.get('f-deliverables');
+  const deliverables = (Array.isArray(picked) ? picked as string[] : [])
+    .map((id) => ({ id, label: deliverablesQ ? labelOf(deliverablesQ, id) ?? id : id }));
+
+  const traits = byId.get('d-traits');
+
+  const decisions: DiscoveryFacts['decisions'] = [];
+  for (const q of QUESTIONS) {
+    if (!q.axis?.startsWith('E')) continue;
+    const value = byId.get(q.id);
+    if (value === undefined || !answerIsValid(q.id, value)) continue;
+    let answer: string | undefined;
+    if (q.kind === 'binary') answer = labelOf(q, value);
+    else if (q.kind === 'scale' && q.anchors) {
+      const n = value as number;
+      answer = n === 1 ? q.anchors.low
+        : n === 2 ? `Closer to ${q.anchors.low}`
+          : n === 3 ? `Halfway between ${q.anchors.low} and ${q.anchors.high}`
+            : n === 4 ? `Closer to ${q.anchors.high}`
+              : q.anchors.high;
+    } else if (q.kind === 'ratio' && q.sides) {
+      const v = value as { side: 'a' | 'b'; strength: string };
+      const strength = RATIO_STRENGTHS.find((s) => s.id === v.strength);
+      answer = `${q.sides[v.side]} (${strength?.label.toLowerCase() ?? v.strength}, ${strength?.ratio ?? ''})`.trim();
+    }
+    if (answer) decisions.push({ axis: q.axis, question: q.prompt, answer });
+  }
+
+  const what = text('f-what');
+  const who = text('f-who');
+  const deadline = text('f-deadline');
+  const headline = text('w-headline');
+  const worst = text('d-worst');
+  const facts: DiscoveryFacts = {
+    ...(what ? { what } : {}),
+    ...(who ? { who } : {}),
+    deliverables,
+    ...(deadline ? { deadline } : {}),
+    ...(headline ? { headline } : {}),
+    traits: Array.isArray(traits) ? traits.filter((t): t is string => typeof t === 'string') : [],
+    ...(worst ? { worst } : {}),
+    decisions,
+  };
+
+  const lines: string[] = ['## From discovery', ''];
+  if (facts.what) lines.push(`**What they do.** ${facts.what}`);
+  if (facts.who) lines.push(`**Who buys it.** ${facts.who}`);
+  if (facts.deliverables.length > 0) {
+    lines.push(`**Scope of work.** ${facts.deliverables.map((d) => d.label).join('; ')}.`);
+  }
+  if (facts.deadline) lines.push(`**Deadline.** ${facts.deadline}`);
+  if (facts.headline) lines.push(`**Their headline, three years out.** ${facts.headline}`);
+  if (facts.traits.length > 0) lines.push(`**Three words that are theirs.** ${facts.traits.join(', ')}.`);
+  if (facts.worst) lines.push(`**Would hate to be mistaken for.** ${facts.worst}`);
+  if (facts.decisions.length > 0) {
+    lines.push('', '### Decisions they made', '');
+    for (const d of facts.decisions) lines.push(`- **${d.axis}** ${d.question} → ${d.answer}`);
+  }
+  lines.push(
+    '',
+    'Positioning, emotional tone and motion law are not here on purpose: the studio drafts',
+    'those three and the client confirms them.',
+  );
+
+  return { facts, markdown: lines.join('\n') };
+}
