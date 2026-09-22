@@ -93,6 +93,14 @@ It refuses rather than degrades: a run the gate has not cleared, a colour with
 no contrast measurement behind it, or a target crediting an instrument that was
 never called all stop the build with the reason stated.
 
+## Running it live
+
+`npm run dev` starts the API and the Studio for one person on one machine;
+`npm run dev:rehearse` does the same with runs executing on placeholders,
+for walking the pipeline without a key. Hosting — as one container, on Fly,
+or with the Studio on Vercel in front of the API — is in
+[docs/hosting.md](docs/hosting.md).
+
 ## The drift contract
 
 The markdown in `corpus/` stays canonical: it is what a model reads, and it is

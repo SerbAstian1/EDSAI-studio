@@ -34,6 +34,13 @@ export function useRunStream(runId: string | undefined): void {
       source.addEventListener(type, refresh);
     }
 
-    return () => source.close();
+    // A slow poll underneath the stream. Behind a proxy that buffers or
+    // times out server-sent events (a static host rewriting `/api` to the
+    // API is one), the stream can go quiet while the run does not; a refetch
+    // every so often keeps the screen truthful either way, at the cost of
+    // one small request a while.
+    const poll = setInterval(refresh, 20_000);
+
+    return () => { source.close(); clearInterval(poll); };
   }, [runId, client]);
 }

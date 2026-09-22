@@ -11,6 +11,10 @@ the link a client follows into the portal is built from the browser's own
 origin, so wherever this runs is the address in the link, with nothing to
 configure and nothing to get out of sync.
 
+The one split this document does describe — the Studio on Vercel, below —
+keeps that property by proxying rather than by cross-origin calls: the
+browser still talks to one origin.
+
 ## What it needs
 
 - **Node 22 or newer.** The database is `node:sqlite`, which is built in.
@@ -84,6 +88,70 @@ disk: two machines would be two different studios, and a machine that stops to
 save money is a portal link that does not open. Scaling out means moving the
 store off SQLite first, which the `RunStore` seam allows and nothing here
 needs yet.
+
+## On Vercel
+
+Vercel hosts the **Studio interface**. It cannot host the API: the API is
+one long-lived process with a SQLite file and an uploads directory on disk,
+and it runs a pipeline for minutes in the background after answering a
+request. A serverless function has none of those — no disk that survives an
+invocation, no process that outlives one — so putting the API there would
+mean rewriting the store, the uploads and the run loop first.
+
+So the layout is two parts that the browser sees as one:
+
+```
+browser ──▶ studio.example.com (Vercel, static)
+                │
+                ├── /api/*     ─── rewrite ──▶ edsai-studio.fly.dev/api/*
+                └── /portal/*  ─── rewrite ──▶ edsai-studio.fly.dev/portal/*
+```
+
+`vercel.json` rewrites every `/api` and `/portal` request to the API host.
+Vercel proxies them, so from the browser's side the API is same-origin: the
+session cookie stays `SameSite=Lax`, no CORS is involved, and streamed run
+events pass through. Deep links and the portal link a client follows are the
+Vercel address.
+
+### Steps
+
+1. **Deploy the API** on Fly (above), or anywhere with a disk. Note its
+   address.
+2. **Point the rewrites at it.** In `vercel.json`, replace
+   `edsai-studio.fly.dev` with the API's host in all three rewrites. Vercel
+   cannot read that from an environment variable; it has to be in the file.
+3. **Tell the API about the Studio's origin.** The API refuses a write whose
+   `Origin` it does not know, and through the proxy the browser's origin is
+   the Vercel one:
+
+   ```
+   fly secrets set EDSAI_ORIGINS=https://studio.example.com,https://edsai-studio.vercel.app
+   ```
+
+   Every address the Studio is served from — the `*.vercel.app` one and any
+   custom domain — goes in that list. Forgetting one produces the failure
+   described under Settings: a Studio that loads and refuses every save.
+4. **Import the repository in Vercel.** Root directory is the repository
+   root; `vercel.json` sets the install command, the build command
+   (`pnpm --filter @edsai/studio... build`) and the output directory
+   (`packages/studio/dist`). Set the project's Node.js version to **22.x**.
+   No environment variables are needed on the Vercel side — the Studio
+   carries no secrets and reaches the API by relative path.
+5. **Open the Vercel address** and sign in. The first-run account is created
+   on the API, the same as any other deployment.
+
+### What to know
+
+- The API still serves its own copy of the Studio at the Fly address. Both
+  work; the Vercel one is the one to give people.
+- Preview deployments each get their own `*.vercel.app` origin. Either add
+  them to `EDSAI_ORIGINS` as you go, or treat previews as read-only — every
+  GET works without being listed; only writes are refused.
+- A deploy of the Studio does not touch the API, and vice versa. The API's
+  contract is the boundary; when both change, deploy the API first.
+- Uploaded files are served through the same rewrite, so their URLs stay
+  relative and the `private, max-age=300` cache the API sets is what the
+  browser sees.
 
 ## Without a container
 
