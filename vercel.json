@@ -5,9 +5,9 @@
   "buildCommand": "pnpm --filter @edsai/studio... build",
   "outputDirectory": "packages/studio/dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://REPLACE-WITH-YOUR-API-HOST/api/:path*" },
-    { "source": "/portal/:path*", "destination": "https://REPLACE-WITH-YOUR-API-HOST/portal/:path*" },
-    { "source": "/portal", "destination": "https://REPLACE-WITH-YOUR-API-HOST/portal" },
+    { "source": "/api/:path*", "destination": "https://edsai-studio-production-1276.up.railway.app/api/:path*" },
+    { "source": "/portal/:path*", "destination": "https://edsai-studio-production-1276.up.railway.app/portal/:path*" },
+    { "source": "/portal", "destination": "https://edsai-studio-production-1276.up.railway.app/portal" },
     { "source": "/:path((?!assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
