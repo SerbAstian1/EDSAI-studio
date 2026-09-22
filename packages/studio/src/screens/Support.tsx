@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { api, type SupportNote } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * Notes for whoever maintains this tool — bugs, ideas, questions.
@@ -79,15 +81,15 @@ function NoteCard({ note, onChanged }: { note: SupportNote; onChanged: () => voi
         <span className="muted mono" style={{ fontSize: 12, marginLeft: 'auto' }}>
           {dateOf(note.createdAt)}
         </span>
+        <OverflowMenu label="Actions for this note" items={[
+          { label: note.status === 'open' ? 'Mark resolved' : 'Reopen',
+            icon: note.status === 'open' ? CheckCircle2 : RotateCcw,
+            disabled: toggle.isPending, onSelect: () => toggle.mutate() },
+          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+          { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+        ]} />
       </div>
       <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{note.body}</p>
-      <div className="row" style={{ marginTop: 12, gap: 6 }}>
-        <button type="button" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
-          {note.status === 'open' ? 'Mark resolved' : 'Reopen'}
-        </button>
-        <button type="button" onClick={onDelete} disabled={remove.isPending}>Delete</button>
-      </div>
     </div>
   );
 }

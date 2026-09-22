@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileText, Pencil, Trash2 } from 'lucide-react';
 import { api, type Invoice } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * What has been billed, and whether it was paid.
@@ -63,15 +65,16 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
       <td className="muted">{invoice.dueDate}</td>
       <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
       <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
-      <td><div className="row">
-        <button type="button" onClick={() => setPaid.mutate(!invoice.paid)}>
+      <td className="actions"><div className="row">
+        <button type="button" onClick={() => setPaid.mutate(!invoice.paid)} disabled={setPaid.isPending}>
           {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
         </button>
-        <button type="button" onClick={() => setEditing(true)}>Edit</button>
-        <a href={api.invoiceDocumentUrl(invoice.id)} target="_blank" rel="noreferrer">
-          <button type="button">View</button>
-        </a>
-        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
+        <OverflowMenu label={`Actions for invoice ${invoice.number}`} items={[
+          { label: 'View invoice', icon: FileText,
+            onSelect: () => { window.open(api.invoiceDocumentUrl(invoice.id), '_blank', 'noopener'); } },
+          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+        ]} />
       </div></td>
     </tr>
   );

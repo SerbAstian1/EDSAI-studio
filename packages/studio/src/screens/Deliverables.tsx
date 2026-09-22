@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, PenTool, Pencil, Trash2 } from 'lucide-react';
 import { api, type Deliverable } from '../api.js';
 import FigmaEmbed, { isFigmaUrl } from '../components/FigmaEmbed.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * What the studio owes this client, one named thing at a time.
@@ -112,7 +113,7 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
             <option value="delivered">Delivered</option>
           </select>
         </td>
-        <td><div className="row">
+        <td className="actions"><div className="row">
           {d.figmaUrl && (
             <button type="button" onClick={() => setPreviewing((p) => !p)}
                     aria-expanded={previewing} aria-label={previewing ? 'Hide preview' : 'Preview'}>
@@ -122,13 +123,10 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
               {previewing ? 'Hide' : 'Preview'}
             </button>
           )}
-          <button type="button" onClick={() => setEditing(true)}>
-            <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> Edit
-          </button>
-          <button type="button" onClick={onDelete} disabled={remove.isPending}
-                  aria-label={`Remove ${d.title}`}>
-            <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+          <OverflowMenu label={`Actions for ${d.title}`} items={[
+            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          ]} />
         </div></td>
       </tr>
       {previewing && d.figmaUrl && (

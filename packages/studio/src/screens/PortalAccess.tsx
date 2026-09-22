@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ban, Pencil } from 'lucide-react';
 import { api, type PortalKey } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * Who can open this client's portal.
@@ -95,10 +97,12 @@ function KeyRow({ clientId, keyRecord, onChanged }: {
           : 'Everything approved'}
       </td>
       <td className="muted" data-label="Use">{describeKey(keyRecord)}</td>
-      <td><div className="row">
-        <button type="button" onClick={() => setEditing(true)}>Rename</button>
-        <button type="button" disabled={revoke.isPending} onClick={onRevoke}>Revoke</button>
-      </div></td>
+      <td className="actions">
+        <OverflowMenu label={`Actions for ${keyRecord.label}'s link`} items={[
+          { label: 'Rename', icon: Pencil, onSelect: () => setEditing(true) },
+          { label: 'Revoke link', icon: Ban, danger: true, disabled: revoke.isPending, onSelect: onRevoke },
+        ]} />
+      </td>
     </tr>
   );
 }

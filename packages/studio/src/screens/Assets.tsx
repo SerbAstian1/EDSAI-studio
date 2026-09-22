@@ -1,6 +1,8 @@
 import { useRef, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, Pencil, Trash2 } from 'lucide-react';
 import { api, type Asset } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * Files — the studio's side of what a client downloads.
@@ -113,11 +115,11 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
           <input value={collection} onChange={(e) => setCollection(e.target.value)}
                  aria-label="Collection" placeholder="Unfiled" style={{ maxWidth: 140 }} />
         </td>
-        <td colSpan={2} className="row" style={{ gap: 6 }}>
+        <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!filename.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
           <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </td>
+        </div></td>
       </tr>
     );
   }
@@ -138,8 +140,8 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
           ? <span className="pill pass">Visible</span>
           : <span className="pill major">Not yet</span>}
       </td>
-      <td>
-        <div className="row" style={{ gap: 'calc(var(--step) * 2)' }}>
+      <td className="actions">
+        <div className="row">
           <button
             type="button"
             className={asset.approved ? '' : 'primary'}
@@ -148,11 +150,16 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
           >
             {asset.approved ? 'Withdraw' : 'Approve'}
           </button>
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
-          <a href={api.downloadPath(asset.id)} download={asset.filename}>
-            <button type="button">Download</button>
-          </a>
-          <button type="button" onClick={onDelete} disabled={remove.isPending}>Delete</button>
+          <OverflowMenu label={`Actions for ${asset.filename}`} items={[
+            { label: 'Download', icon: Download, onSelect: () => {
+              const a = document.createElement('a');
+              a.href = api.downloadPath(asset.id);
+              a.download = asset.filename;
+              a.click();
+            } },
+            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+            { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          ]} />
         </div>
       </td>
     </tr>

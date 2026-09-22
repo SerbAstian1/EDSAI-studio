@@ -1,7 +1,10 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { api, type ApiError, type Client, type Contact, type Project } from '../api.js';
 import { RunTable } from '../components/RunTable.js';
+import OverflowMenu from '../components/OverflowMenu.js';
+import DocumentShelf from '../components/DocumentShelf.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
@@ -90,10 +93,11 @@ function ClientHeader({ client, dependents, onSaved }: {
                 style={{ marginLeft: 'auto' }}>
             {client.status}
           </span>
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" onClick={onDelete} disabled={remove.isPending}>
-            {remove.isPending ? 'Deleting…' : 'Delete'}
-          </button>
+          <OverflowMenu label={`Actions for ${client.name}`} size="bar" items={[
+            { label: 'Edit client', icon: Pencil, onSelect: () => setEditing(true) },
+            { label: remove.isPending ? 'Deleting…' : 'Delete client', icon: Trash2,
+              danger: true, disabled: remove.isPending, onSelect: onDelete },
+          ]} />
         </div>
         <p className="muted">
           {[client.industry, client.location, client.website].filter(Boolean).join(' · ') || '—'}
@@ -237,10 +241,12 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
       <td className="muted">{contact.title ?? '—'}</td>
       <td className="muted">{contact.email ?? '—'}</td>
       <td>{contact.decisionMaker ? <span className="pill pass">yes</span> : ''}</td>
-      <td><div className="row">
-        <button type="button" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
-      </div></td>
+      <td className="actions">
+        <OverflowMenu label={`Actions for ${contact.name}`} items={[
+          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+        ]} />
+      </td>
     </tr>
   );
 }
@@ -309,20 +315,24 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
       <td className="muted">{project.deadline ?? '—'}</td>
       <td>
         {project.figmaUrl
-          ? <a href={project.figmaUrl} target="_blank" rel="noreferrer">
-              <button type="button">Open Figma ↗</button>
+          ? <a href={project.figmaUrl} target="_blank" rel="noreferrer" className="row" style={{ gap: 4, display: 'inline-flex' }}>
+              Figma <ExternalLink size={12} aria-hidden="true" />
             </a>
           : <span className="muted">—</span>}
       </td>
-      <td>
-        <div className="row" style={{ gap: 6 }}>
+      <td className="actions">
+        <div className="row">
           <a href={`#/new/${project.id}`}>
             <button type="button" className="primary">Start a run</button>
           </a>
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" onClick={onDelete} disabled={remove.isPending}>
-            Remove
-          </button>
+          <OverflowMenu label={`Actions for ${project.name}`} items={[
+            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+            ...(project.figmaUrl ? [{
+              label: 'Open in Figma', icon: ExternalLink,
+              onSelect: () => { window.open(project.figmaUrl, '_blank', 'noopener'); },
+            }] : []),
+            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          ]} />
         </div>
         {/* A refusal that only exists in a `title` is a refusal for people
             who happen to hover. This one says why a project with a run
@@ -485,6 +495,7 @@ export default function ClientDetail({ clientId, tab }: {
       {current === 'brand' && <Brand clientId={clientId} />}
 
       {current === 'delivery' && (<>
+        <DocumentShelf clientId={clientId} editable />
         <Deliverables clientId={clientId} />
         <Milestones clientId={clientId} />
         <Assets clientId={clientId} />

@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import { api, type Milestone } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
  * The project's own timeline, in the studio's own words.
@@ -65,12 +67,7 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
 
   return (
     <tr>
-      <td className="mono muted" style={{ whiteSpace: 'nowrap' }}>
-        <button type="button" disabled={index === 0} onClick={() => onMove(-1)}
-                aria-label="Move up" title="Move up">↑</button>
-        <button type="button" disabled={index === count - 1} onClick={() => onMove(1)}
-                aria-label="Move down" title="Move down">↓</button>
-      </td>
+      <td className="mono muted">{index + 1}</td>
       <td>
         <strong>{m.title}</strong>
         {m.description && <div className="muted" style={{ fontSize: 13 }}>{m.description}</div>}
@@ -86,10 +83,14 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
           <option value="completed">Completed</option>
         </select>
       </td>
-      <td><div className="row">
-        <button type="button" onClick={() => setEditing(true)}>Edit</button>
-        <button type="button" onClick={onDelete} disabled={remove.isPending}>Remove</button>
-      </div></td>
+      <td className="actions">
+        <OverflowMenu label={`Actions for ${m.title}`} items={[
+          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+          { label: 'Move up', icon: ArrowUp, disabled: index === 0, onSelect: () => onMove(-1) },
+          { label: 'Move down', icon: ArrowDown, disabled: index === count - 1, onSelect: () => onMove(1) },
+          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+        ]} />
+      </td>
     </tr>
   );
 }
@@ -175,7 +176,7 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
 
       {data && data.length > 0 && (
         <table>
-          <thead><tr><th /><th>Title</th><th>Due</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Title</th><th>Due</th><th>Status</th><th /></tr></thead>
           <tbody>
             {data.map((m, i) => (
               <MilestoneRow
