@@ -1153,6 +1153,14 @@ button.choice.chosen {
 .project-card:hover { box-shadow: var(--shadow-2); border-color: var(--border-strong); }
 
 .project-card-head { display: flex; align-items: flex-start; gap: calc(var(--step) * 2.5); }
+/* The star keeps its place at the head's right edge; the ⋯ sits after it,
+   the same height, so the two read as one small cluster of card controls. */
+.project-card-head .bookmark { margin-left: auto; }
+.project-card-head .overflow { margin-left: calc(var(--step) * -1); }
+.project-card-head .bookmark, .project-card-head .overflow-button.row {
+  width: 32px; height: 32px; min-height: 32px; display: inline-grid; place-items: center;
+  margin-top: 2px;
+}
 .project-card-logo {
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -1256,6 +1264,7 @@ button.choice.chosen {
   border-radius: var(--radius);
   box-shadow: none;
   text-align: left;
+  white-space: nowrap;
 }
 .overflow-menu button[role="menuitem"]:hover,
 .overflow-menu button[role="menuitem"]:focus-visible {

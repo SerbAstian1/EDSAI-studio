@@ -1,6 +1,9 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Client } from '../api.js';
+import { Archive, ArchiveRestore, ExternalLink, Trash2 } from 'lucide-react';
+import { api, type ApiError, type Client } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
+import { go } from '../components/actions.js';
 
 /**
  * Clients.
@@ -36,8 +39,30 @@ export default function Clients(): ReactElement {
     },
   });
 
+  const invalidate = (): void => { void queryClient.invalidateQueries({ queryKey: ['clients'] }); };
+  const setStatus = useMutation({
+    mutationFn: (input: { id: string; status: Client['status'] }) =>
+      api.updateClient(input.id, { status: input.status }),
+    onSuccess: invalidate,
+  });
+  // A refusal is shown on the row it belongs to, not in a dialog: a client
+  // with work under it stays, and the reasons say what is still there.
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteClient(id),
+    onSuccess: invalidate,
+  });
+  const [refused, setRefused] = useState<{ id: string; message: string } | undefined>(undefined);
+
   if (isPending) return <p className="muted">Loading clients…</p>;
   if (error) return <p className="err">Could not load clients. {(error as Error).message}</p>;
+
+  const onDelete = (client: Client): void => {
+    if (!confirm(`Delete ${client.name}? This can't be undone.`)) return;
+    setRefused(undefined);
+    remove.mutate(client.id, {
+      onError: (e) => setRefused({ id: client.id, message: (e as ApiError).message }),
+    });
+  };
 
   return (
     <section className="stack">
@@ -86,7 +111,7 @@ export default function Clients(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Client</th><th>Industry</th><th>Projects</th><th>Contacts</th><th>Status</th></tr>
+            <tr><th>Client</th><th>Industry</th><th>Projects</th><th>Contacts</th><th>Status</th><th /></tr>
           </thead>
           <tbody>
             {clients.map((client) => (
@@ -94,11 +119,26 @@ export default function Clients(): ReactElement {
                 <td>
                   <a href={`#/clients/${client.id}`}><strong>{client.name}</strong></a>
                   <div className="muted mono" style={{ fontSize: 12 }}>/{client.slug}</div>
+                  {refused?.id === client.id && (
+                    <div className="err" style={{ fontSize: 13, marginTop: 4 }}>{refused.message}</div>
+                  )}
                 </td>
                 <td className="muted">{client.industry ?? '—'}</td>
                 <td className="mono">{client.projects ?? 0}</td>
                 <td className="mono">{client.contacts ?? 0}</td>
                 <td><span className={`pill ${STATUS_TONE[client.status]}`}>{client.status}</span></td>
+                <td className="actions">
+                  <OverflowMenu label={`Actions for ${client.name}`} items={[
+                    { label: 'Open', icon: ExternalLink, onSelect: () => go(`#/clients/${client.id}`) },
+                    client.status === 'archived'
+                      ? { label: 'Reactivate', icon: ArchiveRestore, disabled: setStatus.isPending,
+                          onSelect: () => setStatus.mutate({ id: client.id, status: 'active' }) }
+                      : { label: 'Archive', icon: Archive, disabled: setStatus.isPending,
+                          onSelect: () => setStatus.mutate({ id: client.id, status: 'archived' }) },
+                    { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending,
+                      onSelect: () => onDelete(client) },
+                  ]} />
+                </td>
               </tr>
             ))}
           </tbody>

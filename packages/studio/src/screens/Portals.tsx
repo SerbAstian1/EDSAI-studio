@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ban, KeyRound } from 'lucide-react';
 import { api, type Run } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
+import { go } from '../components/actions.js';
 import { brandsFrom } from './Brands.js';
 
 /**
@@ -24,6 +27,12 @@ export default function Portals(): ReactElement {
   const runs = useQuery({ queryKey: ['runs'], queryFn: api.runs });
   const keys = useQuery({ queryKey: ['portal-keys'], queryFn: api.allPortalKeys });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
+  const queryClient = useQueryClient();
+  const revoke = useMutation({
+    mutationFn: (input: { clientId: string; keyId: string }) =>
+      api.revokePortalKey(input.clientId, input.keyId),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['portal-keys'] }); },
+  });
 
   if (runs.isPending || keys.isPending) return <p className="muted">Loading portals…</p>;
   if (runs.error || keys.error) {
@@ -63,7 +72,7 @@ export default function Portals(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Given to</th><th>Client</th><th>Opens</th><th>Use</th><th>Expires</th></tr>
+            <tr><th>Given to</th><th>Client</th><th>Opens</th><th>Use</th><th>Expires</th><th /></tr>
           </thead>
           <tbody>
             {live.map((key) => {
@@ -90,6 +99,18 @@ export default function Portals(): ReactElement {
                     {left <= 7
                       ? <span className="pill major">{left} day{left === 1 ? '' : 's'} left</span>
                       : <span className="muted">{left} days left</span>}
+                  </td>
+                  <td className="actions">
+                    <OverflowMenu label={`Actions for ${key.label}'s link`} items={[
+                      { label: 'Manage on client page', icon: KeyRound,
+                        onSelect: () => go(`#/clients/${key.clientId}/client`) },
+                      { label: 'Revoke link', icon: Ban, danger: true, disabled: revoke.isPending,
+                        onSelect: () => {
+                          if (confirm(`Revoke the link for ${key.label}? Whoever holds it loses access immediately.`)) {
+                            revoke.mutate({ clientId: key.clientId, keyId: key.id });
+                          }
+                        } },
+                    ]} />
                   </td>
                 </tr>
               );

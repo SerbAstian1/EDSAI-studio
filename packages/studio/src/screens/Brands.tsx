@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { BarChart3, Compass, Palette, Users } from 'lucide-react';
 import { api, type Run } from '../api.js';
+import OverflowMenu from '../components/OverflowMenu.js';
+import { go } from '../components/actions.js';
 
 /**
  * Brands.
@@ -47,7 +50,7 @@ export default function Brands(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Brand</th><th>Run</th><th>Departments</th><th>Portal</th></tr>
+            <tr><th>Brand</th><th>Run</th><th>Departments</th><th>Portal</th><th /></tr>
           </thead>
           <tbody>
             {brands.map((run) => (
@@ -56,6 +59,14 @@ export default function Brands(): ReactElement {
                 <td><a className="mono" href={`#/run/${run.id}/scorecard`}>{run.id}</a></td>
                 <td className="mono">{run.activatedDepartments.length}</td>
                 <td><a href="#/portals">Publishable</a></td>
+                <td className="actions">
+                  <OverflowMenu label={`Actions for brand ${run.projectId}`} items={[
+                    { label: 'Brand values', icon: Palette, onSelect: () => go(`#/clients/${run.clientId}/brand`) },
+                    { label: 'Read the direction', icon: Compass, onSelect: () => go(`#/run/${run.id}/direction`) },
+                    { label: 'Scorecard', icon: BarChart3, onSelect: () => go(`#/run/${run.id}/scorecard`) },
+                    { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${run.clientId}`) },
+                  ]} />
+                </td>
               </tr>
             ))}
           </tbody>

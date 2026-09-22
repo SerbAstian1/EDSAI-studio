@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Asset, type Client } from '../api.js';
+import AssetMenu from '../components/AssetMenu.js';
 import { readableSize, shelve } from './Assets.js';
 
 /**
@@ -76,7 +77,7 @@ export default function FileLibrary(): ReactElement {
                 : <span className="pill pass">All visible to the client</span>}
             </div>
             <table>
-              <thead><tr><th>File</th><th>Collection</th><th>Size</th><th>In the portal</th></tr></thead>
+              <thead><tr><th>File</th><th>Collection</th><th>Size</th><th>In the portal</th><th /></tr></thead>
               <tbody>
                 {mine.slice(0, 6).map((asset) => (
                   <tr key={asset.id}>
@@ -88,6 +89,7 @@ export default function FileLibrary(): ReactElement {
                         ? <span className="pill pass">Visible</span>
                         : <span className="pill major">Not yet</span>}
                     </td>
+                    <td className="actions"><AssetMenu asset={asset} /></td>
                   </tr>
                 ))}
               </tbody>

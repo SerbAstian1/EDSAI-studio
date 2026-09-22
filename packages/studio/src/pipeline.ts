@@ -21,6 +21,7 @@ export interface ProjectCard {
   /** 0 to 1. */
   progress: number;
   runId?: string;
+  figmaUrl?: string;
   /** False only once a run has cleared the gate at FINAL. */
   active: boolean;
   ctaLabel: string;
@@ -65,6 +66,7 @@ export function projectCardsFrom(
       return {
         projectId: project.id, projectName: project.name,
         clientId: project.clientId, clientName: client,
+        ...(project.figmaUrl ? { figmaUrl: project.figmaUrl } : {}),
         stage: 'Client Setup', status: 'No run started yet.', progress: 0,
         active: true, ctaLabel: 'Open Workspace', ctaHref: `#/clients/${project.clientId}`,
       };
@@ -78,6 +80,7 @@ export function projectCardsFrom(
       return {
         projectId: project.id, projectName: project.name,
         clientId: project.clientId, clientName: client,
+        ...(project.figmaUrl ? { figmaUrl: project.figmaUrl } : {}),
         stage: 'Handoff',
         status: `Cleared the gate at FINAL across ${total} department${total === 1 ? '' : 's'}.`,
         progress: 1, runId: run.id, active: false,
@@ -90,6 +93,7 @@ export function projectCardsFrom(
       return {
         projectId: project.id, projectName: project.name,
         clientId: project.clientId, clientName: client,
+        ...(project.figmaUrl ? { figmaUrl: project.figmaUrl } : {}),
         stage: (lastDepartment !== undefined ? stageOf.get(lastDepartment) : undefined) ?? 'Review',
         status: `All ${total} departments complete — awaiting review.`,
         progress: 1, runId: run.id, active: true,
@@ -101,6 +105,7 @@ export function projectCardsFrom(
     return {
       projectId: project.id, projectName: project.name,
       clientId: project.clientId, clientName: client,
+      ...(project.figmaUrl ? { figmaUrl: project.figmaUrl } : {}),
       stage: (currentDepartment !== undefined ? stageOf.get(currentDepartment) : undefined) ?? 'In progress',
       status: `${done} of ${total} department${total === 1 ? '' : 's'} complete.`,
       progress: total > 0 ? done / total : 0,

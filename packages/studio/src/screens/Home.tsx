@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type Run } from '../api.js';
 import { projectCardsFrom, type ProjectCard } from '../pipeline.js';
 import { useBookmarks } from '../bookmarks.js';
+import ProjectMenu from '../components/ProjectMenu.js';
 
 /**
  * Studio home.
@@ -96,6 +97,11 @@ function ProjectCardView({ card, starred, onToggleStar }: {
         >
           {starred ? '★' : '☆'}
         </button>
+        <ProjectMenu project={{
+          id: card.projectId, name: card.projectName, clientId: card.clientId,
+          ...(card.figmaUrl ? { figmaUrl: card.figmaUrl } : {}),
+          ...(card.runId ? { runId: card.runId } : {}),
+        }} />
       </div>
 
       <span className="pill minor">{card.stage}</span>

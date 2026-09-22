@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api.js';
+import ProjectMenu from '../components/ProjectMenu.js';
 
 /**
  * Every campaign, across every client — a project like any other, filtered
@@ -53,7 +54,7 @@ export default function Campaigns(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Campaign</th><th>Client</th><th>Phase</th><th>Deadline</th><th>Figma</th></tr>
+            <tr><th>Campaign</th><th>Client</th><th>Phase</th><th>Deadline</th><th>Figma</th><th /></tr>
           </thead>
           <tbody>
             {campaigns.map((project) => (
@@ -71,6 +72,7 @@ export default function Campaigns(): ReactElement {
                     ? <a href={project.figmaUrl} target="_blank" rel="noreferrer">Open ↗</a>
                     : <span className="muted">—</span>}
                 </td>
+                <td className="actions"><ProjectMenu project={project} /></td>
               </tr>
             ))}
           </tbody>

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api.js';
+import ProjectMenu from '../components/ProjectMenu.js';
 
 /**
  * Every project, across every client.
@@ -48,7 +49,7 @@ export default function Projects(): ReactElement {
       ) : (
         <table>
           <thead>
-            <tr><th>Project</th><th>Client</th><th>Kind</th><th>Phase</th><th>Deadline</th><th>Figma</th></tr>
+            <tr><th>Project</th><th>Client</th><th>Kind</th><th>Phase</th><th>Deadline</th><th>Figma</th><th /></tr>
           </thead>
           <tbody>
             {projects.data.map((project) => (
@@ -67,6 +68,7 @@ export default function Projects(): ReactElement {
                     ? <a href={project.figmaUrl} target="_blank" rel="noreferrer">Open ↗</a>
                     : <span className="muted">—</span>}
                 </td>
+                <td className="actions"><ProjectMenu project={project} /></td>
               </tr>
             ))}
           </tbody>

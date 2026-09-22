@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Asset } from '../api.js';
+import AssetMenu from '../components/AssetMenu.js';
 import { readableSize } from './Assets.js';
 
 /**
@@ -75,11 +76,7 @@ export default function Templates(): ReactElement {
                 </td>
                 <td className="muted">{asset.collection ?? 'Unfiled'}</td>
                 <td className="mono">{readableSize(asset.bytes)}</td>
-                <td>
-                  <a href={api.downloadPath(asset.id)} download={asset.filename}>
-                    <button type="button">Download</button>
-                  </a>
-                </td>
+                <td className="actions"><AssetMenu asset={asset} /></td>
               </tr>
             ))}
           </tbody>

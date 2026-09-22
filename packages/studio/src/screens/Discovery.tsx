@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Compass, FolderPlus, Play, type LucideIcon } from 'lucide-react';
 import { api, type OnboardingSummary } from '../api.js';
+import OverflowMenu, { type MenuItem } from '../components/OverflowMenu.js';
+import { go } from '../components/actions.js';
 
 /**
  * Every onboarding, across every client, in one view.
@@ -23,14 +26,39 @@ const STATUS_LABEL: Record<OnboardingSummary['status'], string> = {
 };
 
 export default function Discovery(): ReactElement {
+  const queryClient = useQueryClient();
   const { data: onboardings, isPending, error } = useQuery({
     queryKey: ['onboardings'], queryFn: api.allOnboardings,
+  });
+  const accept = useMutation({
+    mutationFn: (id: string) => api.acceptOnboarding(id),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['onboardings'] });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      go(`#/clients/${result.project.clientId}`);
+    },
   });
 
   if (isPending) return <p className="muted">Loading discovery…</p>;
   if (error) return <p className="err">Could not load discovery. {(error as Error).message}</p>;
 
   const outstanding = onboardings.filter((o) => o.status !== 'accepted').length;
+
+  const itemsFor = (o: OnboardingSummary): MenuItem[] => {
+    const open: MenuItem & { icon: LucideIcon } = {
+      label: 'Open discovery', icon: Compass, onSelect: () => go(`#/clients/${o.clientId}/discovery`),
+    };
+    if (o.status === 'submitted') {
+      return [open, { label: 'Turn into a project', icon: FolderPlus, disabled: accept.isPending,
+        onSelect: () => accept.mutate(o.id) }];
+    }
+    if (o.status === 'accepted' && o.projectId) {
+      const projectId = o.projectId;
+      return [open, { label: 'Start a run from these answers', icon: Play,
+        onSelect: () => go(`#/new/${projectId}`) }];
+    }
+    return [open];
+  };
 
   return (
     <section className="stack">
@@ -57,7 +85,7 @@ export default function Discovery(): ReactElement {
           <table>
             <thead>
               <tr>
-                <th>Client</th><th>Status</th><th>Progress</th><th>Outstanding</th><th>Sent</th>
+                <th>Client</th><th>Status</th><th>Progress</th><th>Outstanding</th><th>Sent</th><th />
               </tr>
             </thead>
             <tbody>
@@ -84,6 +112,10 @@ export default function Discovery(): ReactElement {
                       : '—'}
                   </td>
                   <td className="muted">{onboarding.createdAt.slice(0, 10)}</td>
+                  <td className="actions">
+                    <OverflowMenu label={`Actions for ${onboarding.clientName ?? 'this discovery'}`}
+                                  items={itemsFor(onboarding)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
