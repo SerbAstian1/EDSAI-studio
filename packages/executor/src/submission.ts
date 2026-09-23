@@ -63,16 +63,28 @@ export const SUBMIT_TOOL: ModelTool = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['discipline', 'metric', 'target', 'source'],
+          required: [
+            'discipline', 'metric', 'target', 'actual', 'source',
+            'mechanism', 'pass', 'instrument',
+          ],
           properties: {
             discipline: { type: 'string' },
             metric: { type: 'string' },
             target: { type: 'string', description: 'e.g. "< 2.5s" or "4.5:1".' },
-            actual: { type: 'string', description: 'Only when an instrument measured it.' },
+            actual: {
+              type: ['string', 'null'],
+              description: 'Only when an instrument measured it; otherwise null.',
+            },
             source: { type: 'string', enum: ['instrument', 'stated-target'] },
-            mechanism: { type: 'string', description: 'Required when there is no actual.' },
-            pass: { type: 'boolean' },
-            instrument: { type: 'string', description: 'The tool that produced "actual".' },
+            mechanism: {
+              type: ['string', 'null'],
+              description: 'Required when there is no actual; otherwise null.',
+            },
+            pass: { type: ['boolean', 'null'] },
+            instrument: {
+              type: ['string', 'null'],
+              description: 'The tool that produced "actual"; otherwise null.',
+            },
           },
         },
       },
@@ -82,10 +94,10 @@ export const SUBMIT_TOOL: ModelTool = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['structure', 'eyePath'],
+          required: ['structure', 'family', 'eyePath'],
           properties: {
             structure: { type: 'string', description: 'A slug from the catalog, not free text.' },
-            family: { type: 'string' },
+            family: { type: ['string', 'null'] },
             eyePath: { type: 'string' },
           },
         },
@@ -163,17 +175,30 @@ export function submissionFrom(input: unknown): Submission {
     comparators?: unknown[];
   };
 
-  const filled = (list: unknown): boolean => Array.isArray(list) && list.length > 0;
+  const records = (list: unknown): unknown[] => Array.isArray(list)
+    ? list.map((item) => omitNullProperties(item))
+    : [];
+
+  const scores = records(raw?.scores);
+  const targets = records(raw?.targets);
+  const compositions = records(raw?.compositions);
+  const decisions = records(raw?.decisions);
+  const comparators = records(raw?.comparators);
 
   const submission: Submission = {
     body: typeof raw?.body === 'string' ? raw.body : '',
   };
-  if (filled(raw?.scores)) submission.scores = raw.scores as NonNullable<Submission['scores']>;
-  if (filled(raw?.targets)) submission.targets = raw.targets as NonNullable<Submission['targets']>;
-  if (filled(raw?.compositions)) {
-    submission.compositions = raw.compositions as NonNullable<Submission['compositions']>;
+  if (scores.length > 0) submission.scores = scores as NonNullable<Submission['scores']>;
+  if (targets.length > 0) submission.targets = targets as NonNullable<Submission['targets']>;
+  if (compositions.length > 0) {
+    submission.compositions = compositions as NonNullable<Submission['compositions']>;
   }
-  if (filled(raw?.decisions)) submission.decisions = raw.decisions as NonNullable<Submission['decisions']>;
-  if (filled(raw?.comparators)) submission.comparators = raw.comparators as unknown[];
+  if (decisions.length > 0) submission.decisions = decisions as NonNullable<Submission['decisions']>;
+  if (comparators.length > 0) submission.comparators = comparators;
   return submission;
+}
+
+function omitNullProperties(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null));
 }

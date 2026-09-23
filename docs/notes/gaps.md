@@ -1030,15 +1030,15 @@ a minute of meeting a real API.
 
 Things asserted somewhere that nothing has actually verified:
 
-- **API cost and wall-clock (§10).** Every figure is still an estimate, but the
-  machinery to stop estimating now exists: the executor records what each call
-  actually used and prices it. Nothing has been measured because no credential
-  has ever been available to this project. The estimate remains ≈ $3.4 per
-  Level 1 run before thinking tokens.
-- **The executor's live-provider path.** No external provider is bundled now.
-  The provider-neutral adapter contract and rehearsal path are tested, but a
-  production adapter still needs a live integration test proving that its
-  output reaches the verifier and passes the engine.
+- **API cost and wall-clock (§10).** The executor records the ordinary, cached,
+  cache-write and output tokens reported by OpenAI, but no credential has been
+  available to measure a real run. No current-model dollar estimate is shown
+  until one is based on a live run and a stated pricing tier.
+- **The executor's live-provider path.** The bundled OpenAI Responses adapter is
+  covered against a fake SDK boundary, including strict tools, encrypted
+  reasoning replay, refusals and cache accounting. It still needs a live
+  integration run proving that model output reaches the verifier and passes
+  the engine; no repository credential is used by the test suite.
 - **PageSpeed against a live URL.** Still true after the Phase 5 rebuild, and
   for the same reason. The parser is fixture-proven, including CrUX's CLS×100
   and page-versus-origin precedence; the request reaches Google and the failure

@@ -1,6 +1,6 @@
 import type { Usage } from './pricing.js';
 
-export type ModelEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ModelEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface ModelTool {
   name: string;

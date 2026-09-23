@@ -8,7 +8,7 @@ import type {
   ModelToolResultBlock,
 } from '../src/protocol.js';
 import { NO_USAGE, type Usage } from '../src/pricing.js';
-import { SUBMIT_TOOL_NAME, submissionFrom } from '../src/submission.js';
+import { SUBMIT_TOOL, SUBMIT_TOOL_NAME, submissionFrom } from '../src/submission.js';
 
 const rubric = buildRubric();
 const department = rubric.departments[0];
@@ -231,6 +231,22 @@ describe('running one department', () => {
 });
 
 describe('reading the submission', () => {
+  it('keeps every object in the strict submission schema closed and fully required', () => {
+    const check = (schema: unknown): void => {
+      if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
+      const node = schema as Record<string, unknown>;
+      if (node['type'] === 'object') {
+        const properties = node['properties'] as Record<string, unknown>;
+        expect(node['additionalProperties']).toBe(false);
+        expect([...(node['required'] as string[])].sort()).toEqual(Object.keys(properties).sort());
+        Object.values(properties).forEach(check);
+      }
+      check(node['items']);
+    };
+
+    check(SUBMIT_TOOL.inputSchema);
+  });
+
   it('drops an empty list rather than storing one', () => {
     const result = submissionFrom({ body: 'x', scores: [], targets: [], compositions: [], decisions: [] });
     expect(result).toEqual({ body: 'x' });
@@ -244,6 +260,21 @@ describe('reading the submission', () => {
   it('survives a body that is not a string', () => {
     expect(submissionFrom({ body: 42 }).body).toBe('');
     expect(submissionFrom(null).body).toBe('');
+  });
+
+  it('removes nullable strict-schema placeholders from optional fields', () => {
+    const result = submissionFrom({
+      body: 'x',
+      targets: [{
+        discipline: 'UI', metric: 'contrast', target: '4.5:1', actual: null,
+        source: 'stated-target', mechanism: 'Use tested pairs.', pass: null, instrument: null,
+      }],
+      compositions: [{ structure: 'grid', family: null, eyePath: 'Left to right.' }],
+    });
+
+    expect(result.targets?.[0]).not.toHaveProperty('actual');
+    expect(result.targets?.[0]).not.toHaveProperty('pass');
+    expect(result.compositions?.[0]).not.toHaveProperty('family');
   });
 });
 

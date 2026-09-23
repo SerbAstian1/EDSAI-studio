@@ -3,17 +3,21 @@ import { RunContext, RunStore, runInstrument, type InstrumentCall } from '@edsai
 import { buildRubric } from '@edsai/rubric';
 import { Executor, TurnRefused } from '../executor.js';
 import { diagnose } from '../failure.js';
+import { OPENAI_DEFAULT_MODEL, OpenAIModelClient } from '../openai.js';
 import { addUsage, NO_USAGE } from '../pricing.js';
+import type { ModelEffort } from '../protocol.js';
 import { RehearsalClient, REHEARSAL_MODEL } from '../rehearsal.js';
 
 const usage = `edsai-execute <runId> [--rehearse] [--delay-ms <milliseconds>]
+  [--model <id>] [--effort none|minimal|low|medium|high|xhigh|max]
 
   Executes every activated department that has no output yet, in order, and
   stops at the first one that will not produce one. Safe to re-run: completed
   departments are persisted, so it resumes rather than repeating.
 
-  This command supports marked rehearsal output only. Use --rehearse (or
-  EDSAI_REHEARSAL=1). EDSAI_DB selects the database (default .edsai/runs.db).
+  Needs OPENAI_API_KEY for live execution. Use --rehearse (or
+  EDSAI_REHEARSAL=1) for marked placeholder output. EDSAI_DB selects the
+  database (default .edsai/runs.db).
 `;
 
 const flag = (argv: string[], name: string): string | undefined => {
@@ -29,24 +33,29 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const rehearsal = argv.includes('--rehearse') || process.env['EDSAI_REHEARSAL'] === '1';
-  if (!rehearsal) {
-    process.stderr.write(
-      'No model provider is configured for the command-line executor. '
-      + 'Use --rehearse to create clearly marked placeholder output.\n',
-    );
+  const openaiApiKey = process.env['OPENAI_API_KEY'];
+  if (!rehearsal && !openaiApiKey) {
+    process.stderr.write('OPENAI_API_KEY is not set, so there is nothing to run this with.\n');
     return 2;
   }
 
   const store = new RunStore(process.env['EDSAI_DB'] ?? '.edsai/runs.db');
   const context = new RunContext({ store });
   const delay = Number.parseInt(flag(argv, 'delay-ms') ?? '', 10);
-  const executor = new Executor({
-    model: REHEARSAL_MODEL,
-    client: new RehearsalClient({
-      rubric: buildRubric(),
-      ...(Number.isFinite(delay) ? { delayMs: delay } : {}),
-    }),
-  });
+  const effort = modelEffort(flag(argv, 'effort'));
+  const executor = rehearsal
+    ? new Executor({
+      model: REHEARSAL_MODEL,
+      client: new RehearsalClient({
+        rubric: buildRubric(),
+        ...(Number.isFinite(delay) ? { delayMs: delay } : {}),
+      }),
+    })
+    : new Executor({
+      model: flag(argv, 'model') ?? process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL,
+      ...(effort ? { effort } : {}),
+      client: new OpenAIModelClient({ apiKey: requiredApiKey(openaiApiKey) }),
+    });
 
   let total = NO_USAGE;
   let halted = false;
@@ -96,6 +105,18 @@ async function main(argv: string[]): Promise<number> {
   );
   store.close();
   return halted ? 1 : 0;
+}
+
+function modelEffort(value: string | undefined): ModelEffort | undefined {
+  if (value === undefined) return undefined;
+  const efforts: ModelEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (efforts.includes(value as ModelEffort)) return value as ModelEffort;
+  throw new Error(`Unknown reasoning effort "${value}".`);
+}
+
+function requiredApiKey(value: string | undefined): string {
+  if (!value) throw new Error('OPENAI_API_KEY is required for live execution.');
+  return value;
 }
 
 main(process.argv.slice(2)).then(

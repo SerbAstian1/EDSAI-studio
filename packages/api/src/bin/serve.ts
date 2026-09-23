@@ -2,7 +2,13 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DiskAssetStore, RunStore } from '@edsai/engine';
-import { Executor, RehearsalClient, REHEARSAL_MODEL } from '@edsai/executor';
+import {
+  Executor,
+  OPENAI_DEFAULT_MODEL,
+  OpenAIModelClient,
+  RehearsalClient,
+  REHEARSAL_MODEL,
+} from '@edsai/executor';
 import { buildRubric } from '@edsai/rubric';
 import { ApiServer } from '../server.js';
 
@@ -33,6 +39,7 @@ const rubric = buildRubric();
  */
 const rehearsal = process.env['EDSAI_REHEARSAL'] === '1';
 const rehearsalDelay = Number.parseInt(process.env['EDSAI_REHEARSAL_DELAY_MS'] ?? '', 10);
+const openaiApiKey = process.env['OPENAI_API_KEY'];
 
 const executor = rehearsal
   ? new Executor({
@@ -42,7 +49,12 @@ const executor = rehearsal
       ...(Number.isFinite(rehearsalDelay) ? { delayMs: rehearsalDelay } : {}),
     }),
   })
-  : undefined;
+  : openaiApiKey
+    ? new Executor({
+      model: process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL,
+      client: new OpenAIModelClient({ apiKey: openaiApiKey }),
+    })
+    : undefined;
 
 const port = Number.parseInt(process.env['PORT'] ?? '4317', 10);
 const db = process.env['EDSAI_DB'] ?? '.edsai/runs.db';
@@ -98,8 +110,8 @@ process.stdout.write(app
 process.stdout.write(rehearsal
   ? '  runs     REHEARSAL (EDSAI_REHEARSAL=1) — departments produce placeholders, no model is called\n'
   : executor
-    ? `  runs execute on ${executor.model}\n`
-    : '  runs     automated execution is not configured; runs are created but not executed\n');
+    ? `  runs     OpenAI Responses API on ${executor.model}\n`
+    : '  runs     no OPENAI_API_KEY; runs are created but not executed\n');
 process.stdout.write(server.devOwnerCreated
   ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`
     + `           an owner account was still created, for when this is turned back on:\n`

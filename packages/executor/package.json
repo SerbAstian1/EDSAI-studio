@@ -19,6 +19,7 @@
   "dependencies": {
     "@edsai/engine": "workspace:*",
     "@edsai/instruments": "workspace:*",
-    "@edsai/rubric": "workspace:*"
+    "@edsai/rubric": "workspace:*",
+    "openai": "^7.23.0"
   }
 }

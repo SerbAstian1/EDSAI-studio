@@ -20,9 +20,9 @@ browser still talks to one origin.
 - **Node 22 or newer.** The database is `node:sqlite`, which is built in.
 - **A writable directory.** The database file and every uploaded file live
   there. In the container it is `/data`.
-- **Automated execution is optional.** The bundled server deliberately has no
-  external provider. It still serves everything and accepts runs; it simply
-  makes clear that those runs will not execute automatically.
+- **An `OPENAI_API_KEY` for live execution.** It is optional: without one the
+  server still serves everything and accepts runs, but makes clear that those
+  runs will not execute automatically.
 
 ## Settings
 
@@ -35,6 +35,8 @@ those and not all of them can be given a file.
 | `EDSAI_DB` | `.edsai/runs.db` | The database file. |
 | `EDSAI_ASSETS` | `.edsai/assets` | Where uploaded files are written. |
 | `EDSAI_APP` | `packages/studio/dist` | The built Studio. Absent or missing means the API is served alone. |
+| `OPENAI_API_KEY` | none | Server-side OpenAI project key. Absent means runs are created but not executed. |
+| `EDSAI_MODEL` | `gpt-6-astra` | OpenAI model used by the Responses API adapter. |
 | `EDSAI_REHEARSAL` | off | Set to `1` for clearly marked placeholder output while checking the full pipeline. |
 | `EDSAI_REHEARSAL_DELAY_MS` | `1500` | Delay before each rehearsal department completes, in milliseconds. |
 | `EDSAI_ORIGINS` | — | Extra browser origins allowed to call the API. Not needed for the one-origin layout. |
@@ -64,11 +66,17 @@ increasing `Retry-After` delay.
 
 ## Automated execution
 
-The bundled server intentionally includes no external model provider or API
-credential. Use `EDSAI_REHEARSAL=1` to walk the complete pipeline with
-clearly marked placeholders. A production integration should provide a
-`ModelClient` adapter in server code; this keeps the vendor, credentials,
-and pricing policy explicit instead of making them a hidden deployment toggle.
+The bundled adapter uses OpenAI's Responses API with strict function tools.
+Set `OPENAI_API_KEY` on the API process; never put it in a `VITE_` variable or
+any client-side configuration. The default model is `gpt-6-astra`; set
+`EDSAI_MODEL` to another Responses-compatible model when cost, latency, or
+account access calls for it.
+
+Requests use stateless response replay (`store: false`). The adapter sends the
+encrypted reasoning state back only within the active department turn, maps
+prompt-cache usage into the run's token record, and never returns the key to
+the browser. `EDSAI_REHEARSAL=1` still wins over a configured key so a deliberate
+rehearsal cannot spend API credit by accident.
 
 ## In a container
 
@@ -99,6 +107,8 @@ health check is and never to run more than one replica.
    | Variable | Value |
    | --- | --- |
    | `PORT` | `4317` |
+   | `OPENAI_API_KEY` | the server-side OpenAI project key |
+   | `EDSAI_MODEL` | optional; defaults to `gpt-6-astra` |
    | `EDSAI_ORIGINS` | the Studio's address on Vercel, once it exists (see below) |
 
 3. **Volume.** Service → Volumes → Add Volume, mount path **`/data`**. That
@@ -119,6 +129,7 @@ portal link that does not open.
 ```
 fly launch --no-deploy --copy-config
 fly volumes create edsai_data --size 3
+fly secrets set OPENAI_API_KEY=your-project-key
 fly deploy
 ```
 

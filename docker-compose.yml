@@ -18,6 +18,9 @@ services:
     volumes:
       - edsai-data:/data
     environment:
+      # Server-side only. Leave empty to create runs without executing them.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EDSAI_MODEL: ${EDSAI_MODEL:-gpt-6-astra}
       # Optional marked placeholder output for checking the full pipeline.
       EDSAI_REHEARSAL: ${EDSAI_REHEARSAL:-}
       # Only needed for a browser on a different origin than this server —

@@ -95,6 +95,17 @@ never called all stop the build with the reason stated.
 
 ## Running it live
 
+For live runs, put the server-side key in `.env` and restart:
+
+```dotenv
+OPENAI_API_KEY=your-project-key
+# Optional; defaults to gpt-6-astra
+EDSAI_MODEL=gpt-6-astra
+```
+
+The key is read only by the Node API process and is never sent to the Studio
+bundle or browser.
+
 `npm run dev` starts the API and the Studio for one person on one machine;
 `npm run dev:rehearse` does the same with runs executing on placeholders,
 for walking the pipeline without a key. Hosting — as one container, on Fly,

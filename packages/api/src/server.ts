@@ -3346,7 +3346,8 @@ body { max-width: 640px; margin: 48px auto; }
             send(res, 503, {
               error: 'no_executor',
               message: 'Automated execution is not configured on this server, so it cannot run a '
-                + 'pipeline. Enable rehearsal mode for marked placeholders or install a model adapter.',
+                + 'pipeline. Set OPENAI_API_KEY on the server, or enable rehearsal mode for marked '
+                + 'placeholders.',
             });
             return;
           }

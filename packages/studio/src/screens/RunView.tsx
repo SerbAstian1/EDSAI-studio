@@ -101,8 +101,9 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
         {health && !health.executionEnabled && next?.done === false && (
           <p className="muted" style={{ marginTop: 10 }}>
             Automated execution is not configured, so this run will not proceed on its own.
-            Enable <span className="mono">EDSAI_REHEARSAL=1</span> for marked placeholder output,
-            or install a model adapter and restart before resuming.
+            Set <span className="mono">OPENAI_API_KEY</span> on the server for live output, or enable
+            {' '}<span className="mono">EDSAI_REHEARSAL=1</span> for marked placeholders, then restart
+            before resuming.
           </p>
         )}
 
