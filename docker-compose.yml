@@ -29,6 +29,7 @@ services:
       # over localhost. The session cookie drops `Secure`, and a cookie without
       # it can be read off any network the traffic crosses.
       EDSAI_INSECURE_COOKIES: ${EDSAI_INSECURE_COOKIES:-}
+      EDSAI_SIGNIN_ALLOW: ${EDSAI_SIGNIN_ALLOW:-}
 
 volumes:
   edsai-data:

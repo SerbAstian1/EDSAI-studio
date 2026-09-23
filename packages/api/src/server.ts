@@ -33,6 +33,7 @@ import {
 import {
   Forbidden, mintSessionToken, digestToken, hashPassword,
   readSessionCookie, serializeSession, serializeLogout, isCsrfSafe, verifyAgainstAccount,
+  SignInAttempts, signInAllowed,
   type Principal,
 } from '@edsai/auth';
 
@@ -86,6 +87,10 @@ export interface ApiOptions {
    * mode a shared or internet-facing deployment should ever set.
    */
   disableAuth?: boolean;
+  /** Exact email addresses permitted to set up or sign in. */
+  signInAllow?: readonly string[];
+  /** Injectable for deterministic tests. */
+  signInAttempts?: SignInAttempts;
 }
 
 /** How long a session lasts before it has to be renewed by signing in again. */
@@ -167,6 +172,8 @@ export class ApiServer {
   private readonly running = new Set<string>();
   private server?: Server;
   private readonly disableAuth: boolean;
+  private readonly signInAllow: readonly string[];
+  private readonly signInAttempts: SignInAttempts;
   private devOwnerId?: string;
   /**
    * Set once, only when `disableAuth` had to create the owner account itself
@@ -189,6 +196,10 @@ export class ApiServer {
     this.app = options.app === undefined ? undefined : new StaticApp(options.app);
     this.executor = options.executor;
     this.disableAuth = options.disableAuth ?? false;
+    this.signInAllow = [...new Set((options.signInAllow ?? [])
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean))];
+    this.signInAttempts = options.signInAttempts ?? new SignInAttempts();
     this.routes = this.buildRoutes();
   }
 
@@ -597,6 +608,28 @@ export class ApiServer {
     }));
   }
 
+  private signInAttemptKey(req: IncomingMessage): string {
+    return req.socket.remoteAddress ?? 'unknown';
+  }
+
+  private rejectSignIn(res: ServerResponse, key: string): void {
+    const blocked = this.signInAttempts.fail(key);
+    res.setHeader('Retry-After', String(blocked.retryAfter));
+    send(res, 401, {
+      error: 'bad_credentials', message: 'That email and password do not match.',
+    });
+  }
+
+  private rejectBlockedSignIn(res: ServerResponse, key: string): boolean {
+    const blocked = this.signInAttempts.check(key);
+    if (!blocked) return false;
+    res.setHeader('Retry-After', String(blocked.retryAfter));
+    send(res, 429, {
+      error: 'too_many_attempts', message: 'Too many sign-in attempts. Try again later.',
+    });
+    return true;
+  }
+
   /* ------------------------------------------------------------------ routes */
 
   private buildRoutes(): Handler[] {
@@ -631,7 +664,7 @@ export class ApiServer {
        */
       {
         method: 'POST', pattern: /^\/api\/setup$/, auth: 'public',
-        run: async ({ res, body }) => {
+        run: async ({ req, res, body }) => {
           if (this.store.countUsers() > 0) {
             send(res, 409, {
               error: 'already_set_up',
@@ -645,6 +678,14 @@ export class ApiServer {
               error: 'bad_request',
               message: 'Setting up the studio needs a name, an email and a password.',
             });
+            return;
+          }
+          const email = input.email.trim();
+          const attemptKey = this.signInAttemptKey(req);
+          if (this.rejectBlockedSignIn(res, attemptKey)) return;
+          if (!signInAllowed(email, this.signInAllow)) {
+            await verifyAgainstAccount(input.password, undefined);
+            this.rejectSignIn(res, attemptKey);
             return;
           }
           let record;
@@ -670,7 +711,7 @@ export class ApiServer {
 
           const user = {
             id: newId('user'),
-            email: input.email.trim(),
+            email,
             name: input.name.trim(),
             role: 'owner' as const,
             passwordSalt: record.salt,
@@ -685,9 +726,14 @@ export class ApiServer {
 
       {
         method: 'POST', pattern: /^\/api\/session$/, auth: 'public',
-        run: async ({ res, body }) => {
+        run: async ({ req, res, body }) => {
           const input = body as { email?: string; password?: string };
-          const user = input?.email ? this.store.getUserByEmail(input.email) : undefined;
+          const email = typeof input?.email === 'string' ? input.email : '';
+          const attemptKey = this.signInAttemptKey(req);
+          if (this.rejectBlockedSignIn(res, attemptKey)) return;
+
+          const allowed = signInAllowed(email, this.signInAllow);
+          const user = allowed && email ? this.store.getUserByEmail(email) : undefined;
 
           // One message and one shape for both failures. Saying "no such user"
           // turns the sign-in form into a way to enumerate who works here.
@@ -695,19 +741,18 @@ export class ApiServer {
           // early for an unknown email made this endpoint an account
           // enumerator: 49.2 ms against 0.8 ms, measured, with both responses
           // otherwise identical.
-          const ok = typeof input?.password === 'string'
-            && await verifyAgainstAccount(
-              input.password,
-              user ? { salt: user.passwordSalt, hash: user.passwordHash } : undefined,
-            );
+          const password = typeof input?.password === 'string' ? input.password : '';
+          const ok = await verifyAgainstAccount(
+            password,
+            user ? { salt: user.passwordSalt, hash: user.passwordHash } : undefined,
+          );
 
-          if (!ok || !user) {
-            send(res, 401, {
-              error: 'bad_credentials', message: 'That email and password do not match.',
-            });
+          if (!allowed || !ok || !user) {
+            this.rejectSignIn(res, attemptKey);
             return;
           }
 
+          this.signInAttempts.succeed(attemptKey);
           this.issueSession(res, { userId: user.id, kind: 'studio', role: user.role });
           send(res, 200, { id: user.id, name: user.name, email: user.email, role: user.role });
         },

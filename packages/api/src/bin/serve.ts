@@ -75,6 +75,8 @@ const assetRoot = process.env['EDSAI_ASSETS'] ?? '.edsai/assets';
  */
 const appRoot = resolve(process.env['EDSAI_APP'] ?? 'packages/studio/dist');
 const app = existsSync(appRoot) ? appRoot : undefined;
+const signInAllow = (process.env['EDSAI_SIGNIN_ALLOW'] ?? '')
+  .split(',').map((email) => email.trim()).filter(Boolean);
 
 const server = new ApiServer({
   store: new RunStore(db),
@@ -90,6 +92,7 @@ const server = new ApiServer({
   // Opt-in dev convenience: no sign-in screen, every request is the owner.
   // Never set this on anything another person can reach.
   ...(process.env['EDSAI_DISABLE_AUTH'] === '1' ? { disableAuth: true } : {}),
+  ...(signInAllow.length > 0 ? { signInAllow } : {}),
   ...(executor ? { executor } : {}),
 });
 

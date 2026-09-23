@@ -39,6 +39,7 @@ those and not all of them can be given a file.
 | `EDSAI_MODEL` | `claude-opus-5` | The model runs execute on. |
 | `EDSAI_ORIGINS` | — | Extra browser origins allowed to call the API. Not needed for the one-origin layout. |
 | `EDSAI_INSECURE_COOKIES` | off | Drops `Secure` from the session cookie. Plain-http local development only. |
+| `EDSAI_SIGNIN_ALLOW` | -- | Comma-separated email allowlist for first-run setup and sign-in. Set it to your email before making a one-person studio public. |
 | `EDSAI_SCOPE` | — | Restricts this process to one scope. |
 
 Two of those are worth being careful about.
@@ -54,6 +55,12 @@ server. A write from the page this server itself served is same-origin and is
 always accepted, so the one-process deployment needs nothing here. This was not
 always true, and the failure it caused is worth remembering: a Studio that
 loaded perfectly and then refused every save with a 403.
+
+**`EDSAI_SIGNIN_ALLOW`** reserves both the first owner account and future
+sign-ins for the listed email addresses. It contains an email, never a password.
+An unlisted address receives the same generic credential failure as a wrong
+password, and a second failed attempt from that address is held with an
+increasing `Retry-After` delay.
 
 ## In a container
 
@@ -202,7 +209,9 @@ at runtime, because the corpus is the only source for what the rubric says.
 
 Open it and it asks for a name, an email and a password. That first account is
 the owner, and the endpoint that creates it refuses once a user exists. Do this
-before the address is public.
+before the address is public. For a public one-person deployment, set
+`EDSAI_SIGNIN_ALLOW=you@example.com` first; only that email can claim the
+first-run form or sign in afterwards.
 
 ## Caching, and what a deploy must not break
 

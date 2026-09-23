@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import { RunStore } from '@edsai/engine';
-import { digestToken } from '@edsai/auth';
+import { digestToken, SignInAttempts } from '@edsai/auth';
 import { ApiServer, newId } from '../src/server.js';
 
 /**
@@ -550,13 +550,71 @@ describe('authentication', () => {
       method: 'POST',
       body: JSON.stringify({ email: 'owner@example.com', password: 'not-the-password' }),
     });
-    const unknown = await json('/api/session', {
-      method: 'POST',
+    const other = new ApiServer({ store, rubric, insecureCookies: true });
+    const otherBase = `http://localhost:${await other.listen(0)}`;
+    const unknownResponse = await fetch(`${otherBase}/api/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'nobody@example.com', password: 'not-the-password' }),
     });
+    const unknown = {
+      status: unknownResponse.status,
+      body: await unknownResponse.json() as Record<string, unknown>,
+    };
+    await other.close();
     expect(wrong.status).toBe(401);
     expect(unknown.status).toBe(401);
     expect(wrong.body['message']).toBe(unknown.body['message']);
+  });
+
+  it('holds a second failed sign-in from the same address, even with another email', async () => {
+    const request = (email: string) => fetch(`${base}/api/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password: 'not-the-password' }),
+    });
+
+    const first = await request('owner@example.com');
+    expect(first.status).toBe(401);
+    expect(first.headers.get('retry-after')).toBe('60');
+
+    const second = await request('someone@example.com');
+    expect(second.status).toBe(429);
+    expect(second.headers.get('retry-after')).toBe('60');
+  });
+
+  it('reserves setup and sign-in for the configured owner email', async () => {
+    const fresh = new RunStore();
+    let now = 0;
+    const server2 = new ApiServer({
+      store: fresh, rubric, insecureCookies: true, signInAllow: ['owner@example.com'],
+      signInAttempts: new SignInAttempts(() => now),
+    });
+    const base2 = `http://localhost:${await server2.listen(0)}`;
+    const post = (path: string, body: unknown) => fetch(`${base2}${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    const rejectedSetup = await post('/api/setup', {
+      name: 'Other', email: 'other@example.com', password: 'a-long-enough-password',
+    });
+    expect(rejectedSetup.status).toBe(401);
+    expect(fresh.countUsers()).toBe(0);
+    now += 60_000;
+
+    const ownerSetup = await post('/api/setup', {
+      name: 'Owner', email: 'OWNER@example.com', password: 'a-long-enough-password',
+    });
+    expect(ownerSetup.status).toBe(201);
+
+    const ownerSignIn = await post('/api/session', {
+      email: 'owner@example.com', password: 'a-long-enough-password',
+    });
+    expect(ownerSignIn.status).toBe(200);
+
+    const rejectedSignIn = await post('/api/session', {
+      email: 'someone@example.com', password: 'a-long-enough-password',
+    });
+    expect(rejectedSignIn.status).toBe(401);
+    await server2.close();
   });
 
   it('ends the session on logout, and the cookie stops working', async () => {
