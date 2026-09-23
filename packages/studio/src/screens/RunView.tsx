@@ -100,8 +100,9 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
         )}
         {health && !health.executionEnabled && next?.done === false && (
           <p className="muted" style={{ marginTop: 10 }}>
-            This server has no model configured, so this run will not proceed on its own.
-            Set <span className="mono">ANTHROPIC_API_KEY</span> and restart it, then resume below.
+            Automated execution is not configured, so this run will not proceed on its own.
+            Enable <span className="mono">EDSAI_REHEARSAL=1</span> for marked placeholder output,
+            or install a model adapter and restart before resuming.
           </p>
         )}
 

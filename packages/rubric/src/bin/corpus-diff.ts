@@ -7,7 +7,7 @@ import { corpusRoot } from '../corpus.js';
  * Compares the vendored corpus against the installed EDSAI skill.
  *
  * The vendored copy is what the build parses and what CI pins; the installed
- * skill is what the model reads in a Claude Code session. They are meant to be
+ * skill is what a person or compatible execution adapter reads. They are meant to be
  * the same document. This reports where they are not, and — because overwriting
  * either one silently is how a rubric quietly stops matching its own corpus —
  * copies nothing unless explicitly told to.
@@ -35,7 +35,7 @@ function findInstalledSkill(): string | undefined {
   if (fromEnv) return existsSync(join(fromEnv, 'SKILL.md')) ? fromEnv : undefined;
 
   const home = process.env['HOME'] ?? '';
-  const roots = [join(home, '.claude', 'skills'), join(home, '.claude', 'skills', 'synced')];
+  const roots = [join(home, '.edsai', 'skills'), join(home, '.edsai', 'skills', 'synced')];
 
   for (const root of roots) {
     if (!existsSync(root)) continue;

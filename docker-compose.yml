@@ -18,9 +18,8 @@ services:
     volumes:
       - edsai-data:/data
     environment:
-      # Without this the studio serves the interface and refuses to execute a
-      # run, saying so. With it, runs cost money on this key.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional marked placeholder output for checking the full pipeline.
+      EDSAI_REHEARSAL: ${EDSAI_REHEARSAL:-}
       # Only needed for a browser on a different origin than this server —
       # which the one-process layout is designed to avoid. Same-origin writes
       # are allowed without it.

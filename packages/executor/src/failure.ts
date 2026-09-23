@@ -1,28 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { TurnRefused } from './executor.js';
 
-/**
- * What kind of failure this is, and therefore what to do about it.
- *
- * The distinction that matters is **retry or change something**, and getting it
- * wrong wastes either money or time. The first version of this asked one
- * question — "was it a refusal?" — and told somebody with an invalid API key to
- * run the command again. It would have failed identically every time.
- *
- * Found by running the real thing with a bad key rather than reasoning about
- * it: the request reached Anthropic, came back 401, and the advice underneath
- * the error was wrong.
- */
-
 export interface Diagnosis {
-  /** Whether running the same thing again could plausibly work. */
   retryable: boolean;
-  /** What a person should do, in the words they would use. */
   hint: string;
 }
 
 export function diagnose(error: unknown): Diagnosis {
-  // The model declined this department. It will decline it again.
   if (error instanceof TurnRefused) {
     return {
       retryable: false,
@@ -31,71 +14,59 @@ export function diagnose(error: unknown): Diagnosis {
     };
   }
 
-  // Most specific first, as the SDK's own guidance has it.
-  if (error instanceof Anthropic.AuthenticationError) {
+  const status = statusOf(error);
+  if (status === 401) {
     return {
       retryable: false,
-      hint: 'The API key was rejected. Check ANTHROPIC_API_KEY — running this '
-        + 'again with the same key will fail the same way.',
+      hint: 'The execution credentials were rejected. Check the model adapter configuration '
+        + 'before retrying.',
     };
   }
-  if (error instanceof Anthropic.PermissionDeniedError) {
+  if (status === 403) {
     return {
       retryable: false,
-      hint: 'That key is not allowed to use this model. Check the model id and '
-        + 'what the key is scoped to.',
+      hint: 'The configured credentials cannot use this model. Check the model id and '
+        + 'provider permissions.',
     };
   }
-  if (error instanceof Anthropic.NotFoundError) {
+  if (status === 404) {
     return {
       retryable: false,
       hint: 'The model id was not found. Check it against the models the account can use.',
     };
   }
-  if (error instanceof Anthropic.RateLimitError) {
+  if (status === 429) {
     return {
       retryable: true,
       hint: 'Rate limited. Wait a moment and run it again — completed departments are kept.',
     };
   }
-  if (error instanceof Anthropic.BadRequestError) {
-    // Includes the out-of-credit case, which reads as a bad request and is the
-    // single most likely thing to stop a run in this project.
-    const outOfCredit = /credit|balance|quota/i.test(error.message);
-    // An organisation-level key that names no workspace. Also a 400, and
-    // also nothing to do with the request being malformed — calling it a
-    // bug here sent the person reading it to the wrong place.
-    const noWorkspace = /workspace/i.test(error.message);
+  if (status === 400) {
+    const message = error instanceof Error ? error.message : '';
+    const outOfCredit = /credit|balance|quota/i.test(message);
     return {
       retryable: false,
       hint: outOfCredit
-        ? 'The account is out of credit. Top it up and run it again — completed '
+        ? 'The provider account is out of credit. Top it up and run it again — completed '
           + 'departments are kept, so this resumes rather than starting over.'
-        : noWorkspace
-          ? 'This key belongs to an organisation rather than a workspace, so the API '
-            + 'needs told which workspace to bill. Either set ANTHROPIC_WORKSPACE_ID '
-            + 'to the workspace id from the Anthropic console, or use a key created '
-            + 'inside a workspace, then restart and run it again.'
-          : 'The request was rejected as malformed. This is a bug here, not '
-            + 'something retrying will fix.',
+        : 'The request was rejected as malformed. This is a bug here, not '
+          + 'something retrying will fix.',
     };
   }
-  if (error instanceof Anthropic.InternalServerError) {
-    return { retryable: true, hint: 'The API had a problem. Run it again — it resumes.' };
-  }
-  if (error instanceof Anthropic.APIConnectionError) {
-    return { retryable: true, hint: 'Could not reach the API. Check the network and run it again.' };
-  }
-  if (error instanceof Anthropic.APIError) {
-    // An unrecognised status: 5xx is worth retrying, 4xx is ours to fix.
-    const status = error.status ?? 0;
+  if (status !== undefined) {
     return status >= 500
-      ? { retryable: true, hint: 'The API failed. Run it again — it resumes.' }
-      : { retryable: false, hint: `The API refused the request (${status}).` };
+      ? { retryable: true, hint: 'The model service had a problem. Run it again — it resumes.' }
+      : { retryable: false, hint: `The model service refused the request (${status}).` };
   }
 
   return {
     retryable: true,
     hint: 'Something unexpected went wrong. Run it again — completed departments are kept.',
   };
+}
+
+function statusOf(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object' || !('status' in error)) return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
 }

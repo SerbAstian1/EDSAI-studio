@@ -8,7 +8,7 @@ import * as instruments from '../src/index.js';
  * contract, because a malformed call that half-ran would let a fabricated
  * number past the provenance check built to catch fabricated numbers.
  */
-describe('Claude tool definitions', () => {
+describe('model tool definitions', () => {
   it('emits one tool per instrument input schema', () => {
     expect(INSTRUMENT_TOOLS).toHaveLength(Object.keys(ToolInput).length);
     expect(INSTRUMENT_TOOLS).toHaveLength(14);
@@ -22,27 +22,27 @@ describe('Claude tool definitions', () => {
 
   it('closes every schema to additional properties', () => {
     for (const tool of INSTRUMENT_TOOLS) {
-      expect(tool.input_schema['additionalProperties'], tool.name).toBe(false);
+      expect(tool.inputSchema['additionalProperties'], tool.name).toBe(false);
     }
   });
 
   it('declares an object schema with properties on every tool', () => {
     for (const tool of INSTRUMENT_TOOLS) {
-      expect(tool.input_schema['type'], tool.name).toBe('object');
-      expect(Object.keys(tool.input_schema['properties'] as object).length, tool.name)
+      expect(tool.inputSchema['type'], tool.name).toBe('object');
+      expect(Object.keys(tool.inputSchema['properties'] as object).length, tool.name)
         .toBeGreaterThan(0);
     }
   });
 
   it('lists required fields wherever a tool has any', () => {
-    const withRequired = INSTRUMENT_TOOLS.filter((t) => Array.isArray(t.input_schema['required']));
+    const withRequired = INSTRUMENT_TOOLS.filter((t) => Array.isArray(t.inputSchema['required']));
     // Only seo_lengths is entirely optional — a page may legitimately lack all of them.
     expect(withRequired.length).toBe(INSTRUMENT_TOOLS.length - 1);
   });
 
   it('strips the JSON Schema dialect declaration, which is noise on the wire', () => {
     for (const tool of INSTRUMENT_TOOLS) {
-      expect(tool.input_schema['$schema'], tool.name).toBeUndefined();
+      expect(tool.inputSchema['$schema'], tool.name).toBeUndefined();
     }
   });
 

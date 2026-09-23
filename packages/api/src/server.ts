@@ -3345,8 +3345,8 @@ body { max-width: 640px; margin: 48px auto; }
           if (!this.executor) {
             send(res, 503, {
               error: 'no_executor',
-              message: 'This server has no model configured, so it cannot run a pipeline. '
-                + 'Set ANTHROPIC_API_KEY and restart it.',
+              message: 'Automated execution is not configured on this server, so it cannot run a '
+                + 'pipeline. Enable rehearsal mode for marked placeholders or install a model adapter.',
             });
             return;
           }

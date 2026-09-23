@@ -1,6 +1,5 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import { dimensionsFor, type Rubric } from '@edsai/rubric';
-import type { ModelClient } from './executor.js';
+import type { ModelClient, ModelRequest, ModelResponse } from './protocol.js';
 import { SUBMIT_TOOL_NAME } from './submission.js';
 
 /**
@@ -13,7 +12,7 @@ import { SUBMIT_TOOL_NAME } from './submission.js';
  * brief — it needs the *shape* of a department's output to arrive in the
  * right order at a believable pace.
  *
- * So this stands where the SDK client stands and answers every turn with a
+ * So this stands where a model client stands and answers every turn with a
  * submission that passes the engine's checks: every dimension the rubric
  * expects is scored, every target is a stated one with a mechanism, and the
  * body says on its first line that nobody reasoned about anything. The
@@ -54,31 +53,27 @@ export class RehearsalClient implements ModelClient {
     this.delayMs = options.delayMs ?? DEFAULT_DELAY_MS;
   }
 
-  readonly messages = {
-    stream: (params: Anthropic.MessageStreamParams) => ({
-      finalMessage: async (): Promise<Anthropic.Message> => {
-        await new Promise((resolve) => setTimeout(resolve, this.delayMs));
-        const user = lastUserText(params.messages);
-        const departmentId = Number.parseInt(user.match(TURN)?.[1] ?? '', 10);
-        const department = this.rubric.departments.find((d) => d.id === departmentId);
-        if (!department) {
-          throw new Error(`Rehearsal could not tell which department this turn is for.`);
-        }
-        const brief = user.match(BRIEF)?.[1]?.trim() ?? '';
-        const input = this.submission(department.id, brief);
-        return {
-          id: `rehearsal-${department.id}`,
-          type: 'message',
-          role: 'assistant',
-          model: REHEARSAL_MODEL,
-          stop_reason: 'tool_use',
-          stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 } as Anthropic.Usage,
-          content: [{ type: 'tool_use', id: `t-${department.id}`, name: SUBMIT_TOOL_NAME, input }],
-        } as Anthropic.Message;
-      },
-    }),
-  };
+  async complete(params: ModelRequest): Promise<ModelResponse> {
+    await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    const user = lastUserText(params.messages);
+    const departmentId = Number.parseInt(user.match(TURN)?.[1] ?? '', 10);
+    const department = this.rubric.departments.find((d) => d.id === departmentId);
+    if (!department) {
+      throw new Error(`Rehearsal could not tell which department this turn is for.`);
+    }
+    const brief = user.match(BRIEF)?.[1]?.trim() ?? '';
+    const input = this.submission(department.id, brief);
+    return {
+      stopReason: 'tool-call',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      content: [{
+        type: 'tool-call',
+        id: `t-${department.id}`,
+        name: SUBMIT_TOOL_NAME,
+        input,
+      }],
+    };
+  }
 
   private submission(departmentId: number, brief: string): Record<string, unknown> {
     const department = this.rubric.departments.find((d) => d.id === departmentId);
@@ -166,11 +161,10 @@ export class RehearsalClient implements ModelClient {
   }
 }
 
-function lastUserText(messages: Anthropic.MessageParam[]): string {
+function lastUserText(messages: ModelRequest['messages']): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (message?.role !== 'user') continue;
-    if (typeof message.content === 'string') return message.content;
     return message.content
       .map((block) => (block.type === 'text' ? block.text : ''))
       .join('\n');

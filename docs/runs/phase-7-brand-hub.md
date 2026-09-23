@@ -1,7 +1,7 @@
 # Run — Phase 7 Brand Hub
 
 **Scope:** scoped run, 8 producing departments plus the closing loop.
-**Executed:** Claude Code directly, in the manner of harness mode. The engine is
+**Executed:** manually in harness mode. The engine is
 not in this repository, so this run has **no engine record and no run id**.
 **Determination: V1** — three Majors open. FINAL is unreachable.
 

@@ -1035,12 +1035,10 @@ Things asserted somewhere that nothing has actually verified:
   actually used and prices it. Nothing has been measured because no credential
   has ever been available to this project. The estimate remains ≈ $3.4 per
   Level 1 run before thinking tokens.
-- **The executor's happy path.** A real model call has never succeeded here. An
-  invalid key was proven to reach Anthropic and come back `401`, so the request
-  is routable and the failure paths are real; whether a department's output
-  comes back and passes the verifier is untested against a live API. Needs
-  credit on the account, and it is the single most valuable untested thing in
-  this repository.
+- **The executor's live-provider path.** No external provider is bundled now.
+  The provider-neutral adapter contract and rehearsal path are tested, but a
+  production adapter still needs a live integration test proving that its
+  output reaches the verifier and passes the engine.
 - **PageSpeed against a live URL.** Still true after the Phase 5 rebuild, and
   for the same reason. The parser is fixture-proven, including CrUX's CLS×100
   and page-versus-origin precedence; the request reaches Google and the failure

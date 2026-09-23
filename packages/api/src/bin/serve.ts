@@ -42,15 +42,7 @@ const executor = rehearsal
       ...(Number.isFinite(rehearsalDelay) ? { delayMs: rehearsalDelay } : {}),
     }),
   })
-  : process.env['ANTHROPIC_API_KEY']
-    ? new Executor({
-      ...(process.env['EDSAI_MODEL'] ? { model: process.env['EDSAI_MODEL'] } : {}),
-      // Needed only for an organisation-level key; a workspace-scoped key
-      // carries its workspace already and the API refuses the header on it.
-      ...(process.env['ANTHROPIC_WORKSPACE_ID']
-        ? { workspaceId: process.env['ANTHROPIC_WORKSPACE_ID'] } : {}),
-    })
-    : undefined;
+  : undefined;
 
 const port = Number.parseInt(process.env['PORT'] ?? '4317', 10);
 const db = process.env['EDSAI_DB'] ?? '.edsai/runs.db';
@@ -107,7 +99,7 @@ process.stdout.write(rehearsal
   ? '  runs     REHEARSAL (EDSAI_REHEARSAL=1) — departments produce placeholders, no model is called\n'
   : executor
     ? `  runs execute on ${executor.model}\n`
-    : '  no ANTHROPIC_API_KEY, so runs will be created but not executed\n');
+    : '  runs     automated execution is not configured; runs are created but not executed\n');
 process.stdout.write(server.devOwnerCreated
   ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`
     + `           an owner account was still created, for when this is turned back on:\n`

@@ -1,18 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type Anthropic from '@anthropic-ai/sdk';
 import { buildRubric } from '@edsai/rubric';
-import { Executor, TurnRefused, type ModelClient } from '../src/executor.js';
-import { SUBMIT_TOOL_NAME, submissionFrom } from '../src/submission.js';
-import { diagnose } from '../src/failure.js';
 import type { PreparedTurn } from '@edsai/engine';
-
-/**
- * The loop, proven without spending anything.
- *
- * A fake client returns the responses a real one would. That is the only way
- * to hold this code to its contract at all: every alternative costs money per
- * assertion, and a test nobody can afford to run is a test nobody runs.
- */
+import { Executor, TurnRefused } from '../src/executor.js';
+import { diagnose } from '../src/failure.js';
+import type {
+  ModelClient, ModelContentBlock, ModelRequest, ModelResponse, ModelTextBlock, ModelToolCallBlock,
+  ModelToolResultBlock,
+} from '../src/protocol.js';
+import { NO_USAGE, type Usage } from '../src/pricing.js';
+import { SUBMIT_TOOL_NAME, submissionFrom } from '../src/submission.js';
 
 const rubric = buildRubric();
 const department = rubric.departments[0];
@@ -36,40 +32,39 @@ const turn: PreparedTurn = {
   position: { index: 1, total: 24 },
 } as PreparedTurn;
 
-const usage = (over: Partial<Anthropic.Usage> = {}): Anthropic.Usage => ({
-  input_tokens: 100,
-  output_tokens: 50,
-  cache_creation_input_tokens: 0,
-  cache_read_input_tokens: 0,
+const usage = (over: Partial<Usage> = {}): Usage => ({
+  ...NO_USAGE,
+  inputTokens: 100,
+  outputTokens: 50,
   ...over,
-} as Anthropic.Usage);
+});
 
-const message = (over: Partial<Anthropic.Message>): Anthropic.Message => ({
-  id: 'msg', type: 'message', role: 'assistant', model: 'claude-opus-5',
-  content: [], stop_reason: 'end_turn', stop_sequence: null, usage: usage(),
+const response = (over: Partial<ModelResponse> = {}): ModelResponse => ({
+  content: [],
+  stopReason: 'end',
+  usage: usage(),
   ...over,
-} as Anthropic.Message);
+});
 
-const submitBlock = (input: unknown): Anthropic.ToolUseBlock => ({
-  type: 'tool_use', id: 'tu-submit', name: SUBMIT_TOOL_NAME, input,
-} as Anthropic.ToolUseBlock);
+const submitBlock = (input: unknown): ModelToolCallBlock => ({
+  type: 'tool-call',
+  id: 'tu-submit',
+  name: SUBMIT_TOOL_NAME,
+  input,
+});
 
-/** A client that replays the given responses, recording what it was sent. */
-function fakeClient(responses: Anthropic.Message[]): {
-  client: ModelClient; sent: Anthropic.MessageStreamParams[];
-} {
-  const sent: Anthropic.MessageStreamParams[] = [];
+function fakeClient(responses: ModelResponse[]): { client: ModelClient; sent: ModelRequest[] } {
+  const sent: ModelRequest[] = [];
   let index = 0;
   return {
     sent,
     client: {
-      messages: {
-        stream(params) {
-          sent.push(params);
-          const response = responses[Math.min(index, responses.length - 1)];
-          index += 1;
-          return { finalMessage: async () => response as Anthropic.Message };
-        },
+      complete: async (params) => {
+        sent.push(params);
+        const next = responses[Math.min(index, responses.length - 1)];
+        index += 1;
+        if (!next) throw new Error('the fake client has no response');
+        return next;
       },
     },
   };
@@ -83,7 +78,7 @@ const finished = submitBlock({
 
 describe('running one department', () => {
   it('returns the submission the model handed to the submit tool', async () => {
-    const { client } = fakeClient([message({ content: [finished], stop_reason: 'tool_use' })]);
+    const { client } = fakeClient([response({ content: [finished], stopReason: 'tool-call' })]);
     const result = await new Executor({ client }).runDepartment(turn, () => ({}));
 
     expect(result.submission.body).toBe('The department output.');
@@ -91,43 +86,40 @@ describe('running one department', () => {
     expect(result.instrumentCalls).toBe(0);
   });
 
-  it('caches the stable prefix and nothing after it', async () => {
-    // The corpus prefix is the same on every department of a run. Paying for
-    // it twenty-four times instead of once is the whole cost of getting this
-    // wrong, and it is invisible unless something checks.
-    const { client, sent } = fakeClient([message({ content: [finished], stop_reason: 'tool_use' })]);
+  it('marks the stable prefix as cacheable and nothing after it', async () => {
+    const { client, sent } = fakeClient([response({ content: [finished], stopReason: 'tool-call' })]);
     await new Executor({ client }).runDepartment(turn, () => ({}));
 
-    const system = sent[0]?.system as Anthropic.TextBlockParam[];
-    expect(system.map((b) => b.text)).toEqual(['CORE RULES', 'DEPARTMENT REFERENCE']);
-    expect(system[0]?.cache_control).toBeUndefined();
-    expect(system[1]?.cache_control).toEqual({ type: 'ephemeral' });
+    const system = sent[0]?.system;
+    expect(system?.map((block) => block.text)).toEqual(['CORE RULES', 'DEPARTMENT REFERENCE']);
+    expect(system?.[0]?.cache).toBeUndefined();
+    expect(system?.[1]?.cache).toBe(true);
   });
 
-  it('keeps the volatile blocks out of the cached prefix', async () => {
-    const { client, sent } = fakeClient([message({ content: [finished], stop_reason: 'tool_use' })]);
+  it('keeps the volatile blocks out of the cacheable prefix', async () => {
+    const { client, sent } = fakeClient([response({ content: [finished], stopReason: 'tool-call' })]);
     await new Executor({ client }).runDepartment(turn, () => ({}));
 
-    const user = sent[0]?.messages[0]?.content as Anthropic.TextBlockParam[];
-    expect(user.map((b) => b.text)).toEqual(['THE BRIEF', 'Produce your output.']);
+    const user = sent[0]?.messages[0]?.content as ModelTextBlock[];
+    expect(user.map((block) => block.text)).toEqual(['THE BRIEF', 'Produce your output.']);
   });
 
   it('offers the instruments and the way to finish', async () => {
-    const { client, sent } = fakeClient([message({ content: [finished], stop_reason: 'tool_use' })]);
+    const { client, sent } = fakeClient([response({ content: [finished], stopReason: 'tool-call' })]);
     await new Executor({ client }).runDepartment(turn, () => ({}));
 
-    const names = (sent[0]?.tools ?? []).map((t) => (t as Anthropic.Tool).name);
+    const names = (sent[0]?.tools ?? []).map((tool) => tool.name);
     expect(names).toContain(SUBMIT_TOOL_NAME);
     expect(names.length).toBeGreaterThan(1);
   });
 
   it('runs an instrument and feeds the result back', async () => {
-    const ask: Anthropic.ToolUseBlock = {
-      type: 'tool_use', id: 'tu-1', name: 'contrast', input: { a: '#fff', b: '#000' },
-    } as Anthropic.ToolUseBlock;
+    const ask: ModelToolCallBlock = {
+      type: 'tool-call', id: 'tu-1', name: 'contrast', input: { a: '#fff', b: '#000' },
+    };
     const { client, sent } = fakeClient([
-      message({ content: [ask], stop_reason: 'tool_use' }),
-      message({ content: [finished], stop_reason: 'tool_use' }),
+      response({ content: [ask], stopReason: 'tool-call' }),
+      response({ content: [finished], stopReason: 'tool-call' }),
     ]);
     const callInstrument = vi.fn(() => ({ ratio: 21 }));
 
@@ -136,35 +128,31 @@ describe('running one department', () => {
     expect(callInstrument).toHaveBeenCalledWith('contrast', { a: '#fff', b: '#000' });
     expect(result.instrumentCalls).toBe(1);
     const followUp = sent[1]?.messages ?? [];
-    const results = followUp[followUp.length - 1]?.content as Anthropic.ToolResultBlockParam[];
+    const results = followUp[followUp.length - 1]?.content as ModelToolResultBlock[];
     expect(results[0]?.content).toContain('21');
   });
 
   it('returns every result in one message, so parallel calls keep happening', async () => {
-    // Splitting tool results across messages quietly teaches the model to stop
-    // asking for instruments in parallel.
-    const asks = ['a', 'b', 'c'].map((id) => ({
-      type: 'tool_use', id, name: 'contrast', input: {},
-    } as Anthropic.ToolUseBlock));
+    const asks = ['a', 'b', 'c'].map((id): ModelToolCallBlock => ({
+      type: 'tool-call', id, name: 'contrast', input: {},
+    }));
     const { client, sent } = fakeClient([
-      message({ content: asks, stop_reason: 'tool_use' }),
-      message({ content: [finished], stop_reason: 'tool_use' }),
+      response({ content: asks, stopReason: 'tool-call' }),
+      response({ content: [finished], stopReason: 'tool-call' }),
     ]);
 
     await new Executor({ client }).runDepartment(turn, () => ({ ratio: 1 }));
 
     const followUp = sent[1]?.messages ?? [];
-    const results = followUp[followUp.length - 1]?.content as Anthropic.ToolResultBlockParam[];
+    const results = followUp[followUp.length - 1]?.content as ModelToolResultBlock[];
     expect(results).toHaveLength(3);
   });
 
   it('hands a failing instrument back as an error instead of abandoning the turn', async () => {
-    // An instrument that refused is information the department can act on —
-    // usually by stating a target rather than claiming a measurement.
-    const ask = { type: 'tool_use', id: 'tu-1', name: 'contrast', input: {} } as Anthropic.ToolUseBlock;
+    const ask: ModelToolCallBlock = { type: 'tool-call', id: 'tu-1', name: 'contrast', input: {} };
     const { client, sent } = fakeClient([
-      message({ content: [ask], stop_reason: 'tool_use' }),
-      message({ content: [finished], stop_reason: 'tool_use' }),
+      response({ content: [ask], stopReason: 'tool-call' }),
+      response({ content: [finished], stopReason: 'tool-call' }),
     ]);
 
     const result = await new Executor({ client }).runDepartment(turn, () => {
@@ -172,70 +160,70 @@ describe('running one department', () => {
     });
 
     const followUp = sent[1]?.messages ?? [];
-    const results = followUp[followUp.length - 1]?.content as Anthropic.ToolResultBlockParam[];
-    expect(results[0]?.is_error).toBe(true);
+    const results = followUp[followUp.length - 1]?.content as ModelToolResultBlock[];
+    expect(results[0]?.isError).toBe(true);
     expect(results[0]?.content).toContain('not a colour');
     expect(result.submission.body).toBe('The department output.');
   });
 
-  it('sends the assistant turn back whole, thinking included', async () => {
-    const thinking = { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ThinkingBlock;
-    const ask = { type: 'tool_use', id: 'tu-1', name: 'contrast', input: {} } as Anthropic.ToolUseBlock;
+  it('sends opaque assistant state back with the tool results', async () => {
+    const opaque: ModelContentBlock = { type: 'opaque', value: { signature: 'sig' } };
+    const ask: ModelToolCallBlock = { type: 'tool-call', id: 'tu-1', name: 'contrast', input: {} };
     const { client, sent } = fakeClient([
-      message({ content: [thinking, ask], stop_reason: 'tool_use' }),
-      message({ content: [finished], stop_reason: 'tool_use' }),
+      response({ content: [opaque, ask], stopReason: 'tool-call' }),
+      response({ content: [finished], stopReason: 'tool-call' }),
     ]);
 
     await new Executor({ client }).runDepartment(turn, () => ({}));
 
     const assistant = (sent[1]?.messages ?? [])[1];
     expect(assistant?.role).toBe('assistant');
-    expect((assistant?.content as Anthropic.ContentBlock[])[0]?.type).toBe('thinking');
+    expect(assistant?.content[0]?.type).toBe('opaque');
   });
 
-  it('adds up what every round of the turn cost', async () => {
-    const ask = { type: 'tool_use', id: 'tu-1', name: 'contrast', input: {} } as Anthropic.ToolUseBlock;
+  it('adds up usage across every round and delegates pricing to its adapter', async () => {
+    const ask: ModelToolCallBlock = { type: 'tool-call', id: 'tu-1', name: 'contrast', input: {} };
     const { client } = fakeClient([
-      message({ content: [ask], stop_reason: 'tool_use', usage: usage({ input_tokens: 1000 }) }),
-      message({ content: [finished], stop_reason: 'tool_use', usage: usage({ input_tokens: 500 }) }),
+      response({ content: [ask], stopReason: 'tool-call', usage: usage({ inputTokens: 1000 }) }),
+      response({ content: [finished], stopReason: 'tool-call', usage: usage({ inputTokens: 500 }) }),
     ]);
 
-    const result = await new Executor({ client }).runDepartment(turn, () => ({}));
+    const result = await new Executor({
+      client,
+      estimateCost: (used) => (used.inputTokens + used.outputTokens) / 1000,
+    }).runDepartment(turn, () => ({}));
     expect(result.usage.inputTokens).toBe(1500);
     expect(result.usage.outputTokens).toBe(100);
-    expect(result.cost).toBeGreaterThan(0);
+    expect(result.cost ?? 0).toBeGreaterThan(0);
   });
 
   it('refuses rather than looping forever on an instrument', async () => {
-    const ask = { type: 'tool_use', id: 'tu-1', name: 'contrast', input: {} } as Anthropic.ToolUseBlock;
-    const { client } = fakeClient([message({ content: [ask], stop_reason: 'tool_use' })]);
+    const ask: ModelToolCallBlock = { type: 'tool-call', id: 'tu-1', name: 'contrast', input: {} };
+    const { client } = fakeClient([response({ content: [ask], stopReason: 'tool-call' })]);
 
     await expect(new Executor({ client, maxToolRounds: 3 }).runDepartment(turn, () => ({})))
       .rejects.toThrow(TurnRefused);
   });
 
   it('reports a declined request as a refusal, not a crash', async () => {
-    const { client } = fakeClient([message({
-      stop_reason: 'refusal',
-      stop_details: { type: 'refusal', category: 'cyber', explanation: 'declined' },
-    } as Partial<Anthropic.Message>)]);
+    const { client } = fakeClient([response({ stopReason: 'refusal', refusalReason: 'declined' })]);
 
     await expect(new Executor({ client }).runDepartment(turn, () => ({})))
       .rejects.toThrow(/declined/);
   });
 
   it('refuses a turn that stopped without submitting anything', async () => {
-    const text = { type: 'text', text: 'Here are my thoughts.', citations: null } as Anthropic.TextBlock;
-    const { client } = fakeClient([message({ content: [text], stop_reason: 'end_turn' })]);
+    const text: ModelContentBlock = { type: 'text', text: 'Here are my thoughts.' };
+    const { client } = fakeClient([response({ content: [text], stopReason: 'end' })]);
 
     await expect(new Executor({ client }).runDepartment(turn, () => ({})))
       .rejects.toThrow(/never submitted/);
   });
 
-  it('reports progress so a twenty-minute run is not a blank screen', async () => {
+  it('reports progress so a long run is not a blank screen', async () => {
     const events: string[] = [];
-    const { client } = fakeClient([message({ content: [finished], stop_reason: 'tool_use' })]);
-    await new Executor({ client, onEvent: (e) => events.push(e.type) })
+    const { client } = fakeClient([response({ content: [finished], stopReason: 'tool-call' })]);
+    await new Executor({ client, onEvent: (event) => events.push(event.type) })
       .runDepartment(turn, () => ({}));
 
     expect(events).toEqual(['department-started', 'department-finished']);
@@ -260,35 +248,27 @@ describe('reading the submission', () => {
 });
 
 describe('telling one failure from another', () => {
-  const apiError = (Class: new (...a: never[]) => Error, status: number, message: string): Error =>
-    Object.assign(Object.create(Class.prototype) as Error, { status, message, name: Class.name });
+  const apiError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
-  it('says an invalid key is not worth retrying', async () => {
-    // Found live, not reasoned about: a real 401 came back and the advice
-    // underneath it said "this looks retryable", which would have failed
-    // identically every time.
-    const { AuthenticationError } = await import('@anthropic-ai/sdk');
-    const result = diagnose(apiError(AuthenticationError, 401, 'API key is invalid.'));
+  it('says rejected credentials are not worth retrying', () => {
+    const result = diagnose(apiError(401, 'credentials are invalid'));
     expect(result.retryable).toBe(false);
-    expect(result.hint).toMatch(/ANTHROPIC_API_KEY/);
+    expect(result.hint).toMatch(/credentials/i);
   });
 
-  it('says a rate limit is worth retrying', async () => {
-    const { RateLimitError } = await import('@anthropic-ai/sdk');
-    expect(diagnose(apiError(RateLimitError, 429, 'slow down')).retryable).toBe(true);
+  it('says a rate limit is worth retrying', () => {
+    expect(diagnose(apiError(429, 'slow down')).retryable).toBe(true);
   });
 
-  it('recognises running out of credit, which is how this project actually fails', async () => {
-    const { BadRequestError } = await import('@anthropic-ai/sdk');
-    const result = diagnose(apiError(BadRequestError, 400, 'Your credit balance is too low'));
+  it('recognises running out of credit', () => {
+    const result = diagnose(apiError(400, 'Your credit balance is too low'));
     expect(result.retryable).toBe(false);
     expect(result.hint).toMatch(/out of credit/i);
     expect(result.hint).toMatch(/resumes/);
   });
 
-  it('separates a malformed request from an empty wallet', async () => {
-    const { BadRequestError } = await import('@anthropic-ai/sdk');
-    const result = diagnose(apiError(BadRequestError, 400, 'messages.0: unexpected field'));
+  it('separates a malformed request from an empty wallet', () => {
+    const result = diagnose(apiError(400, 'messages.0: unexpected field'));
     expect(result.hint).toMatch(/bug here/);
   });
 
@@ -298,10 +278,9 @@ describe('telling one failure from another', () => {
     expect(result.hint).toMatch(/brief/);
   });
 
-  it('retries a server failure and not a client one', async () => {
-    const { InternalServerError, APIError } = await import('@anthropic-ai/sdk');
-    expect(diagnose(apiError(InternalServerError, 500, 'oops')).retryable).toBe(true);
-    expect(diagnose(apiError(APIError, 418, 'teapot')).retryable).toBe(false);
+  it('retries a server failure and not a client one', () => {
+    expect(diagnose(apiError(500, 'oops')).retryable).toBe(true);
+    expect(diagnose(apiError(418, 'teapot')).retryable).toBe(false);
   });
 
   it('retries something it has never seen, because stopping forever is worse', () => {

@@ -1,11 +1,11 @@
 import { z, toJSONSchema } from 'zod/v4';
 
 /**
- * Claude tool definitions for every instrument.
+ * Provider-neutral tool definitions for every instrument.
  *
  * Each carries `strict: true`, which requires the schema to have
  * `additionalProperties: false` and a `required` list — `toJSONSchema` emits
- * both — and guarantees that `tool_use.input` validates exactly. That matters
+ * both — and lets an execution adapter require exact inputs. That matters
  * more here than in most tool sets: the engine's provenance rule only accepts a
  * measured `actual` when an instrument produced it, so a malformed call that
  * silently half-ran would let a fabricated number through the one check
@@ -209,10 +209,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'construction logic, and whether two directions are the same idea worded twice.',
 };
 
-export interface ClaudeTool {
+export interface InstrumentTool {
   name: string;
   description: string;
-  input_schema: Record<string, unknown>;
+  inputSchema: Record<string, unknown>;
   strict: true;
 }
 
@@ -223,13 +223,13 @@ function schemaFor(name: ToolName): Record<string, unknown> {
   return schema;
 }
 
-/** Every instrument as a strict Claude tool, in a stable order. */
-export const INSTRUMENT_TOOLS: ClaudeTool[] = (Object.keys(ToolInput) as ToolName[])
+/** Every instrument as a strict model tool, in a stable order. */
+export const INSTRUMENT_TOOLS: InstrumentTool[] = (Object.keys(ToolInput) as ToolName[])
   .sort()
   .map((name) => ({
     name,
     description: DESCRIPTIONS[name],
-    input_schema: schemaFor(name),
+    inputSchema: schemaFor(name),
     strict: true as const,
   }));
 

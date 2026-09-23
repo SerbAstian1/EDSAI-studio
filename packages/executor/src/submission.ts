@@ -1,5 +1,5 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import type { Submission } from '@edsai/engine';
+import type { ModelTool } from './protocol.js';
 
 /**
  * How a department finishes its turn.
@@ -17,14 +17,14 @@ import type { Submission } from '@edsai/engine';
  */
 export const SUBMIT_TOOL_NAME = 'submit_department_output';
 
-export const SUBMIT_TOOL: Anthropic.Tool = {
+export const SUBMIT_TOOL: ModelTool = {
   name: SUBMIT_TOOL_NAME,
   description:
     'Record this department\'s finished output. Call this exactly once, last, '
     + 'after any measurements you need. Everything you want kept must be in '
     + 'this call — text outside it is not stored.',
   strict: true,
-  input_schema: {
+  inputSchema: {
     type: 'object',
     additionalProperties: false,
     required: ['body', 'scores', 'targets', 'compositions', 'decisions', 'comparators'],

@@ -3,8 +3,8 @@ import { buildRubric } from '@edsai/rubric';
 import { RunContext, RunStore, ensureLocalProject } from '@edsai/engine';
 import {
   Executor, RehearsalClient, REHEARSAL_MODEL, TurnRefused, NO_USAGE, type ModelClient,
+  type ModelResponse, type Usage,
 } from '@edsai/executor';
-import type Anthropic from '@anthropic-ai/sdk';
 import { runPipeline } from '../src/pipeline.js';
 import { RunEvents } from '../src/events.js';
 import { SUBMIT_TOOL_NAME } from '@edsai/executor';
@@ -33,23 +33,19 @@ function fixture() {
   return { store, context, run };
 }
 
-const usage = { input_tokens: 10, output_tokens: 5 } as Anthropic.Usage;
+const usage: Usage = { inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0 };
 
 /** A model that always submits an acceptable output. */
 function alwaysSubmits(): ModelClient {
   return {
-    messages: {
-      stream: () => ({
-        finalMessage: async () => ({
-          id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5',
-          stop_reason: 'tool_use', stop_sequence: null, usage,
-          content: [{
-            type: 'tool_use', id: 't', name: SUBMIT_TOOL_NAME,
-            input: { body: 'Output.', scores: [], targets: [], compositions: [], decisions: [] },
-          }],
-        } as Anthropic.Message),
-      }),
-    },
+    complete: async (): Promise<ModelResponse> => ({
+      stopReason: 'tool-call',
+      usage,
+      content: [{
+        type: 'tool-call', id: 't', name: SUBMIT_TOOL_NAME,
+        input: { body: 'Output.', scores: [], targets: [], compositions: [], decisions: [] },
+      }],
+    }),
   };
 }
 
@@ -57,23 +53,19 @@ function alwaysSubmits(): ModelClient {
 function failsAfter(successes: number): ModelClient {
   let done = 0;
   return {
-    messages: {
-      stream: () => ({
-        finalMessage: async () => {
-          const finished = done < successes;
-          done += 1;
-          return {
-            id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5',
-            stop_reason: finished ? 'tool_use' : 'end_turn', stop_sequence: null, usage,
-            content: finished
-              ? [{
-                type: 'tool_use', id: 't', name: SUBMIT_TOOL_NAME,
-                input: { body: 'Output.', scores: [], targets: [], compositions: [], decisions: [] },
-              }]
-              : [{ type: 'text', text: 'I would rather not.', citations: null }],
-          } as Anthropic.Message;
-        },
-      }),
+    complete: async (): Promise<ModelResponse> => {
+      const finished = done < successes;
+      done += 1;
+      return {
+        stopReason: finished ? 'tool-call' : 'end',
+        usage,
+        content: finished
+          ? [{
+            type: 'tool-call', id: 't', name: SUBMIT_TOOL_NAME,
+            input: { body: 'Output.', scores: [], targets: [], compositions: [], decisions: [] },
+          }]
+          : [{ type: 'text', text: 'I would rather not.' }],
+      };
     },
   };
 }
@@ -160,7 +152,11 @@ describe('running a whole run', () => {
   it('adds up what the whole run cost', async () => {
     const { context, run, store } = fixture();
     const result = await runPipeline({
-      context, executor: new Executor({ client: alwaysSubmits() }),
+      context,
+      executor: new Executor({
+        client: alwaysSubmits(),
+        estimateCost: (used) => (used.inputTokens + used.outputTokens) / 1000,
+      }),
       events: new RunEvents(), runId: run.id,
     });
 

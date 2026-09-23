@@ -1,7 +1,6 @@
 # Build plan
 
-The canonical plan is the V1 document dated 11 September 2026:
-<https://claude.ai/code/artifact/c2f4789c-ab03-4a2e-9621-df666b50b22d>
+The canonical plan is the internal V1 document dated 11 September 2026.
 
 It holds the full reasoning — the thesis, the fifteen instruments, the data
 model, the technology decisions with their five-part frames, the cost model, the

@@ -136,7 +136,7 @@ describe('runs', () => {
     const { status, body } = await json(`/api/runs/${run.id}/execute`, { method: 'POST' });
     expect(status).toBe(503);
     expect(body['error']).toBe('no_executor');
-    expect(body['message']).toMatch(/ANTHROPIC_API_KEY/);
+    expect(body['message']).toMatch(/Automated execution/);
   });
 });
 

@@ -1,24 +1,19 @@
 #!/usr/bin/env node
 import { RunContext, RunStore, runInstrument, type InstrumentCall } from '@edsai/engine';
+import { buildRubric } from '@edsai/rubric';
 import { Executor, TurnRefused } from '../executor.js';
 import { diagnose } from '../failure.js';
-import { costOf, addUsage, NO_USAGE } from '../pricing.js';
+import { addUsage, NO_USAGE } from '../pricing.js';
+import { RehearsalClient, REHEARSAL_MODEL } from '../rehearsal.js';
 
-/**
- * Run a run, from the command line.
- *
- * The same loop the API drives, reachable without a server. Useful for the case
- * the API cannot cover: watching a real run happen, one department at a time,
- * with the cost printed as it accrues.
- */
-
-const usage = `edsai-execute <runId> [--model <id>] [--effort low|medium|high|xhigh|max]
+const usage = `edsai-execute <runId> [--rehearse] [--delay-ms <milliseconds>]
 
   Executes every activated department that has no output yet, in order, and
   stops at the first one that will not produce one. Safe to re-run: completed
   departments are persisted, so it resumes rather than repeating.
 
-  Needs ANTHROPIC_API_KEY. EDSAI_DB selects the database (default .edsai/runs.db).
+  This command supports marked rehearsal output only. Use --rehearse (or
+  EDSAI_REHEARSAL=1). EDSAI_DB selects the database (default .edsai/runs.db).
 `;
 
 const flag = (argv: string[], name: string): string | undefined => {
@@ -32,19 +27,25 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(usage);
     return runId ? 0 : 2;
   }
-  if (!process.env['ANTHROPIC_API_KEY']) {
-    process.stderr.write('ANTHROPIC_API_KEY is not set, so there is nothing to run this with.\n');
+
+  const rehearsal = argv.includes('--rehearse') || process.env['EDSAI_REHEARSAL'] === '1';
+  if (!rehearsal) {
+    process.stderr.write(
+      'No model provider is configured for the command-line executor. '
+      + 'Use --rehearse to create clearly marked placeholder output.\n',
+    );
     return 2;
   }
 
   const store = new RunStore(process.env['EDSAI_DB'] ?? '.edsai/runs.db');
   const context = new RunContext({ store });
-  const model = flag(argv, 'model');
-  const effort = flag(argv, 'effort') as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined;
-
+  const delay = Number.parseInt(flag(argv, 'delay-ms') ?? '', 10);
   const executor = new Executor({
-    ...(model ? { model } : {}),
-    ...(effort ? { effort } : {}),
+    model: REHEARSAL_MODEL,
+    client: new RehearsalClient({
+      rubric: buildRubric(),
+      ...(Number.isFinite(delay) ? { delayMs: delay } : {}),
+    }),
   });
 
   let total = NO_USAGE;
@@ -72,8 +73,7 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(
         `${accepted.output.scores.length} scores, ${accepted.output.targets.length} targets`
         + `${result.instrumentCalls > 0 ? `, ${result.instrumentCalls} measurements` : ''}`
-        + `${accepted.violations.length > 0 ? `, ${accepted.violations.length} violations` : ''}`
-        + `${result.cost === undefined ? '' : ` · $${result.cost.toFixed(3)}`}\n`,
+        + `${accepted.violations.length > 0 ? `, ${accepted.violations.length} violations` : ''}\n`,
       );
       for (const violation of accepted.violations) {
         process.stderr.write(`    violation (${violation.kind}): ${violation.detail}\n`);
@@ -90,11 +90,9 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  const spent = costOf(total, executor.model);
   process.stdout.write(
     `\n${total.inputTokens + total.cacheReadTokens + total.cacheCreationTokens} input tokens `
-    + `(${total.cacheReadTokens} from cache), ${total.outputTokens} output`
-    + `${spent === undefined ? '' : ` · $${spent.toFixed(2)}`}\n`,
+    + `(${total.cacheReadTokens} from cache), ${total.outputTokens} output\n`,
   );
   store.close();
   return halted ? 1 : 0;

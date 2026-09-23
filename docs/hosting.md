@@ -20,9 +20,9 @@ browser still talks to one origin.
 - **Node 22 or newer.** The database is `node:sqlite`, which is built in.
 - **A writable directory.** The database file and every uploaded file live
   there. In the container it is `/data`.
-- **An `ANTHROPIC_API_KEY`**, to execute runs. Without one the studio still
-  serves everything and still accepts a run — it just says, out loud, that it
-  cannot execute it.
+- **Automated execution is optional.** The bundled server deliberately has no
+  external provider. It still serves everything and accepts runs; it simply
+  makes clear that those runs will not execute automatically.
 
 ## Settings
 
@@ -35,8 +35,8 @@ those and not all of them can be given a file.
 | `EDSAI_DB` | `.edsai/runs.db` | The database file. |
 | `EDSAI_ASSETS` | `.edsai/assets` | Where uploaded files are written. |
 | `EDSAI_APP` | `packages/studio/dist` | The built Studio. Absent or missing means the API is served alone. |
-| `ANTHROPIC_API_KEY` | — | Absent means runs are created but not executed. |
-| `EDSAI_MODEL` | `claude-opus-5` | The model runs execute on. |
+| `EDSAI_REHEARSAL` | off | Set to `1` for clearly marked placeholder output while checking the full pipeline. |
+| `EDSAI_REHEARSAL_DELAY_MS` | `1500` | Delay before each rehearsal department completes, in milliseconds. |
 | `EDSAI_ORIGINS` | — | Extra browser origins allowed to call the API. Not needed for the one-origin layout. |
 | `EDSAI_INSECURE_COOKIES` | off | Drops `Secure` from the session cookie. Plain-http local development only. |
 | `EDSAI_SIGNIN_ALLOW` | -- | Comma-separated email allowlist for first-run setup and sign-in. Set it to your email before making a one-person studio public. |
@@ -61,6 +61,14 @@ sign-ins for the listed email addresses. It contains an email, never a password.
 An unlisted address receives the same generic credential failure as a wrong
 password, and a second failed attempt from that address is held with an
 increasing `Retry-After` delay.
+
+## Automated execution
+
+The bundled server intentionally includes no external model provider or API
+credential. Use `EDSAI_REHEARSAL=1` to walk the complete pipeline with
+clearly marked placeholders. A production integration should provide a
+`ModelClient` adapter in server code; this keeps the vendor, credentials,
+and pricing policy explicit instead of making them a hidden deployment toggle.
 
 ## In a container
 
@@ -90,7 +98,6 @@ health check is and never to run more than one replica.
 
    | Variable | Value |
    | --- | --- |
-   | `ANTHROPIC_API_KEY` | the key |
    | `PORT` | `4317` |
    | `EDSAI_ORIGINS` | the Studio's address on Vercel, once it exists (see below) |
 
@@ -112,7 +119,6 @@ portal link that does not open.
 ```
 fly launch --no-deploy --copy-config
 fly volumes create edsai_data --size 3
-fly secrets set ANTHROPIC_API_KEY=sk-ant-...
 fly deploy
 ```
 

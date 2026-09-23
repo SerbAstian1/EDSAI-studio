@@ -193,7 +193,7 @@ describe('a server given no app directory', () => {
 describe('dotfiles', () => {
   it('refuses a file whose name begins with a dot', () => {
     // The one that would matter: an .env that found its way into a build.
-    writeFileSync(join(root, '.env'), 'ANTHROPIC_API_KEY=sk-real');
+    writeFileSync(join(root, '.env'), 'EDSAI_SIGNIN_ALLOW=owner@example.com');
     expect(fileFor(root, '/.env')).toBeUndefined();
   });
 

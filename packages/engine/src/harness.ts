@@ -5,13 +5,12 @@ import { RunContext, type Submission } from './run.js';
 import type { InstrumentCall } from './verify.js';
 
 /**
- * Harness mode — Claude Code as the model.
+ * Harness mode — human-guided execution.
  *
- * The Anthropic API is billed separately from a Claude subscription, so an
- * engine with no credit has a pipeline it cannot run. Harness mode writes each
- * department's prompt and schema to disk for a person (or an agent already in a
- * session) to answer, then takes the response back through the same `accept`
- * path the API would use.
+ * When no automated execution client is enabled, harness mode writes each
+ * department's prompt and schema to disk for a person (or an agent already in
+ * a session) to answer, then takes the response back through the same
+ * acceptance path the server uses.
  *
  * The important property is that this is not a relaxed path. Instrument calls
  * are logged here and verified exactly as on the API path, pipeline order is

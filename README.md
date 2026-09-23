@@ -151,7 +151,7 @@ than 24. See `docs/notes/gaps.md` §4d.
 corpus into a deterministic function. Every one is pure: no model call, no
 network, no interpretation. They compute; departments interpret.
 
-Each is also emitted as a **strict Claude tool** (`strict: true`, schema closed
+Each is also emitted as a **strict model tool** (`strict: true`, schema closed
 to additional properties), because the engine only accepts a measured `actual`
 when an instrument produced it in that turn.
 

@@ -2,7 +2,7 @@ import {
   runInstrument, comparatorFromProposal, type RunContext, type InstrumentCall,
 } from '@edsai/engine';
 import {
-  Executor, TurnRefused, addUsage, costOf, diagnose, NO_USAGE, type Usage,
+  Executor, TurnRefused, addUsage, diagnose, NO_USAGE, type Usage,
 } from '@edsai/executor';
 import type { RunEvents } from './events.js';
 
@@ -65,8 +65,9 @@ export async function runPipeline(options: {
 
     const turn = context.prepare(runId);
     if (!turn) {
+      const cost = executor.costOf(usage);
       events.emit(runId, 'pipeline.finished', {
-        completed, usage, cost: costOf(usage, executor.model),
+        completed, usage, ...(cost === undefined ? {} : { cost }),
       });
       break;
     }
@@ -139,16 +140,16 @@ export async function runPipeline(options: {
           haltedRetryable: diagnosis.retryable,
         });
       }
+      const cost = executor.costOf(usage);
       return {
         completed,
         usage,
-        ...(costOf(usage, executor.model) === undefined
-          ? {} : { cost: costOf(usage, executor.model) as number }),
+        ...(cost === undefined ? {} : { cost }),
         halted: { departmentId: turn.department.id, reason },
       };
     }
   }
 
-  const cost = costOf(usage, executor.model);
+  const cost = executor.costOf(usage);
   return { completed, usage, ...(cost === undefined ? {} : { cost }) };
 }

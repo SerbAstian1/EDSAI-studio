@@ -2,7 +2,6 @@
 #
 #   fly launch --no-deploy --copy-config
 #   fly volumes create edsai_data --size 3
-#   fly secrets set ANTHROPIC_API_KEY=sk-ant-...
 #   fly deploy
 #
 # Fly terminates TLS in front of the machine, so the session cookie keeps its
@@ -46,7 +45,7 @@ primary_region = 'iad'
   path = '/api/health'
 
 [[vm]]
-  # The model calls are network waits, not local work; the memory is for the
-  # Node process and SQLite.
+  # Pipeline work is mostly network waits; the memory is for the Node process
+  # and SQLite.
   size = 'shared-cpu-1x'
   memory = '1gb'

@@ -260,10 +260,9 @@ phrased in their world, and every choice visibly moves something.
 
 ## Prototype
 
-A tappable prototype of this flow is published at
-<https://claude.ai/artifact/MHRgTzqy8zUAfd8fiFP6b3> — the warm-up, all four
-ratio and scale mechanics, the trait spread with a simulated team, and the
-reveal with a live Resolution Score.
+A tappable prototype of this flow was built during discovery, covering the
+warm-up, all four ratio and scale mechanics, the trait spread with a simulated
+team, and the reveal with a live Resolution Score.
 
 It exists to be felt rather than read. The ratio mechanic in particular only
 makes sense once you have tapped it: picking a side and then a strength takes
