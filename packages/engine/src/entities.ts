@@ -146,6 +146,7 @@ export const PortalKey = z.object({
   expiresAt: z.string(),
   lastUsedAt: z.string().optional(),
   uses: z.number().int().nonnegative(),
+  singleUse: z.boolean().default(false),
 });
 export type PortalKey = z.infer<typeof PortalKey>;
 

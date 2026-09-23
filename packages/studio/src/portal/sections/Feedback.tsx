@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Client } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 
 function dateOf(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -26,7 +27,7 @@ export default function FeedbackSection({ client, canWrite }: { client: Client; 
   const [body, setBody] = useState('');
   const [rating, setRating] = useState(0);
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['feedback', client.id], queryFn: () => api.feedback(client.id),
   });
 
@@ -65,7 +66,13 @@ export default function FeedbackSection({ client, canWrite }: { client: Client; 
       )}
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load feedback. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load feedback"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {/* A read-only visitor with nothing here used to get the heading, the
           blurb, and then nothing at all — no form to explain the silence. */}

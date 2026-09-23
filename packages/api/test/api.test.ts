@@ -1709,11 +1709,12 @@ describe('portal keys', () => {
     cookie = saved;
   });
 
-  it('shows the link exactly once and never again', async () => {
+  it('shows the one-time access code exactly once and never again', async () => {
     const id = await client();
     const { status, body } = await issue(id);
     expect(status).toBe(201);
-    expect(tokenOf(body)).toMatch(/^[A-Za-z0-9_-]{20,}$/);
+    expect(tokenOf(body)).toMatch(/^[a-z]+(?:-[a-z]+){4}-\d{12}$/);
+    expect(body['accessCode']).toBe(tokenOf(body));
 
     const listed = await json(`/api/clients/${id}/portal-keys`);
     const keys = listed.body['keys'] as unknown as Record<string, unknown>[];
@@ -1734,16 +1735,26 @@ describe('portal keys', () => {
       .toMatchObject({ kind: 'portal', clientId: id });
   });
 
-  it('records every use, because that is what bounds a link in an inbox', async () => {
+  it('redeems a one-time access code only once', async () => {
     const id = await client();
     const { body } = await issue(id);
-    await enter(tokenOf(body));
-    await enter(tokenOf(body));
+    const token = tokenOf(body);
+    await enter(token);
+
+    const repeated = await fetch(`${base}/api/portal/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    expect(repeated.status).toBe(401);
 
     const listed = await json(`/api/clients/${id}/portal-keys`);
-    const keys = listed.body['keys'] as unknown as { uses: number; lastUsedAt?: string }[];
-    expect(keys[0]?.uses).toBe(2);
+    const keys = listed.body['keys'] as unknown as {
+      uses: number; lastUsedAt?: string; singleUse: boolean;
+    }[];
+    expect(keys[0]?.uses).toBe(1);
     expect(keys[0]?.lastUsedAt).toBeTruthy();
+    expect(keys[0]?.singleUse).toBe(true);
   });
 
   it('stops working the moment it is revoked', async () => {

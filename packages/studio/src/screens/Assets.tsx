@@ -2,6 +2,8 @@ import { useRef, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Pencil, Trash2 } from 'lucide-react';
 import { api, type Asset } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
@@ -93,8 +95,11 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Delete "${asset.filename}"? This removes it from the studio and the client's portal.`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Delete ${asset.filename}?`,
+      message: 'This removes the file from the studio and the client portal. It cannot be undone.',
+      confirmLabel: 'Delete file',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -173,7 +178,7 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
   const [collection, setCollection] = useState('');
   const [dragging, setDragging] = useState(false);
 
-  const { data: assets, isPending, error } = useQuery({
+  const { data: assets, isPending, error, refetch } = useQuery({
     queryKey: ['assets', clientId], queryFn: () => api.assets(clientId),
   });
 
@@ -208,7 +213,9 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
   };
 
   if (isPending) return <p className="muted">Loading files…</p>;
-  if (error) return <p className="err">Could not load files. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load files" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const approved = assets.filter((asset) => asset.approved).length;
   const waiting = assets.length - approved;

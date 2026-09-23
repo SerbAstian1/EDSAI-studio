@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { RunTable } from '../components/RunTable.js';
 
 /**
@@ -16,10 +17,12 @@ import { RunTable } from '../components/RunTable.js';
  * same place and highlight the wrong one.
  */
 export default function Runs(): ReactElement {
-  const { data: runs, isPending, error } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
+  const { data: runs, isPending, error, refetch } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
 
   if (isPending) return <p className="muted">Loading runs…</p>;
-  if (error) return <p className="err">Could not load runs. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load runs" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   return (
     <section className="stack">

@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Asset, type Client } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 import { groupByCollection, readableSize } from '../../screens/Assets.js';
 
 /**
@@ -13,7 +14,7 @@ export default function FilesSection({ client, canWrite }: { client: Client; can
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
 
-  const { data: assets, isPending, error } = useQuery({
+  const { data: assets, isPending, error, refetch } = useQuery({
     queryKey: ['assets', client.id], queryFn: () => api.assets(client.id),
   });
 
@@ -73,7 +74,13 @@ export default function FilesSection({ client, canWrite }: { client: Client; can
       )}
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load files. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load files"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {assets && assets.length === 0 && (
         <div className="empty">

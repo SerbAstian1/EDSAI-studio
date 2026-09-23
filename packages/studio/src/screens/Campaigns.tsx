@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import ProjectMenu from '../components/ProjectMenu.js';
 
 /**
@@ -25,11 +26,17 @@ export default function Campaigns(): ReactElement {
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
 
   if (projects.isPending || clients.isPending) return <p className="muted">Loading campaigns…</p>;
-  if (projects.error) {
-    return <p className="err">Could not load campaigns. {(projects.error as Error).message}</p>;
-  }
-  if (clients.error) {
-    return <p className="err">Could not load clients. {(clients.error as Error).message}</p>;
+  if (projects.error || clients.error) {
+    return (
+      <ErrorPanel
+        title={projects.error ? 'Could not load campaigns' : 'Could not load clients'}
+        error={projects.error ?? clients.error}
+        onRetry={() => {
+          void projects.refetch();
+          void clients.refetch();
+        }}
+      />
+    );
   }
 
   const clientName = new Map(clients.data.map((client) => [client.id, client.name]));

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Compass, Palette, Users } from 'lucide-react';
 import { api, type Run } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import { go } from '../components/actions.js';
 
@@ -22,10 +23,12 @@ export function brandsFrom(runs: readonly Run[]): Run[] {
 }
 
 export default function Brands(): ReactElement {
-  const { data: runs, isPending, error } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
+  const { data: runs, isPending, error, refetch } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
 
   if (isPending) return <p className="muted">Loading brands…</p>;
-  if (error) return <p className="err">Could not load brands. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load brands" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const brands = brandsFrom(runs);
 

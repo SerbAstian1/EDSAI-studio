@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  hashPassword, verifyPassword, verifyAgainstAccount, mintSessionToken, digestToken,
+  hashPassword, verifyPassword, verifyAgainstAccount, mintPortalAccessCode, mintSessionToken, digestToken,
   serializeSession, serializeLogout, readSessionCookie, isCsrfSafe, SESSION_COOKIE,
 } from '../src/index.js';
 
@@ -87,6 +87,18 @@ describe('session tokens', () => {
 
   it('digests differently for different tokens', () => {
     expect(digestToken('a')).not.toBe(digestToken('b'));
+  });
+});
+
+describe('portal access codes', () => {
+  it('uses random words followed by a numeric suffix', () => {
+    const first = mintPortalAccessCode();
+    const second = mintPortalAccessCode();
+
+    expect(first.code).toMatch(/^[a-z]+(?:-[a-z]+){4}-\d{12}$/);
+    expect(first.code).not.toBe(second.code);
+    expect(first.digest).toBe(digestToken(first.code));
+    expect(first.digest).not.toContain(first.code);
   });
 });
 

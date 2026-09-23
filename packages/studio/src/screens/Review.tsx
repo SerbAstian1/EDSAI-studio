@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState , type ReactElement } from 'react';
 import { api, type Severity } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { issueCounts, orderIssues } from '../scorecard.js';
 
 const SEVERITIES: Severity[] = ['Blocker', 'Major', 'Minor', 'Nitpick'];
@@ -8,7 +9,7 @@ const SEVERITIES: Severity[] = ['Blocker', 'Major', 'Minor', 'Nitpick'];
 /** Issue tracker and conflict panel — the two things standing between V1 and FINAL. */
 export default function Review({ runId }: { runId: string }): ReactElement {
   const client = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['run', runId], queryFn: () => api.run(runId),
   });
 
@@ -52,7 +53,9 @@ export default function Review({ runId }: { runId: string }): ReactElement {
   // `!data` without an error branch meant a failed fetch rendered "Loading
   // review…" for as long as the tab stayed open — the gate between V1 and
   // FINAL, apparently still loading, permanently.
-  if (error) return <p className="err">Could not load this review. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load this review" error={error} onRetry={() => { void refetch(); }} />;
+  }
   if (isPending || !data) return <p className="muted">Loading review…</p>;
 
   const counts = issueCounts(data.issues);

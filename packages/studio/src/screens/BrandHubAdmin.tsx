@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, Grid3x3, Power } from 'lucide-react';
 import { api, type BrandHubStatus, type BrandProject } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import ToolHost from '../components/ToolHost.js';
 
 /**
@@ -43,7 +44,20 @@ export default function BrandHubAdmin({ clientId }: { clientId: string }): React
   });
 
   if (hub.isPending) return <p className="muted">Loading Brand Hub…</p>;
-  if (hub.error) return <p className="err">Could not load the Brand Hub. {(hub.error as Error).message}</p>;
+  if (hub.error || values.error || assets.error || projects.error) {
+    return (
+      <ErrorPanel
+        title="Could not load the Brand Hub"
+        error={hub.error ?? values.error ?? assets.error ?? projects.error}
+        onRetry={() => {
+          void hub.refetch();
+          void values.refetch();
+          void assets.refetch();
+          void projects.refetch();
+        }}
+      />
+    );
+  }
 
   const record = hub.data.hub;
   const enabledTools = record?.tools ?? [];

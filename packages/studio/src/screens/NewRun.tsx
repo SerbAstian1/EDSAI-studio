@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import ProjectField from '../components/ProjectField.js';
 
 /**
@@ -331,6 +332,19 @@ export default function NewRun(
     },
   });
 
+  if (clients.error || projects.error) {
+    return (
+      <ErrorPanel
+        title={projects.error ? 'Could not load projects' : 'Could not load clients'}
+        error={projects.error ?? clients.error}
+        onRetry={() => {
+          void clients.refetch();
+          void projects.refetch();
+        }}
+      />
+    );
+  }
+
   const missing = stillNeeded({
     projectId, asked, level, unanswered: unanswered.length, tracks,
   });
@@ -363,9 +377,6 @@ export default function NewRun(
               There are no projects yet. A run belongs to one, so start there —
               open a client and add a project.
             </span>
-          )}
-          {projects.error && (
-            <span className="err">Could not load projects. {(projects.error as Error).message}</span>
           )}
         </label>
 

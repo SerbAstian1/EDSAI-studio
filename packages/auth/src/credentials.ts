@@ -1,4 +1,4 @@
-import { randomBytes, scrypt, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomInt, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 /**
@@ -27,6 +27,16 @@ const scryptAsync = promisify(scrypt) as (
 const KEY_LENGTH = 64;
 const SALT_BYTES = 16;
 const TOKEN_BYTES = 32;
+const ACCESS_CODE_WORDS = [
+  'amber', 'apricot', 'archer', 'aspen', 'atlas', 'beacon', 'birch', 'bloom',
+  'breeze', 'brook', 'candle', 'canyon', 'cedar', 'citadel', 'clover', 'comet',
+  'coral', 'copper', 'cricket', 'dawn', 'delta', 'drift', 'ember', 'falcon',
+  'fern', 'flint', 'forest', 'glow', 'harbor', 'hazel', 'island', 'juniper',
+  'lagoon', 'lantern', 'lilac', 'maple', 'meadow', 'meteor', 'mist', 'monarch',
+  'moon', 'moss', 'north', 'oasis', 'orbit', 'orchid', 'otter', 'pebble',
+  'pine', 'plume', 'quartz', 'raven', 'reef', 'river', 'robin', 'saffron',
+  'sage', 'shore', 'solstice', 'sparrow', 'summit', 'thistle', 'velvet', 'willow',
+] as const;
 
 export interface PasswordRecord {
   salt: string;
@@ -99,6 +109,16 @@ export async function verifyAgainstAccount(
 export function mintSessionToken(): { token: string; digest: string } {
   const token = randomBytes(TOKEN_BYTES).toString('base64url');
   return { token, digest: digestToken(token) };
+}
+
+export function mintPortalAccessCode(): { code: string; digest: string } {
+  const words = Array.from(
+    { length: 5 },
+    () => ACCESS_CODE_WORDS[randomInt(ACCESS_CODE_WORDS.length)],
+  ).join('-');
+  const suffix = `${randomInt(1_000_000).toString().padStart(6, '0')}${randomInt(1_000_000).toString().padStart(6, '0')}`;
+  const code = `${words}-${suffix}`;
+  return { code, digest: digestToken(code) };
 }
 
 export function digestToken(token: string): string {

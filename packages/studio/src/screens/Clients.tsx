@@ -2,6 +2,8 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArchiveRestore, ExternalLink, Trash2 } from 'lucide-react';
 import { api, type ApiError, type Client } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import { go } from '../components/actions.js';
 
@@ -19,7 +21,7 @@ const STATUS_TONE: Record<Client['status'], string> = {
 
 export default function Clients(): ReactElement {
   const queryClient = useQueryClient();
-  const { data: clients, isPending, error } = useQuery({
+  const { data: clients, isPending, error, refetch } = useQuery({
     queryKey: ['clients'], queryFn: api.clients,
   });
 
@@ -54,13 +56,21 @@ export default function Clients(): ReactElement {
   const [refused, setRefused] = useState<{ id: string; message: string } | undefined>(undefined);
 
   if (isPending) return <p className="muted">Loading clients…</p>;
-  if (error) return <p className="err">Could not load clients. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load clients" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const onDelete = (client: Client): void => {
-    if (!confirm(`Delete ${client.name}? This can't be undone.`)) return;
-    setRefused(undefined);
-    remove.mutate(client.id, {
-      onError: (e) => setRefused({ id: client.id, message: (e as ApiError).message }),
+    void requestConfirmation({
+      title: `Delete ${client.name}?`,
+      message: 'This cannot be undone. Remove the client’s contacts and projects first.',
+      confirmLabel: 'Delete client',
+    }).then((confirmed) => {
+      if (!confirmed) return;
+      setRefused(undefined);
+      remove.mutate(client.id, {
+        onError: (e) => setRefused({ id: client.id, message: (e as ApiError).message }),
+      });
     });
   };
 

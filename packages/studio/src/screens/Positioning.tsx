@@ -1,6 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import QuadrantChart from '../components/QuadrantChart.js';
 
 /**
@@ -25,7 +27,7 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['positioning', clientId, xAxis, yAxis],
     queryFn: () => api.positioning(clientId, xAxis, yAxis),
   });
@@ -49,7 +51,9 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
   });
 
   if (isPending) return <p className="muted">Loading the chart…</p>;
-  if (error) return <p className="err">Could not load the chart. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load the chart" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const { matrix, axes, answersFrom } = data;
   // Both kinds of judgement can be taken off the chart; the computed point cannot.
@@ -161,7 +165,13 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
           {placed.map((point) => (
             <button
               key={point.id} type="button" disabled={remove.isPending}
-              onClick={() => { if (confirm(`Remove ${point.label} from the chart?`)) remove.mutate(point.id); }}
+              onClick={() => {
+                void requestConfirmation({
+                  title: `Remove ${point.label}?`,
+                  message: 'This removes the brand from the current positioning chart. It cannot be undone.',
+                  confirmLabel: 'Remove brand',
+                }).then((confirmed) => { if (confirmed) remove.mutate(point.id); });
+              }}
             >
               Remove {point.label}
             </button>

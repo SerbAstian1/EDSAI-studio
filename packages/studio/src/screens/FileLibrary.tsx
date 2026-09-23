@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Asset, type Client } from '../api.js';
 import AssetMenu from '../components/AssetMenu.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { readableSize, shelve } from './Assets.js';
 
 /**
@@ -37,9 +38,11 @@ export default function FileLibrary(): ReactElement {
   if (clients.isPending || assets.isPending) return <p className="muted">Loading files…</p>;
   if (clients.error || assets.error) {
     return (
-      <p className="err">
-        Could not load files. {((clients.error ?? assets.error) as Error).message}
-      </p>
+      <ErrorPanel
+        title="Could not load files"
+        error={clients.error ?? assets.error}
+        onRetry={() => { void clients.refetch(); void assets.refetch(); }}
+      />
     );
   }
 

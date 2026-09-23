@@ -2,6 +2,8 @@ import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, KeyRound } from 'lucide-react';
 import { api, type Run } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import { go } from '../components/actions.js';
 import { brandsFrom } from './Brands.js';
@@ -35,11 +37,18 @@ export default function Portals(): ReactElement {
   });
 
   if (runs.isPending || keys.isPending) return <p className="muted">Loading portals…</p>;
-  if (runs.error || keys.error) {
+  if (clients.isPending) return <p className="muted">Loading client details...</p>;
+  if (runs.error || keys.error || clients.error) {
     return (
-      <p className="err">
-        Could not load portals. {((runs.error ?? keys.error) as Error).message}
-      </p>
+      <ErrorPanel
+        title="Could not load portals"
+        error={runs.error ?? keys.error ?? clients.error}
+        onRetry={() => {
+          void runs.refetch();
+          void keys.refetch();
+          void clients.refetch();
+        }}
+      />
     );
   }
 
@@ -106,9 +115,13 @@ export default function Portals(): ReactElement {
                         onSelect: () => go(`#/clients/${key.clientId}/client`) },
                       { label: 'Revoke link', icon: Ban, danger: true, disabled: revoke.isPending,
                         onSelect: () => {
-                          if (confirm(`Revoke the link for ${key.label}? Whoever holds it loses access immediately.`)) {
-                            revoke.mutate({ clientId: key.clientId, keyId: key.id });
-                          }
+                          void requestConfirmation({
+                            title: `Revoke ${key.label}'s link?`,
+                            message: 'Anyone holding this link loses access immediately. You can issue a new link later.',
+                            confirmLabel: 'Revoke link',
+                          }).then((confirmed) => {
+                            if (confirmed) revoke.mutate({ clientId: key.clientId, keyId: key.id });
+                          });
                         } },
                     ]} />
                   </td>

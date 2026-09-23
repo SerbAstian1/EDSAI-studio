@@ -31,7 +31,7 @@ import {
   scopeFromOverrides,
 } from '@edsai/engine';
 import {
-  Forbidden, mintSessionToken, digestToken, hashPassword,
+  Forbidden, mintPortalAccessCode, mintSessionToken, digestToken, hashPassword,
   readSessionCookie, serializeSession, serializeLogout, isCsrfSafe, verifyAgainstAccount,
   SignInAttempts, signInAllowed,
   type Principal,
@@ -1299,7 +1299,7 @@ export class ApiServer {
 
           const days = Number.isFinite(input?.days) && (input?.days ?? 0) > 0
             ? Math.min(Math.round(input?.days ?? 0), 365) : PORTAL_KEY_DAYS;
-          const { token, digest } = mintSessionToken();
+          const { code, digest } = mintPortalAccessCode();
           const now = new Date();
           const expires = new Date(now.getTime() + days * 86_400_000);
 
@@ -1311,12 +1311,13 @@ export class ApiServer {
             ...(role === 'limited' ? { collections } : {}),
             createdAt: now.toISOString(),
             expiresAt: expires.toISOString(),
+            singleUse: true,
           });
 
           send(res, 201, {
             key: {
               label, role, clientId, expiresAt: expires.toISOString(),
-              ...(role === 'limited' ? { collections } : {}), uses: 0,
+              ...(role === 'limited' ? { collections } : {}), uses: 0, singleUse: true,
             },
             // Shown once. There is no route that returns it again. The path
             // opens the studio's own SPA at a public, token-scoped route,
@@ -1324,7 +1325,8 @@ export class ApiServer {
             // `/portal/enter/:token` still works as a plain-navigation
             // fallback onto the static hub, but is no longer what a newly
             // issued link points at.
-            link: { token, path: `/#/client-portal/${token}` },
+            accessCode: code,
+            link: { token: code, path: `/#/client-portal/${code}` },
           });
         },
       },

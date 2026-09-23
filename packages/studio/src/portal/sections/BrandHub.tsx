@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Grid3x3, Image as ImageIcon, Layers, LayoutTemplate, Palette, PenTool, Type, type LucideIcon } from 'lucide-react';
 import { api, type Asset, type BrandProject, type BrandValue, type Client } from '../../api.js';
+import { requestConfirmation } from '../../components/ConfirmDialog.js';
 import ToolHost, { toolReady } from '../../components/ToolHost.js';
 import OverflowMenu from '../../components/OverflowMenu.js';
 import { downloadFile } from '../../components/actions.js';
@@ -242,7 +243,13 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
                         <OverflowMenu label={`Actions for ${p.name}`} items={[
                           { label: 'Open', onSelect: () => setEditing({ toolId: p.toolId, project: p }) },
                           { label: 'Delete', danger: true, disabled: !canWrite || remove.isPending,
-                            onSelect: () => { if (confirm(`Delete "${p.name}"?`)) remove.mutate(p.id); } },
+                            onSelect: () => {
+                              void requestConfirmation({
+                                title: `Delete ${p.name}?`,
+                                message: 'This removes the saved design from the Brand Hub. It cannot be undone.',
+                                confirmLabel: 'Delete design',
+                              }).then((confirmed) => { if (confirmed) remove.mutate(p.id); });
+                            } },
                         ]} />
                       </td>
                     </tr>

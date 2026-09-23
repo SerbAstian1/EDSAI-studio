@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 
 /**
  * The one conversation this client's portal can see.
@@ -21,7 +22,7 @@ export default function Messages({ clientId }: { clientId: string }): ReactEleme
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['messages', clientId], queryFn: () => api.messages(clientId),
     refetchInterval: 15_000,
   });
@@ -39,7 +40,13 @@ export default function Messages({ clientId }: { clientId: string }): ReactEleme
       <h3 style={{ margin: 0 }}>Messages</h3>
 
       {isPending && <p className="muted">Loading messages…</p>}
-      {error && <p className="err">Could not load messages. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load messages"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && (
         <p className="muted">No messages yet. Anything sent here reaches the client's own portal.</p>

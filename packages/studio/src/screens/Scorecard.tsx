@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { histogram, targetSummary, weakestScore } from '../scorecard.js';
 
 /**
@@ -11,12 +12,14 @@ import { histogram, targetSummary, weakestScore } from '../scorecard.js';
  * a footnote on it.
  */
 export default function Scorecard({ runId }: { runId: string }): ReactElement {
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['run', runId], queryFn: () => api.run(runId),
   });
 
   if (isPending) return <p className="muted">Loading scores…</p>;
-  if (error) return <p className="err">Could not load scores. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load scores" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const h = histogram(data.outputs);
   const weakest = weakestScore(data.outputs);

@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type BrandValue } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
 
 /**
  * The brand workspace.
@@ -115,7 +116,11 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
             <button type="button" style={{ marginLeft: 'auto' }}
                     disabled={remove.isPending}
                     onClick={() => {
-                      if (confirm(`Remove "${value.name}" from this brand?`)) remove.mutate();
+                      void requestConfirmation({
+                        title: `Remove ${value.name}?`,
+                        message: 'This removes the value from the brand system. It cannot be undone.',
+                        confirmLabel: 'Remove value',
+                      }).then((confirmed) => { if (confirmed) remove.mutate(); });
                     }}>
               {remove.isPending ? 'Removing…' : 'Remove'}
             </button>

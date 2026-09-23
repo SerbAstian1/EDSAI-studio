@@ -2,6 +2,8 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import { api, type Milestone } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
@@ -42,8 +44,11 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Remove "${m.title}"?`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Remove ${m.title}?`,
+      message: 'This removes the milestone from the project timeline. It cannot be undone.',
+      confirmLabel: 'Remove milestone',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -102,7 +107,7 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['milestones', clientId], queryFn: () => api.milestones(clientId),
   });
 
@@ -168,7 +173,13 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
       )}
 
       {isPending && <p className="muted">Loading milestones…</p>}
-      {error && <p className="err">Could not load milestones. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load milestones"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && !adding && (
         <p className="muted">No milestones laid out yet.</p>

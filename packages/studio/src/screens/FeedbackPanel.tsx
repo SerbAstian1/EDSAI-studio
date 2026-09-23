@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 
 /**
  * What a client said about how the project is going, outside a run's own
@@ -33,7 +34,7 @@ function ReplyForm({ feedbackId, onSent }: { feedbackId: string; onSent: () => v
 
 export default function FeedbackPanel({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['feedback', clientId], queryFn: () => api.feedback(clientId),
   });
 
@@ -46,7 +47,13 @@ export default function FeedbackPanel({ clientId }: { clientId: string }): React
       <h3 style={{ margin: 0 }}>Feedback</h3>
 
       {isPending && <p className="muted">Loading feedback…</p>}
-      {error && <p className="err">Could not load feedback. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load feedback"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && (
         <p className="muted">Nothing left yet — a client can leave feedback from their portal.</p>

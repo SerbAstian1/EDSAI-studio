@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Client } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 
 function timeOf(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -20,7 +21,7 @@ export default function MessagesSection({ client, canWrite }: { client: Client; 
   const [body, setBody] = useState('');
   const [name, setName] = useState(readName);
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['messages', client.id], queryFn: () => api.messages(client.id),
     refetchInterval: 15_000,
   });
@@ -46,7 +47,13 @@ export default function MessagesSection({ client, canWrite }: { client: Client; 
       </div>
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load messages. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load messages"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && <p className="muted">No messages yet — say hello.</p>}
 

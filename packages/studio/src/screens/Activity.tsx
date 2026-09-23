@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Client, type Project, type Run } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 
 /**
  * Activity.
@@ -53,12 +54,14 @@ export function activityFrom(
 }
 
 export default function Activity(): ReactElement {
-  const { data: runs, isPending, error } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
+  const { data: runs, isPending, error, refetch } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
 
   if (isPending) return <p className="muted">Loading activity…</p>;
-  if (error) return <p className="err">Could not load activity. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load activity" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const entries = activityFrom(runs, projects.data ?? [], clients.data ?? []);
 

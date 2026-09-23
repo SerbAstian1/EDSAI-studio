@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, Download, EyeOff, LayoutTemplate, Trash2, Users } from 'lucide-react';
 import { api, type Asset } from '../api.js';
+import { requestConfirmation } from './ConfirmDialog.js';
 import OverflowMenu from './OverflowMenu.js';
 import { downloadFile, go } from './actions.js';
 
@@ -38,9 +39,11 @@ export default function AssetMenu({ asset }: { asset: Asset }): ReactElement {
       { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${asset.clientId}/delivery`) },
       { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending,
         onSelect: () => {
-          if (confirm(`Delete "${asset.filename}"? This removes it from the studio and the client's portal.`)) {
-            remove.mutate();
-          }
+          void requestConfirmation({
+            title: `Delete ${asset.filename}?`,
+            message: 'This removes the file from the studio and the client portal. It cannot be undone.',
+            confirmLabel: 'Delete file',
+          }).then((confirmed) => { if (confirmed) remove.mutate(); });
         } },
     ]} />
   );

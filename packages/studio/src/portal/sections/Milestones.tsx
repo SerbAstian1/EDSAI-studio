@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Client, type Milestone } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 
 const STATUS_TONE: Record<Milestone['status'], string> = {
   upcoming: 'minor', 'in-progress': 'minor', completed: 'pass',
@@ -10,7 +11,7 @@ const STATUS_LABEL: Record<Milestone['status'], string> = {
 };
 
 export default function MilestonesSection({ client }: { client: Client }): ReactElement {
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['milestones', client.id], queryFn: () => api.milestones(client.id),
   });
 
@@ -25,7 +26,13 @@ export default function MilestonesSection({ client }: { client: Client }): React
       </div>
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load milestones. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load milestones"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && (
         <div className="empty">

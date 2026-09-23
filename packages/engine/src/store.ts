@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS portal_keys (
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   last_used_at TEXT,
+  single_use INTEGER NOT NULL DEFAULT 0,
   uses INTEGER NOT NULL DEFAULT 0
 );
 
@@ -498,6 +499,9 @@ export class RunStore {
     }
     if (!columns('deliverables').includes('figma_url')) {
       this.db.exec('ALTER TABLE deliverables ADD COLUMN figma_url TEXT');
+    }
+    if (!columns('portal_keys').includes('single_use')) {
+      this.db.exec('ALTER TABLE portal_keys ADD COLUMN single_use INTEGER NOT NULL DEFAULT 0');
     }
     if (!columns('comparators').includes('origin')) {
       this.db.exec("ALTER TABLE comparators ADD COLUMN origin TEXT NOT NULL DEFAULT 'studio'");
@@ -1179,17 +1183,17 @@ export class RunStore {
     digest: string; clientId: string; label: string;
     role: 'limited' | 'viewer' | 'editor' | 'brand_manager' | 'owner';
     collections?: readonly string[];
-    createdAt: string; expiresAt: string;
+    createdAt: string; expiresAt: string; singleUse?: boolean;
   }): void {
     this.db.prepare(`
       INSERT INTO portal_keys
-        (digest, client_id, label, role, collections, created_at, expires_at, uses)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        (digest, client_id, label, role, collections, created_at, expires_at, single_use, uses)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
       ON CONFLICT(digest) DO UPDATE SET expires_at = excluded.expires_at
     `).run(
       key.digest, key.clientId, key.label, key.role,
       key.collections && key.collections.length > 0 ? JSON.stringify(key.collections) : null,
-      key.createdAt, key.expiresAt,
+      key.createdAt, key.expiresAt, key.singleUse ? 1 : 0,
     );
   }
 
@@ -1214,10 +1218,18 @@ export class RunStore {
   redeemPortalKey(digest: string, now = new Date()): PortalKey | undefined {
     const key = this.getPortalKey(digest, now);
     if (!key) return undefined;
+    const usedAt = now.toISOString();
+    if (key.singleUse) {
+      const result = this.db.prepare(
+        'UPDATE portal_keys SET uses = uses + 1, last_used_at = ? WHERE digest = ? AND uses = 0',
+      ).run(usedAt, digest);
+      if (Number(result.changes ?? 0) !== 1) return undefined;
+      return { ...key, uses: 1, lastUsedAt: usedAt };
+    }
     this.db.prepare(
       'UPDATE portal_keys SET uses = uses + 1, last_used_at = ? WHERE digest = ?',
-    ).run(now.toISOString(), digest);
-    return { ...key, uses: key.uses + 1, lastUsedAt: now.toISOString() };
+    ).run(usedAt, digest);
+    return { ...key, uses: key.uses + 1, lastUsedAt: usedAt };
   }
 
   /** Read a key without redeeming it. Expired keys are deleted, not returned. */
@@ -1687,6 +1699,7 @@ function hydratePortalKey(row: Record<string, unknown>): PortalKey {
     expiresAt: String(row['expires_at']),
     ...(row['last_used_at'] ? { lastUsedAt: String(row['last_used_at']) } : {}),
     uses: Number(row['uses'] ?? 0),
+    singleUse: row['single_use'] === 1,
   };
 }
 

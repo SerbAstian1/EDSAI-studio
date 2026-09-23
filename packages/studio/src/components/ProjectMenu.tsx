@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Compass, ExternalLink, Play, Trash2, Users } from 'lucide-react';
 import { api, type ApiError } from '../api.js';
+import { requestConfirmation } from './ConfirmDialog.js';
 import OverflowMenu from './OverflowMenu.js';
 import { go, openExternal } from './actions.js';
 
@@ -46,9 +47,15 @@ export default function ProjectMenu({ project, size }: {
           : []),
         { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending,
           onSelect: () => {
-            if (!confirm(`Delete "${project.name}"?`)) return;
-            setRefused(undefined);
-            remove.mutate();
+            void requestConfirmation({
+              title: `Delete ${project.name}?`,
+              message: 'This removes the project. Projects with runs cannot be deleted until their work is cleared.',
+              confirmLabel: 'Delete project',
+            }).then((confirmed) => {
+              if (!confirmed) return;
+              setRefused(undefined);
+              remove.mutate();
+            });
           } },
       ]} />
       {refused && <span className="err" style={{ fontSize: 12 }}>{refused}</span>}

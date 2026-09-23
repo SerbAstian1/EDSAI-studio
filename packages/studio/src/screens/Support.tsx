@@ -2,6 +2,8 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { api, type SupportNote } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
@@ -47,8 +49,11 @@ function NoteCard({ note, onChanged }: { note: SupportNote; onChanged: () => voi
   });
 
   const onDelete = (): void => {
-    if (!confirm('Delete this note? This can’t be undone.')) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: 'Delete this note?',
+      message: 'This permanently removes the note. It cannot be undone.',
+      confirmLabel: 'Delete note',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -96,7 +101,7 @@ function NoteCard({ note, onChanged }: { note: SupportNote; onChanged: () => voi
 
 export default function Support(): ReactElement {
   const queryClient = useQueryClient();
-  const { data: notes, isPending, error } = useQuery({
+  const { data: notes, isPending, error, refetch } = useQuery({
     queryKey: ['support-notes'], queryFn: api.supportNotes,
   });
 
@@ -113,7 +118,9 @@ export default function Support(): ReactElement {
   });
 
   if (isPending) return <p className="muted">Loading…</p>;
-  if (error) return <p className="err">Could not load notes. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load notes" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const open = notes.filter((n) => n.status === 'open');
   const resolved = notes.filter((n) => n.status === 'resolved');

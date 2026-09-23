@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Client } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 
 /**
  * The same milestones as `Milestones`, read as a line rather than a grid.
@@ -13,7 +14,7 @@ import { api, type Client } from '../../api.js';
 const DOT_TONE: Record<string, string> = { upcoming: '', 'in-progress': 'pass', completed: 'pass' };
 
 export default function TimelineSection({ client }: { client: Client }): ReactElement {
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['milestones', client.id], queryFn: () => api.milestones(client.id),
   });
 
@@ -28,7 +29,13 @@ export default function TimelineSection({ client }: { client: Client }): ReactEl
       </div>
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load the timeline. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load the timeline"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && <p className="muted">Nothing on the timeline yet.</p>}
 

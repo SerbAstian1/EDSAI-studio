@@ -12,6 +12,8 @@ import { Header } from './shell/Header.js';
 import { StatusBar } from './shell/StatusBar.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
+import { AppErrorBoundary } from './components/AppErrorBoundary.js';
+import { ConfirmationDialog } from './components/ConfirmDialog.js';
 import { FailureBanner } from './components/FailureBanner.js';
 import { reportFailure } from './failures.js';
 import Home from './screens/Home.js';
@@ -64,6 +66,7 @@ const LOADERS = {
   settings: () => import('./screens/Settings.js'),
   support: () => import('./screens/Support.js'),
   planned: () => import('./screens/Planned.js'),
+  notFound: () => import('./screens/NotFound.js'),
 } satisfies Partial<Record<Screen, () => Promise<unknown>>>;
 
 const NewRun = lazy(LOADERS.intake);
@@ -90,12 +93,13 @@ const Activity = lazy(LOADERS.activity);
 const Settings = lazy(LOADERS.settings);
 const Support = lazy(LOADERS.support);
 const Planned = lazy(LOADERS.planned);
+const NotFound = lazy(LOADERS.notFound);
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'direction' | 'scorecard' | 'review' | 'finalize'
   | 'runs' | 'brands' | 'brandHubs' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'campaigns'
-  | 'processBuilder' | 'clientPortal';
+  | 'processBuilder' | 'clientPortal' | 'notFound';
 
 export interface Route {
   screen: Screen;
@@ -151,13 +155,14 @@ export function parseRoute(hash: string): Route {
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
   if (section) return { screen: section };
-  return { screen: 'workspace' };
+  return path.length === 0 ? { screen: 'workspace' } : { screen: 'notFound' };
 }
 
 /** Which sidebar entry should read as current for a route. */
 export function activeSection(route: Route): string {
   if (route.screen === 'planned') return route.sectionId ?? '';
   if (route.screen === 'workspace') return 'overview';
+  if (route.screen === 'notFound') return '';
   if (route.screen === 'client') return 'clients';
   if (route.screen === 'processBuilder') return 'process-builder';
   if (route.screen === 'brandHubs') return 'brand-hub';
@@ -282,6 +287,7 @@ const TITLES: Record<Screen, string> = {
   campaigns: 'Campaigns',
   processBuilder: 'Process Builder',
   planned: 'Studio',
+  notFound: 'Page not found',
 };
 
 function Shell(): ReactElement {
@@ -346,6 +352,7 @@ function Shell(): ReactElement {
             {route.screen === 'settings' && <Settings />}
             {route.screen === 'support' && <Support />}
             {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
+            {route.screen === 'notFound' && <NotFound />}
           </Suspense>
         </main>
       </div>
@@ -386,8 +393,11 @@ const client = new QueryClient({
 export default function App(): ReactElement {
   return (
     <QueryClientProvider client={client}>
-      <FailureBanner />
-      <Entry />
+      <AppErrorBoundary>
+        <ConfirmationDialog />
+        <FailureBanner />
+        <Entry />
+      </AppErrorBoundary>
     </QueryClientProvider>
   );
 }

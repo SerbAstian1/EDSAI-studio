@@ -15,6 +15,8 @@ import {
 } from '../src/screens/NewRun.js';
 import { matchProjects, resolveProject, projectToSeed } from '../src/components/ProjectField.js';
 import { layOutLabels } from '../src/components/QuadrantChart.js';
+import { requestConfirmation, resolveConfirmation } from '../src/components/ConfirmDialog.js';
+import { emailShareUrl, portalAccessMessage, whatsAppShareUrl } from '../src/components/PortalShare.js';
 import { dollarsToCents, formatCents } from '../src/screens/Invoices.js';
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
@@ -58,8 +60,43 @@ describe('routing', () => {
     expect(parseRoute('#/run/abc/nonsense')).toEqual({ screen: 'run', runId: 'abc' });
   });
 
-  it('ignores a run path with no id', () => {
-    expect(parseRoute('#/run')).toEqual({ screen: 'workspace' });
+  it('shows a missing-page state for a run path with no id', () => {
+    expect(parseRoute('#/run')).toEqual({ screen: 'notFound' });
+  });
+});
+
+describe('confirmations', () => {
+  it('declines an open confirmation before replacing it', async () => {
+    const first = requestConfirmation({ title: 'First', message: 'First action' });
+    const second = requestConfirmation({ title: 'Second', message: 'Second action' });
+
+    await expect(first).resolves.toBe(false);
+    resolveConfirmation(true);
+    await expect(second).resolves.toBe(true);
+  });
+});
+
+describe('portal invitations', () => {
+  const invite = {
+    label: 'Ada',
+    accessCode: 'amber-birch-comet-drift-ember-012345678901',
+    accessUrl: 'https://studio.example/#/client-portal/amber-birch-comet-drift-ember-012345678901',
+    expiresAt: '2026-12-01T00:00:00.000Z',
+  };
+
+  it('includes the private URL and code in an owner-shared invitation', () => {
+    const message = portalAccessMessage('Morrow Studio', invite);
+    expect(message).toContain(invite.accessUrl);
+    expect(message).toContain(invite.accessCode);
+    expect(message).toContain('used once');
+  });
+
+  it('creates share URLs for email and WhatsApp', () => {
+    expect(emailShareUrl('ada@example.com', 'Portal access', 'Hello Ada'))
+      .toBe('mailto:ada%40example.com?subject=Portal%20access&body=Hello%20Ada');
+    expect(whatsAppShareUrl('+234 801 234 5678', 'Hello Ada'))
+      .toBe('https://wa.me/2348012345678?text=Hello%20Ada');
+    expect(whatsAppShareUrl('12', 'Hello Ada')).toBeUndefined();
   });
 });
 
@@ -199,8 +236,8 @@ describe('routing — sections', () => {
     expect(parseRoute('#/section/clients')).toEqual({ screen: 'planned', sectionId: 'clients' });
   });
 
-  it('falls back to the overview for an unknown section', () => {
-    expect(parseRoute('#/nonsense').screen).toBe('workspace');
+  it('shows a missing-page state for an unknown section', () => {
+    expect(parseRoute('#/nonsense').screen).toBe('notFound');
   });
 
   it('marks the runs entry current for every run sub-screen', () => {

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { api, type Client, type Deliverable } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 import FigmaEmbed, { isFigmaUrl } from '../../components/FigmaEmbed.js';
 
 /**
@@ -25,7 +26,7 @@ const STATUS_LABEL: Record<Deliverable['status'], string> = {
 };
 
 export default function DeliverablesSection({ client }: { client: Client }): ReactElement {
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['deliverables', client.id], queryFn: () => api.deliverables(client.id),
   });
 
@@ -40,7 +41,13 @@ export default function DeliverablesSection({ client }: { client: Client }): Rea
       </div>
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load deliverables. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load deliverables"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && (
         <div className="empty">

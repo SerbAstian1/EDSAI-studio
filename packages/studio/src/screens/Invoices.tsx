@@ -2,6 +2,8 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Pencil, Trash2 } from 'lucide-react';
 import { api, type Invoice } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 
 /**
@@ -37,8 +39,11 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Remove invoice ${invoice.number}?`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Remove invoice ${invoice.number}?`,
+      message: 'This removes the invoice record. It cannot be undone.',
+      confirmLabel: 'Remove invoice',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -101,7 +106,7 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['invoices', clientId], queryFn: () => api.invoices(clientId),
   });
 
@@ -176,7 +181,13 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
       )}
 
       {isPending && <p className="muted">Loading invoices…</p>}
-      {error && <p className="err">Could not load invoices. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load invoices"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.invoices.length === 0 && !adding && (
         <p className="muted">No invoices yet.</p>

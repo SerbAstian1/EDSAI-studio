@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Asset } from '../api.js';
 import AssetMenu from '../components/AssetMenu.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { readableSize } from './Assets.js';
 
 /**
@@ -23,9 +24,14 @@ export default function Templates(): ReactElement {
   if (clients.isPending || assets.isPending) return <p className="muted">Loading templates…</p>;
   if (clients.error || assets.error) {
     return (
-      <p className="err">
-        Could not load templates. {((clients.error ?? assets.error) as Error).message}
-      </p>
+      <ErrorPanel
+        title="Could not load templates"
+        error={clients.error ?? assets.error}
+        onRetry={() => {
+          void clients.refetch();
+          void assets.refetch();
+        }}
+      />
     );
   }
 

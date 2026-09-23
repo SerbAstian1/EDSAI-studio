@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Client, type Invoice } from '../../api.js';
+import { ErrorPanel } from '../../components/ErrorPanel.js';
 import { formatCents } from '../../screens/Invoices.js';
 
 // `Blocker` is the run rubric's severity vocabulary and has no business in a
@@ -14,7 +15,7 @@ const STATUS_LABEL: Record<Invoice['status'], string> = {
 };
 
 export default function InvoicesSection({ client }: { client: Client }): ReactElement {
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['invoices', client.id], queryFn: () => api.invoices(client.id),
   });
 
@@ -31,7 +32,13 @@ export default function InvoicesSection({ client }: { client: Client }): ReactEl
       </div>
 
       {isPending && <p className="muted">Loading…</p>}
-      {error && <p className="err">Could not load invoices. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load invoices"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {totals && totals.count > 0 && (
         <div className="stat-row">

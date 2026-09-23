@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { api, type DepartmentOutput } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import Markdown, { summaryOf } from '../components/Markdown.js';
 
 /**
@@ -84,7 +85,7 @@ function Output({ output, name }: { output: DepartmentOutput; name: string }): R
 }
 
 export default function Direction({ runId }: { runId: string }): ReactElement {
-  const { data, isPending, error } = useQuery({ queryKey: ['run', runId], queryFn: () => api.run(runId) });
+  const { data, isPending, error, refetch } = useQuery({ queryKey: ['run', runId], queryFn: () => api.run(runId) });
   const rubric = useQuery({ queryKey: ['rubric'], queryFn: api.rubric });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
   const discovery = useQuery({
@@ -96,7 +97,9 @@ export default function Direction({ runId }: { runId: string }): ReactElement {
   const [briefOpen, setBriefOpen] = useState(false);
 
   if (isPending) return <p className="muted">Loading run…</p>;
-  if (error) return <p className="err">Could not load this run. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load this run" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const client = (clients.data ?? []).find((c) => c.id === data.run.clientId);
   const nameOf = (id: number): string =>

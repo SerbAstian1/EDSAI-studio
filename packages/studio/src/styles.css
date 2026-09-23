@@ -1901,3 +1901,63 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   margin-left: auto; color: var(--error); border-color: currentColor;
   background: transparent;
 }
+
+/* — confirmation and recovery ——————————————————————————————————— */
+
+.confirmation-backdrop {
+  position: fixed; inset: 0; z-index: 110;
+  display: grid; place-items: center;
+  padding: var(--space-page);
+  background: rgba(18, 19, 22, 0.62);
+  backdrop-filter: blur(4px);
+}
+.confirmation-dialog {
+  width: min(100%, 500px);
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 5);
+  background: var(--surface-elevated); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-3);
+}
+.confirmation-dialog h2, .error-panel h2 { margin: 2px 0 calc(var(--step) * 2); }
+.confirmation-dialog p { margin: 0; }
+.confirmation-icon, .error-panel-icon { color: var(--error); margin-top: 3px; }
+.confirmation-actions, .error-panel-actions { margin-top: calc(var(--step) * 4); }
+.danger-button {
+  color: #fff; background: var(--error); border-color: var(--error);
+}
+.danger-button:hover:not([disabled]), .danger-button:focus-visible {
+  color: #fff; background: #cf5e54; border-color: #cf5e54;
+}
+
+.error-panel {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 5);
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--border));
+  border-left: 3px solid var(--error); border-radius: var(--radius-lg);
+  background: var(--surface-elevated); box-shadow: var(--shadow-1);
+}
+.error-panel p { margin-top: 0; }
+.error-panel-detail { color: var(--error); font-size: var(--text-sm); }
+.error-page { max-width: 680px; margin: min(14vh, 120px) auto; }
+.button-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: calc(var(--step) * 1.5);
+  min-height: var(--control); padding: 0 calc(var(--step) * 3); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); color: var(--text-primary); background: var(--surface);
+  font: inherit; font-weight: 500; text-decoration: none;
+}
+.button-link:hover { border-color: var(--accent); color: var(--text-primary); }
+.portal-share {
+  border-top: 1px solid var(--border);
+  padding-top: calc(var(--step) * 4);
+}
+.portal-access-code {
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  margin: calc(var(--step) * 2) 0 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .confirmation-backdrop { padding: calc(var(--step) * 3); }
+  .confirmation-dialog, .error-panel { padding: calc(var(--step) * 4); }
+}

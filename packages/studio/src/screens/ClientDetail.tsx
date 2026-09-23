@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { api, type ApiError, type Client, type Contact, type Project } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import { RunTable } from '../components/RunTable.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import DocumentShelf from '../components/DocumentShelf.js';
@@ -28,8 +30,8 @@ import type { Run } from '../api.js';
  * work rather than in a library of their own.
  *
  * Editing and deleting follow one rule throughout this page: a delete asks
- * first (`confirm()`, plain and native — no dialog component this app does
- * not otherwise have), and nothing with real work under it can be deleted at
+ * first through the shared confirmation panel, and nothing with real work
+ * under it can be deleted at
  * all. A client with a project, a project with a run — those get edited or
  * archived, never erased in one click.
  */
@@ -78,8 +80,11 @@ function ClientHeader({ client, dependents, onSaved }: {
   useEffect(() => { remove.reset(); }, [dependents]);
 
   const onDelete = (): void => {
-    if (!confirm(`Delete ${client.name}? This can't be undone.`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Delete ${client.name}?`,
+      message: 'This cannot be undone. Remove the client’s contacts and projects first.',
+      confirmLabel: 'Delete client',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (!editing) {
@@ -197,10 +202,11 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
   const [name, setName] = useState(contact.name);
   const [title, setTitle] = useState(contact.title ?? '');
   const [email, setEmail] = useState(contact.email ?? '');
+  const [phone, setPhone] = useState(contact.phone ?? '');
   const [decisionMaker, setDecisionMaker] = useState(contact.decisionMaker);
 
   const save = useMutation({
-    mutationFn: () => api.updateContact(contact.id, { name: name.trim(), title, email, decisionMaker }),
+    mutationFn: () => api.updateContact(contact.id, { name: name.trim(), title, email, phone, decisionMaker }),
     onSuccess: () => { setEditing(false); onChanged(); },
   });
 
@@ -210,8 +216,11 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Remove ${contact.name}?`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Remove ${contact.name}?`,
+      message: 'This removes the contact from the client record. It cannot be undone.',
+      confirmLabel: 'Remove contact',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -220,6 +229,7 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
         <td><input value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" /></td>
         <td><input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" /></td>
         <td><input value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" /></td>
+        <td><input value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="WhatsApp number" /></td>
         <td>
           <label className="row" style={{ gap: 4 }}>
             <input type="checkbox" checked={decisionMaker}
@@ -241,6 +251,7 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
       <td><strong>{contact.name}</strong></td>
       <td className="muted">{contact.title ?? '—'}</td>
       <td className="muted">{contact.email ?? '—'}</td>
+      <td className="muted">{contact.phone ?? '—'}</td>
       <td>{contact.decisionMaker ? <span className="pill pass">yes</span> : ''}</td>
       <td className="actions">
         <OverflowMenu label={`Actions for ${contact.name}`} items={[
@@ -276,8 +287,11 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Delete "${project.name}"?`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Delete ${project.name}?`,
+      message: 'This removes the project. A project with a run cannot be deleted until its work is cleared.',
+      confirmLabel: 'Delete project',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -364,12 +378,14 @@ export default function ClientDetail({ clientId, tab }: {
   clientId: string; tab: string | undefined;
 }): ReactElement {
   const queryClient = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['client', clientId], queryFn: () => api.client(clientId),
   });
 
   const [contactName, setContactName] = useState('');
   const [contactTitle, setContactTitle] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [projectName, setProjectName] = useState('');
 
   const invalidate = (): void => {
@@ -380,9 +396,14 @@ export default function ClientDetail({ clientId, tab }: {
 
   const addContact = useMutation({
     mutationFn: () => api.createContact(clientId, {
-      name: contactName, ...(contactTitle ? { title: contactTitle } : {}),
+      name: contactName,
+      ...(contactTitle.trim() ? { title: contactTitle.trim() } : {}),
+      ...(contactEmail.trim() ? { email: contactEmail.trim() } : {}),
+      ...(contactPhone.trim() ? { phone: contactPhone.trim() } : {}),
     }),
-    onSuccess: () => { setContactName(''); setContactTitle(''); invalidate(); },
+    onSuccess: () => {
+      setContactName(''); setContactTitle(''); setContactEmail(''); setContactPhone(''); invalidate();
+    },
   });
 
   const addProject = useMutation({
@@ -393,11 +414,14 @@ export default function ClientDetail({ clientId, tab }: {
   if (isPending) return <p className="muted">Loading client…</p>;
   if (error) {
     return (
-      <div className="empty">
-        <p className="editorial">That client is not here.</p>
-        <p>{(error as Error).message}</p>
-        <a href="#/clients"><button>Back to clients</button></a>
-      </div>
+      <ErrorPanel
+        title="Could not load this client"
+        description="The client may have been deleted or is no longer available to this session."
+        error={error}
+        onRetry={() => { void refetch(); }}
+        backHref="#/clients"
+        backLabel="Back to clients"
+      />
     );
   }
 
@@ -442,7 +466,7 @@ export default function ClientDetail({ clientId, tab }: {
             project whose approvals stall.</p>
         : (
           <table>
-            <thead><tr><th>Name</th><th>Title</th><th>Email</th><th>Decides</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Title</th><th>Email</th><th>WhatsApp</th><th>Decides</th><th /></tr></thead>
             <tbody>
               {contacts.map((contact) => (
                 <ContactRow key={contact.id} contact={contact} onChanged={invalidate} />
@@ -456,6 +480,10 @@ export default function ClientDetail({ clientId, tab }: {
                placeholder="Name" aria-label="Contact name" style={{ maxWidth: 220 }} />
         <input value={contactTitle} onChange={(e) => setContactTitle(e.target.value)}
                placeholder="Title" aria-label="Contact title" style={{ maxWidth: 220 }} />
+        <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)}
+               placeholder="Email" aria-label="Contact email" style={{ maxWidth: 240 }} />
+        <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
+               placeholder="WhatsApp number" aria-label="Contact WhatsApp number" style={{ maxWidth: 220 }} />
         <button type="submit" disabled={!contactName.trim() || addContact.isPending}>
           Add contact
         </button>
@@ -507,7 +535,7 @@ export default function ClientDetail({ clientId, tab }: {
         <Messages clientId={clientId} />
         <FeedbackPanel clientId={clientId} />
         <Invoices clientId={clientId} />
-        <PortalAccess clientId={clientId} />
+        <PortalAccess clientId={clientId} clientName={client.name} contacts={contacts} />
       </>)}
 
       {current === 'hub' && <BrandHubAdmin clientId={clientId} />}

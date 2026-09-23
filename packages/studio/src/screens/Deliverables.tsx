@@ -2,6 +2,8 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, PenTool, Pencil, Trash2 } from 'lucide-react';
 import { api, type Deliverable } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import FigmaEmbed, { isFigmaUrl } from '../components/FigmaEmbed.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 
@@ -62,8 +64,11 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
   });
 
   const onDelete = (): void => {
-    if (!confirm(`Remove "${d.title}"?`)) return;
-    remove.mutate();
+    void requestConfirmation({
+      title: `Remove ${d.title}?`,
+      message: 'This removes the deliverable from the studio and the client portal. It cannot be undone.',
+      confirmLabel: 'Remove deliverable',
+    }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
   if (editing) {
@@ -149,7 +154,7 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
   const [figmaUrl, setFigmaUrl] = useState('');
   const figmaOk = !figmaUrl.trim() || isFigmaUrl(figmaUrl.trim());
 
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['deliverables', clientId], queryFn: () => api.deliverables(clientId),
   });
 
@@ -211,7 +216,13 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
       )}
 
       {isPending && <p className="muted">Loading deliverables…</p>}
-      {error && <p className="err">Could not load deliverables. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load deliverables"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {data && data.length === 0 && !adding && (
         <p className="muted">Nothing listed yet. A client's portal shows this list as-is.</p>

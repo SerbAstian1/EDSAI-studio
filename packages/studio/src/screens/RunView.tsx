@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState , type ReactElement } from 'react';
 import { api, type ApiError, type DepartmentOutput } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import Markdown from '../components/Markdown.js';
 import { progress } from '../scorecard.js';
 
@@ -14,7 +15,7 @@ import { progress } from '../scorecard.js';
  */
 export default function RunView({ runId }: { runId: string }): ReactElement {
   const queryClient = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['run', runId], queryFn: () => api.run(runId),
   });
   const { data: next } = useQuery({
@@ -36,7 +37,9 @@ export default function RunView({ runId }: { runId: string }): ReactElement {
   });
 
   if (isPending) return <p className="muted">Loading run…</p>;
-  if (error) return <p className="err">Could not load this run. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load this run" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const done = data.outputs.map((o) => o.departmentId);
   const p = progress(data.run.activatedDepartments, done);

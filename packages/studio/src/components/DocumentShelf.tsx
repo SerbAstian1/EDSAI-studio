@@ -5,6 +5,8 @@ import {
   Receipt, Sparkles, Trash2, X, type LucideIcon,
 } from 'lucide-react';
 import { api, type ClientDocument } from '../api.js';
+import { requestConfirmation } from './ConfirmDialog.js';
+import { ErrorPanel } from './ErrorPanel.js';
 import FigmaEmbed, { isFigmaUrl } from './FigmaEmbed.js';
 import OverflowMenu from './OverflowMenu.js';
 
@@ -95,7 +97,7 @@ export default function DocumentShelf({ clientId, editable }: {
   editable: boolean;
 }): ReactElement {
   const queryClient = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ['documents', clientId], queryFn: () => api.documents(clientId),
   });
   const [open, setOpen] = useState<string | undefined>(undefined);
@@ -110,7 +112,9 @@ export default function DocumentShelf({ clientId, editable }: {
   });
 
   if (isPending) return <p className="muted">Loading documents…</p>;
-  if (error) return <p className="err">Could not load documents. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load documents" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const held = data.filter((d) => d.figmaUrl).length;
   const current = data.find((d) => d.slot === open);
@@ -179,7 +183,13 @@ export default function DocumentShelf({ clientId, editable }: {
                   { label: 'Open in Figma', icon: ExternalLink,
                     onSelect: () => { window.open(current.figmaUrl, '_blank', 'noopener'); } },
                   { label: 'Remove from shelf', icon: Trash2, danger: true, disabled: clear.isPending,
-                    onSelect: () => { if (confirm(`Remove the ${current.label} link?`)) clear.mutate(current.slot); } },
+                    onSelect: () => {
+                      void requestConfirmation({
+                        title: `Remove ${current.label}?`,
+                        message: 'This clears the linked document from the shelf. You can add it again later.',
+                        confirmLabel: 'Remove link',
+                      }).then((confirmed) => { if (confirmed) clear.mutate(current.slot); });
+                    } },
                 ]} />
               )}
               <button type="button" className="overflow-button row" aria-label="Close preview"

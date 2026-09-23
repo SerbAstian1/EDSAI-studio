@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Compass, FolderPlus, Play, type LucideIcon } from 'lucide-react';
 import { api, type OnboardingSummary } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu, { type MenuItem } from '../components/OverflowMenu.js';
 import { go } from '../components/actions.js';
 
@@ -27,7 +28,7 @@ const STATUS_LABEL: Record<OnboardingSummary['status'], string> = {
 
 export default function Discovery(): ReactElement {
   const queryClient = useQueryClient();
-  const { data: onboardings, isPending, error } = useQuery({
+  const { data: onboardings, isPending, error, refetch } = useQuery({
     queryKey: ['onboardings'], queryFn: api.allOnboardings,
   });
   const accept = useMutation({
@@ -40,7 +41,9 @@ export default function Discovery(): ReactElement {
   });
 
   if (isPending) return <p className="muted">Loading discovery…</p>;
-  if (error) return <p className="err">Could not load discovery. {(error as Error).message}</p>;
+  if (error) {
+    return <ErrorPanel title="Could not load discovery" error={error} onRetry={() => { void refetch(); }} />;
+  }
 
   const outstanding = onboardings.filter((o) => o.status !== 'accepted').length;
 

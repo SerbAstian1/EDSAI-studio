@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type DepartmentOverride, type RubricSummary } from '../api.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 
 /**
  * Which departments this studio actually delivers.
@@ -108,9 +109,14 @@ export default function ProcessBuilder(): ReactElement {
   if (rubric.isPending || overrides.isPending) return <p className="muted">Loading process…</p>;
   if (rubric.error || overrides.error) {
     return (
-      <p className="err">
-        Could not load the process. {((rubric.error ?? overrides.error) as Error).message}
-      </p>
+      <ErrorPanel
+        title="Could not load the process"
+        error={rubric.error ?? overrides.error}
+        onRetry={() => {
+          void rubric.refetch();
+          void overrides.refetch();
+        }}
+      />
     );
   }
 

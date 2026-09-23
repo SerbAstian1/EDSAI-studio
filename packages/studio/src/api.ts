@@ -433,6 +433,7 @@ export interface PortalKey {
   expiresAt: string;
   lastUsedAt?: string;
   uses: number;
+  singleUse: boolean;
 }
 
 export interface Axis {
@@ -603,7 +604,7 @@ export const api = {
    * hanging off it — archive it instead (`status: 'archived'`). */
   deleteClient: (id: string) => call<{ removed: string }>(`/api/clients/${id}`, { method: 'DELETE' }),
 
-  createContact: (clientId: string, input: { name: string; email?: string; title?: string;
+  createContact: (clientId: string, input: { name: string; email?: string; phone?: string; title?: string;
     decisionMaker?: boolean }) =>
     call<Contact>(`/api/clients/${clientId}/contacts`, {
       method: 'POST', body: JSON.stringify(input),
@@ -677,7 +678,7 @@ export const api = {
   /** The token comes back once and is never retrievable again. */
   issuePortalKey: (clientId: string, input: {
     label: string; role?: string; collections?: string[]; days?: number;
-  }) => call<{ key: PortalKey; link: { token: string; path: string } }>(
+  }) => call<{ key: PortalKey; accessCode: string; link: { token: string; path: string } }>(
     `/api/clients/${clientId}/portal-keys`,
     { method: 'POST', body: JSON.stringify(input) },
   ),

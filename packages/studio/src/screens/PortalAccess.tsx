@@ -1,8 +1,11 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Pencil } from 'lucide-react';
-import { api, type PortalKey } from '../api.js';
+import { api, type Contact, type PortalKey } from '../api.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import PortalShare, { type PortalAccessInvite } from '../components/PortalShare.js';
 
 /**
  * Who can open this client's portal.
@@ -47,6 +50,7 @@ function daysUntil(iso: string, now = Date.now()): number {
 export function describeKey(key: PortalKey, now = Date.now()): string {
   const left = daysUntil(key.expiresAt, now);
   const life = left === 0 ? 'expires today' : `${left} day${left === 1 ? '' : 's'} left`;
+  if (key.singleUse) return key.uses === 0 ? `Unused one-time code · ${life}` : `Opened once · ${life}`;
   if (key.uses === 0) return `Never opened · ${life}`;
   const times = key.uses === 1 ? 'Opened once' : `Opened ${key.uses} times`;
   return `${times} · ${life}`;
@@ -69,8 +73,11 @@ function KeyRow({ clientId, keyRecord, onChanged }: {
   });
 
   const onRevoke = (): void => {
-    if (!confirm(`Revoke the link for ${keyRecord.label}? Whoever holds it loses access immediately.`)) return;
-    revoke.mutate();
+    void requestConfirmation({
+      title: `Revoke ${keyRecord.label}'s link?`,
+      message: 'Anyone holding this link loses access immediately. You can issue a new link later.',
+      confirmLabel: 'Revoke link',
+    }).then((confirmed) => { if (confirmed) revoke.mutate(); });
   };
 
   if (editing) {
@@ -107,15 +114,17 @@ function KeyRow({ clientId, keyRecord, onChanged }: {
   );
 }
 
-export default function PortalAccess({ clientId }: { clientId: string }): ReactElement {
+export default function PortalAccess({ clientId, clientName, contacts }: {
+  clientId: string; clientName: string; contacts: Contact[];
+}): ReactElement {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState('');
   const [role, setRole] = useState('editor');
   const [collections, setCollections] = useState('');
-  const [issued, setIssued] = useState<{ label: string; url: string } | null>(null);
+  const [issued, setIssued] = useState<(PortalAccessInvite & { url: string }) | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const { data: keys, isPending, error } = useQuery({
+  const { data: keys, isPending, error, refetch } = useQuery({
     queryKey: ['portal-keys', clientId], queryFn: () => api.portalKeys(clientId),
   });
 
@@ -132,7 +141,13 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
         : {}),
     }),
     onSuccess: (result) => {
-      setIssued({ label: label.trim(), url: `${location.origin}${result.link.path}` });
+      setIssued({
+        label: label.trim(),
+        accessCode: result.accessCode,
+        accessUrl: `${location.origin}${result.link.path}`,
+        expiresAt: result.key.expiresAt,
+        url: `${location.origin}${result.link.path}`,
+      });
       setCopied(false);
       setLabel(''); setCollections('');
       invalidate();
@@ -153,10 +168,11 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
 
       {issued && (
         <div className="card stack">
-          <span className="label">Link for {issued.label}</span>
+          <span className="label">Access for {issued.label}</span>
           <p className="mono" style={{ fontSize: 13, wordBreak: 'break-all', margin: 0 }}>
             {issued.url}
           </p>
+          <PortalShare clientName={clientName} contacts={contacts} invite={issued} />
           <div className="row">
             <button
               className="primary" type="button"
@@ -181,7 +197,7 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
         onSubmit={(e) => { e.preventDefault(); issue.mutate(); }}
       >
         <label className="field">
-          <span className="label">Who is this link for</span>
+          <span className="label">Who is this access code for</span>
           <input
             value={label} onChange={(e) => setLabel(e.target.value)}
             placeholder="Ada at Morrow" required
@@ -226,13 +242,19 @@ export default function PortalAccess({ clientId }: { clientId: string }): ReactE
             className="primary" type="submit"
             disabled={!label.trim() || needsCollections || issue.isPending}
           >
-            {issue.isPending ? 'Creating…' : 'Create link'}
+            {issue.isPending ? 'Creating…' : 'Create access code'}
           </button>
         </div>
       </form>
 
       {isPending && <p className="muted">Loading links…</p>}
-      {error && <p className="err">Could not load links. {(error as Error).message}</p>}
+      {error && (
+        <ErrorPanel
+          title="Could not load links"
+          error={error}
+          onRetry={() => { void refetch(); }}
+        />
+      )}
 
       {keys && keys.length > 0 && (
         <table className="stacky">
