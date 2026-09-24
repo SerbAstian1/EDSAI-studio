@@ -173,6 +173,13 @@ export class ScopedStore {
     return run;
   }
 
+  deleteRun(id: string): void {
+    const run = this.store.getRun(id);
+    if (!run) return;
+    this.mustWrite('run', run.clientId);
+    this.store.deleteRun(id);
+  }
+
   /* ----------------------------------------------------------------- assets */
 
   /**

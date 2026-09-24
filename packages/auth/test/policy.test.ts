@@ -65,6 +65,12 @@ describe('what a portal may never do', () => {
     expect(can(portal('acme', 'owner'), 'write', res('acme', 'client')).allowed).toBe(false);
     expect(can(portal('acme', 'viewer'), 'read', res('acme', 'client')).allowed).toBe(true);
   });
+
+  it('never modifies pipeline runs, even as a client owner', () => {
+    const decision = can(portal('acme', 'owner'), 'write', res('acme', 'run'));
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('studio');
+  });
 });
 
 describe('the limited role', () => {

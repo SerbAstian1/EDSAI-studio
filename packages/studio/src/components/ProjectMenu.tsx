@@ -49,7 +49,7 @@ export default function ProjectMenu({ project, size }: {
           onSelect: () => {
             void requestConfirmation({
               title: `Delete ${project.name}?`,
-              message: 'This removes the project. Projects with runs cannot be deleted until their work is cleared.',
+              message: 'This removes the project. Delete its runs first if the studio still has any.',
               confirmLabel: 'Delete project',
             }).then((confirmed) => {
               if (!confirmed) return;

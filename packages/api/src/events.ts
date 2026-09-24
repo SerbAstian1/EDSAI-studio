@@ -89,6 +89,15 @@ export class RunEvents {
     return [...this.subscribers].filter((s) => s.runId === runId).length;
   }
 
+  forget(runId: string): void {
+    this.history.delete(runId);
+    for (const subscriber of [...this.subscribers]) {
+      if (subscriber.runId !== runId) continue;
+      subscriber.res.end();
+      this.subscribers.delete(subscriber);
+    }
+  }
+
   closeAll(): void {
     for (const subscriber of this.subscribers) subscriber.res.end();
     this.subscribers.clear();

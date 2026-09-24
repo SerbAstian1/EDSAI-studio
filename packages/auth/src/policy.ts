@@ -26,7 +26,7 @@ export type ResourceKind = typeof RESOURCES[number];
 
 /** Studio-only writes: a client portal reads its own status, never sets it. */
 const STUDIO_MANAGED: readonly ResourceKind[] = [
-  'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project', 'brand-hub',
+  'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project', 'run', 'brand-hub',
 ];
 
 export interface Resource {

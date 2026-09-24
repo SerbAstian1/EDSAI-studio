@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Compass, ExternalLink, RotateCcw } from 'lucide-react';
+import { BarChart3, Compass, ExternalLink, RotateCcw, Trash2 } from 'lucide-react';
 import { api, type Run } from '../api.js';
+import { requestConfirmation } from './ConfirmDialog.js';
 import OverflowMenu from './OverflowMenu.js';
 import { go } from './actions.js';
 
@@ -16,8 +17,8 @@ import { go } from './actions.js';
  * database uses. Every caller already has the projects in cache, so this
  * costs a cache read, not a request.
  *
- * A run is history and has no delete: the menu opens it, its direction and
- * its scorecard, and restarts one that stopped.
+ * Deleting a run is available here regardless of how far it progressed. The
+ * server refuses only a pipeline that is executing at that moment.
  */
 export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
   const queryClient = useQueryClient();
@@ -28,6 +29,15 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
     onSuccess: (_, id) => {
       void queryClient.invalidateQueries({ queryKey: ['runs'] });
       go(`#/run/${id}`);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteRun(id),
+    onSuccess: (_, id) => {
+      queryClient.removeQueries({ queryKey: ['run', id], exact: true });
+      queryClient.removeQueries({ queryKey: ['next', id], exact: true });
+      void queryClient.invalidateQueries({ queryKey: ['runs'] });
+      void queryClient.invalidateQueries({ queryKey: ['client'] });
     },
   });
 
@@ -71,6 +81,18 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
                     icon: RotateCcw, disabled: execute.isPending,
                     onSelect: () => execute.mutate(run.id),
                   }] : []),
+                  {
+                    label: 'Delete run', icon: Trash2, danger: true, disabled: remove.isPending,
+                    onSelect: () => {
+                      void requestConfirmation({
+                        title: `Delete run ${run.id}?`,
+                        message: 'This permanently removes its outputs, scores, issues, conflicts, '
+                          + 'rescores, and run-generated positioning points. Brand values already '
+                          + 'copied into the Brand workspace remain. It cannot be undone.',
+                        confirmLabel: 'Delete run',
+                      }).then((confirmed) => { if (confirmed) remove.mutate(run.id); });
+                    },
+                  },
                 ]} />
               </td>
             </tr>

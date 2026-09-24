@@ -747,6 +747,8 @@ export const api = {
   rubric: () => call<RubricSummary>('/api/rubric'),
   runs: () => call<{ runs: Run[] }>('/api/runs').then((r) => r.runs),
   run: (id: string) => call<RunDetail>(`/api/runs/${id}`),
+  deleteRun: (id: string) =>
+    call<{ removed: string }>(`/api/runs/${id}`, { method: 'DELETE' }),
   next: (id: string) => call<NextTurn>(`/api/runs/${id}/next`),
 
   startRun: (input: { projectId: string; brief: string; level: number; tracks?: string[] }) =>

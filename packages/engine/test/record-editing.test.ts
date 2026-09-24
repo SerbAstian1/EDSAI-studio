@@ -181,6 +181,62 @@ describe('projects', () => {
   });
 });
 
+describe('runs', () => {
+  it('deletes a completed run and every record owned by it', () => {
+    const store = fixture();
+    store.saveProject(project('p1', 'acme'));
+    store.saveRun({ ...run('r1', 'acme', 'p1'), status: 'complete', completedAt: NOW });
+    store.saveOutput({
+      runId: 'r1', departmentId: 1, body: 'Finished.', scores: [], targets: [], tokens: [],
+      compositions: [], decisions: [], instrumentCalls: [], completedAt: NOW,
+    });
+    store.saveIssue('r1', {
+      id: 'i1', severity: 'Major', description: 'Issue.', tracedTo: [1], fix: 'Fix it.', status: 'open',
+    });
+    store.saveConflict('r1', {
+      id: 'c1', departments: [1, 2], description: 'Conflict.',
+    });
+    store.saveRescore({
+      runId: 'r1', departmentId: 1, dimension: 'Craft',
+      fromValue: 4, fromJustification: 'Before.', toValue: 7, toJustification: 'After.',
+      directedBy: 'Owner', reason: 'Reviewed.', appliedAt: NOW,
+    });
+    store.saveViolations('r1', 1, [{
+      kind: 'fabricated-actual', metric: 'contrast', claimed: '7:1', detail: 'Not measured.',
+    }]);
+    store.saveComparator({
+      id: 'cmp-r1', clientId: 'acme', name: 'Peer', positions: { E2: 25, E3: 75 },
+      origin: 'run', runId: 'r1', departmentId: 1, createdAt: NOW,
+    });
+    store.saveBrandValue({
+      clientId: 'acme', name: 'ink', kind: 'color', value: '#111111',
+      origin: 'run', sourceRunId: 'r1', updatedAt: NOW,
+    });
+
+    new ScopedStore(store, studio).deleteRun('r1');
+
+    expect(store.getRun('r1')).toBeUndefined();
+    expect(store.getOutputs('r1')).toEqual([]);
+    expect(store.getIssues('r1')).toEqual([]);
+    expect(store.getConflicts('r1')).toEqual([]);
+    expect(store.getRescores('r1')).toEqual([]);
+    expect(store.getViolations('r1')).toEqual([]);
+    expect(store.listComparators('acme')).toEqual([]);
+    expect(store.listBrandValues('acme')).toMatchObject([{ name: 'ink', origin: 'run' }]);
+    expect(store.listBrandValues('acme')[0]?.sourceRunId).toBeUndefined();
+    expect(store.getProject('p1')).toBeDefined();
+  });
+
+  it('keeps run deletion inside the studio', () => {
+    const store = fixture();
+    store.saveProject(project('p1', 'acme'));
+    store.saveRun(run('r1', 'acme', 'p1'));
+
+    expect(() => new ScopedStore(store, portalEditor).deleteRun('r1')).toThrow(/studio/);
+    expect(store.getRun('r1')).toBeDefined();
+  });
+});
+
 describe('portal key relabelling', () => {
   it('changes only the label — role and collections are untouched', () => {
     const store = fixture();

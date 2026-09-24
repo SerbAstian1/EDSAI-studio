@@ -3285,6 +3285,23 @@ body { max-width: 640px; margin: 48px auto; }
       },
 
       {
+        method: 'DELETE', pattern: /^\/api\/runs\/(?<id>[\w-]+)$/,
+        run: ({ res, run, scoped }) => {
+          if (!run || !scoped) return;
+          if (this.running.has(run.id)) {
+            send(res, 409, {
+              error: 'run_executing',
+              message: 'This run is executing now. Wait for it to stop before deleting it.',
+            });
+            return;
+          }
+          scoped.deleteRun(run.id);
+          this.events.forget(run.id);
+          send(res, 200, { removed: run.id });
+        },
+      },
+
+      {
         method: 'GET', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/next$/,
         run: ({ res, params }) => {
           const turn = this.context.prepare(params['id'] ?? '');

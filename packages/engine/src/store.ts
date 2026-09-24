@@ -1422,6 +1422,22 @@ export class RunStore {
     return rows.map((r) => this.getRun(r.id)).filter((r): r is RunType => Boolean(r));
   }
 
+  deleteRun(id: string): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const table of ['outputs', 'issues', 'conflicts', 'rescores', 'violations']) {
+        this.db.prepare(`DELETE FROM ${table} WHERE run_id = ?`).run(id);
+      }
+      this.db.prepare('DELETE FROM comparators WHERE run_id = ?').run(id);
+      this.db.prepare('UPDATE brand_values SET source_run_id = NULL WHERE source_run_id = ?').run(id);
+      this.db.prepare('DELETE FROM runs WHERE id = ?').run(id);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /* ----------------------------------------------------------------- outputs */
 
   saveOutput(output: OutputType): void {

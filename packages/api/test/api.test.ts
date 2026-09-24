@@ -120,6 +120,45 @@ describe('runs', () => {
     expect(run.activatedDepartments).not.toContain(6);
   });
 
+  it('deletes a run after every department has executed', async () => {
+    const run = await startRun();
+    const completedAt = new Date().toISOString();
+    for (const departmentId of run.activatedDepartments) {
+      store.saveOutput({
+        runId: run.id, departmentId, body: 'Finished.', scores: [], targets: [], tokens: [],
+        compositions: [], decisions: [], instrumentCalls: [], completedAt,
+      });
+    }
+    const saved = store.getRun(run.id);
+    if (!saved) throw new Error('test run was not stored');
+    store.saveRun({ ...saved, status: 'complete', completedAt });
+    server.events.emit(run.id, 'pipeline.finished', { completed: run.activatedDepartments });
+
+    const removed = await json(`/api/runs/${run.id}`, { method: 'DELETE' });
+
+    expect(removed.status).toBe(200);
+    expect(removed.body['removed']).toBe(run.id);
+    expect(store.getRun(run.id)).toBeUndefined();
+    expect(store.getOutputs(run.id)).toEqual([]);
+    expect(server.events.eventsFor(run.id)).toEqual([]);
+    expect((await json(`/api/runs/${run.id}`)).status).toBe(404);
+    const listed = await json('/api/runs');
+    expect((listed.body['runs'] as unknown as { id: string }[]).some((item) => item.id === run.id))
+      .toBe(false);
+  });
+
+  it('refuses to delete a run while its pipeline is executing', async () => {
+    const run = await startRun();
+    server['running'].add(run.id);
+
+    const refused = await json(`/api/runs/${run.id}`, { method: 'DELETE' });
+
+    expect(refused.status).toBe(409);
+    expect(refused.body['message']).toMatch(/executing now/);
+    expect(store.getRun(run.id)).toBeDefined();
+    server['running'].delete(run.id);
+  });
+
   it('refuses a run with no brief', async () => {
     const { status, body } = await json('/api/runs', {
       method: 'POST', body: JSON.stringify({ level: 1 }),
