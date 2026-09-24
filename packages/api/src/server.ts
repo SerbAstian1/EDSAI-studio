@@ -3167,8 +3167,7 @@ body { max-width: 640px; margin: 48px auto; }
         },
       },
 
-      /** Only when nothing was ever run against it — a run is the project's
-       * own history, not something one click should be able to erase. */
+      /** Delete the project and every inactive run underneath it. */
       {
         method: 'DELETE', pattern: /^\/api\/projects\/(?<id>[\w-]+)$/,
         run: ({ res, params, scoped }) => {
@@ -3181,16 +3180,18 @@ body { max-width: 640px; margin: 48px auto; }
             });
             return;
           }
-          if (scoped.listRuns().some((run) => run.projectId === id)) {
+          const projectRuns = scoped.listRuns().filter((run) => run.projectId === id);
+          const activeRun = projectRuns.find((run) => this.running.has(run.id));
+          if (activeRun) {
             send(res, 409, {
-              error: 'not_empty',
-              message: 'This project has a run against it, so it stays as history. '
-                + 'Rename or rephase it instead.',
+              error: 'run_active',
+              message: `Run ${activeRun.id} is executing now. Wait for it to stop before deleting the project.`,
             });
             return;
           }
           scoped.deleteProject(id);
-          send(res, 200, { removed: id });
+          for (const run of projectRuns) this.events.forget(run.id);
+          send(res, 200, { removed: id, removedRuns: projectRuns.map((run) => run.id) });
         },
       },
 

@@ -646,7 +646,20 @@ export class RunStore {
   }
 
   deleteProject(id: string): void {
-    this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const runs = this.db.prepare('SELECT id FROM runs WHERE project_id = ?').all(id) as
+        { id: string }[];
+      for (const run of runs) this.deleteRunRecords(run.id);
+      for (const table of ['deliverables', 'milestones', 'invoices', 'feedback', 'onboardings']) {
+        this.db.prepare(`UPDATE ${table} SET project_id = NULL WHERE project_id = ?`).run(id);
+      }
+      this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   /* ---------------------------------------------------------------- projects */
@@ -1425,17 +1438,21 @@ export class RunStore {
   deleteRun(id: string): void {
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      for (const table of ['outputs', 'issues', 'conflicts', 'rescores', 'violations']) {
-        this.db.prepare(`DELETE FROM ${table} WHERE run_id = ?`).run(id);
-      }
-      this.db.prepare('DELETE FROM comparators WHERE run_id = ?').run(id);
-      this.db.prepare('UPDATE brand_values SET source_run_id = NULL WHERE source_run_id = ?').run(id);
-      this.db.prepare('DELETE FROM runs WHERE id = ?').run(id);
+      this.deleteRunRecords(id);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  private deleteRunRecords(id: string): void {
+    for (const table of ['outputs', 'issues', 'conflicts', 'rescores', 'violations']) {
+      this.db.prepare(`DELETE FROM ${table} WHERE run_id = ?`).run(id);
+    }
+    this.db.prepare('DELETE FROM comparators WHERE run_id = ?').run(id);
+    this.db.prepare('UPDATE brand_values SET source_run_id = NULL WHERE source_run_id = ?').run(id);
+    this.db.prepare('DELETE FROM runs WHERE id = ?').run(id);
   }
 
   /* ----------------------------------------------------------------- outputs */

@@ -159,6 +159,36 @@ describe('runs', () => {
     server['running'].delete(run.id);
   });
 
+  it('deletes a project together with its completed run history', async () => {
+    const run = await startRun();
+    const saved = store.getRun(run.id);
+    if (!saved) throw new Error('test run was not stored');
+    store.saveRun({ ...saved, status: 'complete', completedAt: new Date().toISOString() });
+    server.events.emit(run.id, 'pipeline.finished', { completed: [] });
+
+    const removed = await json('/api/projects/p-test', { method: 'DELETE' });
+
+    expect(removed.status).toBe(200);
+    expect(removed.body['removed']).toBe('p-test');
+    expect(removed.body['removedRuns']).toEqual([run.id]);
+    expect(store.getProject('p-test')).toBeUndefined();
+    expect(store.getRun(run.id)).toBeUndefined();
+    expect(server.events.eventsFor(run.id)).toEqual([]);
+  });
+
+  it('waits for an actively executing run before deleting its project', async () => {
+    const run = await startRun();
+    server['running'].add(run.id);
+
+    const refused = await json('/api/projects/p-test', { method: 'DELETE' });
+
+    expect(refused.status).toBe(409);
+    expect(refused.body['message']).toMatch(/executing now/);
+    expect(store.getProject('p-test')).toBeDefined();
+    expect(store.getRun(run.id)).toBeDefined();
+    server['running'].delete(run.id);
+  });
+
   it('refuses a run with no brief', async () => {
     const { status, body } = await json('/api/runs', {
       method: 'POST', body: JSON.stringify({ level: 1 }),

@@ -148,8 +148,7 @@ export class ScopedStore {
     this.store.saveProject(project);
   }
 
-  /** Only when no run has ever been started against it — a run is the
-   * project's own history, and this is not where that gets erased. */
+  /** Removing a project also removes its runs and their generated records. */
   deleteProject(id: string): void {
     const existing = this.store.getProject(id);
     if (!existing) return;

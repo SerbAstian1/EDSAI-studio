@@ -663,8 +663,9 @@ export const api = {
   updateProject: (id: string, input: { name?: string; kind?: string; phase?: string;
     deadline?: string; notes?: string; figmaUrl?: string }) =>
     call<Project>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
-  /** Refused with a 409 when a run has ever been started against it. */
-  deleteProject: (id: string) => call<{ removed: string }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  /** Removes the project and all of its inactive runs. */
+  deleteProject: (id: string) => call<{ removed: string; removedRuns: string[] }>(
+    `/api/projects/${id}`, { method: 'DELETE' }),
 
   portalKeys: (clientId: string) =>
     call<{ keys: PortalKey[] }>(`/api/clients/${clientId}/portal-keys`).then((r) => r.keys),

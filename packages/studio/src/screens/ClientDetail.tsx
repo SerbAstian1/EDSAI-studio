@@ -30,10 +30,8 @@ import type { Run } from '../api.js';
  * work rather than in a library of their own.
  *
  * Editing and deleting follow one rule throughout this page: a delete asks
- * first through the shared confirmation panel, and nothing with real work
- * under it can be deleted at
- * all. A client with a project, a project with a run — those get edited or
- * archived, never erased in one click.
+ * first through the shared confirmation panel. Clients with dependent work
+ * stay protected; deleting a project explicitly includes every run under it.
  */
 
 const CLIENT_STATUSES: Client['status'][] = ['prospect', 'active', 'dormant', 'archived'];
@@ -267,6 +265,7 @@ const PROJECT_KINDS = ['brand-identity', 'rebrand', 'campaign', 'website', 'coll
 const PROJECT_PHASES = ['discovery', 'strategy', 'identity', 'applications', 'guidelines', 'handoff', 'complete'];
 
 function ProjectRow({ project, onChanged }: { project: Project; onChanged: () => void }): ReactElement {
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
   const [kind, setKind] = useState(project.kind);
@@ -283,13 +282,22 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
 
   const remove = useMutation({
     mutationFn: () => api.deleteProject(project.id),
-    onSuccess: onChanged,
+    onSuccess: ({ removedRuns }) => {
+      for (const runId of removedRuns) {
+        queryClient.removeQueries({ queryKey: ['run', runId], exact: true });
+        queryClient.removeQueries({ queryKey: ['next', runId], exact: true });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['runs'] });
+      onChanged();
+    },
   });
 
   const onDelete = (): void => {
     void requestConfirmation({
       title: `Delete ${project.name}?`,
-      message: 'This removes the project. A project with a run cannot be deleted until its work is cleared.',
+      message: 'This permanently removes the project and every run under it, including their '
+        + 'outputs, scores, issues, conflicts, rescores, and generated positioning points. '
+        + 'It cannot be undone.',
       confirmLabel: 'Delete project',
     }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };

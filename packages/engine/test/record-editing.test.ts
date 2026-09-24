@@ -169,15 +169,24 @@ describe('projects', () => {
     expect(store.getProject('p1')).toBeUndefined();
   });
 
-  it('the run guard, like the client one, lives at the API layer', () => {
+  it('deletes every run under the project without touching another project', () => {
     const store = fixture();
     store.saveProject(project('p1', 'acme'));
-    store.saveRun(run('r1', 'acme', 'p1'));
-    // ScopedStore itself does not consult listRuns — server.ts does, before
-    // ever calling this. Documented here so the boundary is not assumed.
+    store.saveProject(project('p2', 'acme'));
+    store.saveRun({ ...run('r1', 'acme', 'p1'), status: 'complete', completedAt: NOW });
+    store.saveRun(run('r2', 'acme', 'p2'));
+    store.saveOutput({
+      runId: 'r1', departmentId: 1, body: 'Finished.', scores: [], targets: [], tokens: [],
+      compositions: [], decisions: [], instrumentCalls: [], completedAt: NOW,
+    });
+
     new ScopedStore(store, studio).deleteProject('p1');
+
     expect(store.getProject('p1')).toBeUndefined();
-    expect(store.getRun('r1')).toBeDefined();
+    expect(store.getRun('r1')).toBeUndefined();
+    expect(store.getOutputs('r1')).toEqual([]);
+    expect(store.getProject('p2')).toBeDefined();
+    expect(store.getRun('r2')).toBeDefined();
   });
 });
 

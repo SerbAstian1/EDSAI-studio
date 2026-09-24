@@ -27,9 +27,15 @@ export default function ProjectMenu({ project, size }: {
   const [refused, setRefused] = useState<string | undefined>(undefined);
   const remove = useMutation({
     mutationFn: () => api.deleteProject(project.id),
-    onSuccess: () => {
+    onSuccess: ({ removedRuns }) => {
+      for (const runId of removedRuns) {
+        queryClient.removeQueries({ queryKey: ['run', runId], exact: true });
+        queryClient.removeQueries({ queryKey: ['next', runId], exact: true });
+      }
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
       void queryClient.invalidateQueries({ queryKey: ['clients'] });
+      void queryClient.invalidateQueries({ queryKey: ['client'] });
+      void queryClient.invalidateQueries({ queryKey: ['runs'] });
     },
     onError: (e) => setRefused((e as ApiError).message),
   });
@@ -45,11 +51,13 @@ export default function ProjectMenu({ project, size }: {
         ...(project.figmaUrl
           ? [{ label: 'Open in Figma', icon: ExternalLink, onSelect: () => openExternal(project.figmaUrl ?? '') }]
           : []),
-        { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending,
+        { label: 'Delete project', icon: Trash2, danger: true, disabled: remove.isPending,
           onSelect: () => {
             void requestConfirmation({
               title: `Delete ${project.name}?`,
-              message: 'This removes the project. Delete its runs first if the studio still has any.',
+              message: 'This permanently removes the project and every run under it, including '
+                + 'their outputs, scores, issues, conflicts, rescores, and generated positioning '
+                + 'points. It cannot be undone.',
               confirmLabel: 'Delete project',
             }).then((confirmed) => {
               if (!confirmed) return;
