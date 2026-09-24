@@ -3,7 +3,7 @@ import { buildRubric } from '@edsai/rubric';
 import { RunContext, RunStore, ensureLocalProject } from '@edsai/engine';
 import {
   Executor, RehearsalClient, REHEARSAL_MODEL, TurnRefused, NO_USAGE, type ModelClient,
-  type ModelResponse, type Usage,
+  type ModelRequest, type ModelResponse, type Usage,
 } from '@edsai/executor';
 import { runPipeline } from '../src/pipeline.js';
 import { RunEvents } from '../src/events.js';
@@ -82,6 +82,7 @@ describe('running a whole run', () => {
 
     expect(result.completed).toEqual(run.activatedDepartments);
     expect(result.halted).toBeUndefined();
+    expect(store.getRun(run.id)?.status).toBe('pending');
     store.close();
   });
 
@@ -204,7 +205,7 @@ describe('running a whole run', () => {
     store.close();
   });
 
-  it('stops between departments when asked to, without interrupting a call', async () => {
+  it('cancels between departments when asked to', async () => {
     const { context, run, store } = fixture();
     let started = 0;
     const result = await runPipeline({
@@ -217,6 +218,76 @@ describe('running a whole run', () => {
 
     expect(result.completed.length).toBeLessThan(run.activatedDepartments.length);
     expect(result.halted).toBeUndefined();
+    expect(store.getRun(run.id)?.status).toBe('cancelled');
+    store.close();
+  });
+
+  it('waits while paused, then continues without repeating work', async () => {
+    const { context, run, store } = fixture();
+    const events = new RunEvents();
+    let pauseRequested = true;
+    let wake: (() => void) | undefined;
+    let reportPaused: (() => void) | undefined;
+    const paused = new Promise<void>((resolve) => { reportPaused = resolve; });
+    const original = events.emit.bind(events);
+    events.emit = (runId, type, data) => {
+      if (type === 'pipeline.paused') reportPaused?.();
+      return original(runId, type, data);
+    };
+
+    const running = runPipeline({
+      context,
+      executor: new Executor({ client: alwaysSubmits() }),
+      events,
+      runId: run.id,
+      isPaused: () => pauseRequested,
+      waitWhilePaused: () => new Promise((resolve) => { wake = resolve; }),
+    });
+
+    await paused;
+    expect(store.getRun(run.id)?.status).toBe('paused');
+    pauseRequested = false;
+    wake?.();
+    const result = await running;
+
+    expect(result.completed).toEqual(run.activatedDepartments);
+    expect(store.getRun(run.id)?.status).toBe('pending');
+    expect(events.eventsFor(run.id).some((event) => event.type === 'pipeline.resumed')).toBe(true);
+    store.close();
+  });
+
+  it('aborts an in-flight model request when stopped', async () => {
+    const { context, run, store } = fixture();
+    const abortController = new AbortController();
+    let cancelRequested = false;
+    let reportStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { reportStarted = resolve; });
+    const client: ModelClient = {
+      complete: (request: ModelRequest) => new Promise<ModelResponse>((_resolve, reject) => {
+        reportStarted?.();
+        const stop = (): void => reject(Object.assign(new Error('stopped'), { name: 'AbortError' }));
+        if (request.signal?.aborted) stop();
+        else request.signal?.addEventListener('abort', stop, { once: true });
+      }),
+    };
+
+    const running = runPipeline({
+      context,
+      executor: new Executor({ client }),
+      events: new RunEvents(),
+      runId: run.id,
+      isCancelled: () => cancelRequested,
+      signal: abortController.signal,
+    });
+
+    await started;
+    cancelRequested = true;
+    abortController.abort();
+    const result = await running;
+
+    expect(result.halted).toBeUndefined();
+    expect(store.getRun(run.id)?.status).toBe('cancelled');
+    expect(store.getOutputs(run.id)).toEqual([]);
     store.close();
   });
 

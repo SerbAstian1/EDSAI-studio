@@ -44,14 +44,18 @@ const apiResponse = (over: Record<string, unknown> = {}): Response => ({
 function fakeResponses(responses: Response[]): {
   responses: OpenAIResponseCreator;
   sent: ResponseCreateParamsNonStreaming[];
+  options: Array<{ signal?: AbortSignal } | undefined>;
 } {
   const sent: ResponseCreateParamsNonStreaming[] = [];
+  const options: Array<{ signal?: AbortSignal } | undefined> = [];
   let index = 0;
   return {
     sent,
+    options,
     responses: {
-      create: async (params) => {
+      create: async (params, requestOptions) => {
         sent.push(params);
+        options.push(requestOptions);
         const response = responses[index];
         index += 1;
         if (!response) throw new Error('No fake OpenAI response remains.');
@@ -62,6 +66,15 @@ function fakeResponses(responses: Response[]): {
 }
 
 describe('OpenAI Responses adapter', () => {
+  it('passes cancellation through to the provider request', async () => {
+    const { responses, options } = fakeResponses([apiResponse()]);
+    const abortController = new AbortController();
+
+    await new OpenAIModelClient({ responses }).complete(request({ signal: abortController.signal }));
+
+    expect(options[0]?.signal).toBe(abortController.signal);
+  });
+
   it('maps the provider-neutral request to a private Responses API call', async () => {
     const { responses, sent } = fakeResponses([apiResponse()]);
     await new OpenAIModelClient({ responses }).complete(request());

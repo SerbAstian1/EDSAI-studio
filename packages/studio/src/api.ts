@@ -68,6 +68,8 @@ export interface Run {
   activatedDepartments: number[];
   version: string;
   status: string;
+  /** Live server state. Persisted `status` remains useful after a restart. */
+  executionState?: 'idle' | 'running' | 'paused' | 'stopping';
   startedAt: string;
   determination?: string;
   completed?: number;
@@ -763,6 +765,12 @@ export const api = {
    */
   executeRun: (id: string) =>
     call<{ started: boolean }>(`/api/runs/${id}/execute`, { method: 'POST' }),
+  pauseRun: (id: string) =>
+    call<{ paused: boolean; message: string }>(`/api/runs/${id}/pause`, { method: 'POST' }),
+  continueRun: (id: string) =>
+    call<{ continued: boolean }>(`/api/runs/${id}/continue`, { method: 'POST' }),
+  cancelRun: (id: string) =>
+    call<{ stopped: boolean; message: string }>(`/api/runs/${id}/cancel`, { method: 'POST' }),
 
   saveIssue: (id: string, issue: Issue) =>
     call<{ issues: Issue[] }>(`/api/runs/${id}/issues`, {

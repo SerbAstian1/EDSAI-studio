@@ -1,5 +1,6 @@
-import { useState, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, Menu } from 'lucide-react';
 import { api, type Client } from '../api.js';
 import BrandHubSection from './sections/BrandHub.js';
 import DocumentsSection from './sections/Documents.js';
@@ -40,6 +41,8 @@ const BRAND_HUB: Section = {
 
 export function PortalShell({ client, role }: { client: Client; role: string }): ReactElement {
   const [active, setActive] = useState(SECTIONS[0]?.id ?? 'deliverables');
+  const [navOpen, setNavOpen] = useState(false);
+  const menuId = useId();
   // Asked once, here: the server says `enabled: false` unless the hub is
   // active, so a client without one never sees the room at all.
   const hub = useQuery({ queryKey: ['brand-hub', client.id], queryFn: () => api.brandHub(client.id) });
@@ -54,31 +57,46 @@ export function PortalShell({ client, role }: { client: Client; role: string }):
   return (
     <div className="portal">
       <aside className="portal-sidebar">
-        <div>
-          <p className="wordmark" style={{ marginBottom: 4 }}>Client Portal</p>
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-            Your project. Our process.<br />Always in sync.
-          </p>
+        <div className="portal-sidebar-head">
+          <div>
+            <p className="wordmark" style={{ marginBottom: 4 }}>Client Portal</p>
+            <p className="muted portal-tagline" style={{ fontSize: 13, margin: 0 }}>
+              Your project. Our process.<br />Always in sync.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="portal-nav-toggle"
+            aria-expanded={navOpen}
+            aria-controls={menuId}
+            onClick={() => setNavOpen((value) => !value)}
+          >
+            <Menu size={16} aria-hidden="true" />
+            {section?.label ?? 'Menu'}
+            <ChevronDown className={navOpen ? 'open' : undefined} size={15} aria-hidden="true" />
+          </button>
         </div>
 
-        <nav className="portal-nav" aria-label="Portal sections">
-          {sections.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className="portal-nav-item"
-              aria-current={s.id === active ? 'page' : undefined}
-              onClick={() => setActive(s.id)}
-            >
-              <span className="portal-nav-index">{String(i + 1).padStart(2, '0')}</span>
-              {s.label}
-            </button>
-          ))}
-        </nav>
+        <div id={menuId} className={`portal-sidebar-menu${navOpen ? ' open' : ''}`}>
+          <nav className="portal-nav" aria-label="Portal sections">
+            {sections.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className="portal-nav-item"
+                aria-current={s.id === active ? 'page' : undefined}
+                onClick={() => { setActive(s.id); setNavOpen(false); }}
+              >
+                <span className="portal-nav-index">{String(i + 1).padStart(2, '0')}</span>
+                {s.label}
+              </button>
+            ))}
+          </nav>
 
-        <div className="portal-help">
-          <strong>Need help?</strong>
-          <p className="muted" style={{ margin: '4px 0 0' }}>Contact your project manager anytime.</p>
+          <div className="portal-help">
+            <strong>Need help?</strong>
+            <p className="muted" style={{ margin: '4px 0 0' }}>Contact your project manager anytime.</p>
+          </div>
         </div>
       </aside>
 

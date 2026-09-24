@@ -159,7 +159,9 @@ export type DepartmentOutput = z.infer<typeof DepartmentOutput>;
 export const RunVersion = z.enum(['V1', 'V2', 'V3', 'FINAL']);
 export type RunVersion = z.infer<typeof RunVersion>;
 
-export const RunStatus = z.enum(['pending', 'running', 'blocked', 'complete', 'failed']);
+export const RunStatus = z.enum([
+  'pending', 'running', 'paused', 'cancelled', 'blocked', 'complete', 'failed',
+]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
 export const Run = z.object({

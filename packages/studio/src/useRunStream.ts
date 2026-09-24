@@ -30,6 +30,8 @@ export function useRunStream(runId: string | undefined): void {
       // ever trigger a refetch — without this, a run that stops moving looks
       // identical, live, to one still quietly in progress.
       'pipeline.started', 'pipeline.halted', 'pipeline.finished', 'pipeline.cancelled',
+      'pipeline.pause-requested', 'pipeline.paused',
+      'pipeline.continue-requested', 'pipeline.resumed', 'pipeline.stop-requested',
     ]) {
       source.addEventListener(type, refresh);
     }

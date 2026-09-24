@@ -140,10 +140,10 @@ export function instruction(rubric: Rubric, department: Department): string {
     '',
     '## Body',
     '',
-    'Open the body with a `## Summary` section: three to six bullets stating what this',
-    'department decided, in plain words a designer can act on without reading the rest —',
-    'the positioning line, the tone words, the type scale, the mark directions, whatever',
-    'this department owns. Then the full reasoning under its own headings.',
+    'Open the body with a `## Summary` section of three to five one-sentence bullets.',
+    'State the decision, why it matters, and what to do next in everyday language. Avoid',
+    'department names, process labels and unexplained jargon. Put full reasoning under',
+    'separate headings so the interface can show the short summary first.',
     '',
   ];
 

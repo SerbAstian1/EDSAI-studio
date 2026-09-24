@@ -49,6 +49,8 @@ export interface ModelRequest {
   model: string;
   maxOutputTokens: number;
   effort?: ModelEffort;
+  /** Lets a caller stop an in-flight provider request rather than only the next turn. */
+  signal?: AbortSignal;
   system: ModelTextBlock[];
   tools: ModelTool[];
   messages: ModelMessage[];

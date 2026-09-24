@@ -122,6 +122,13 @@ describe('instruction', () => {
   it('includes Optical Precision for Department 5, the drifted dimension', () => {
     expect(instruction(rubric, dept(5))).toContain('Optical Precision');
   });
+
+  it('asks for a short plain-language summary before the full reasoning', () => {
+    const text = instruction(rubric, dept(1));
+    expect(text).toContain('three to five one-sentence bullets');
+    expect(text).toContain('everyday language');
+    expect(text).toContain('full reasoning under');
+  });
 });
 
 describe('estimates', () => {

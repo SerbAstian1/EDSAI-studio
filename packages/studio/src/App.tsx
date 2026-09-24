@@ -298,8 +298,8 @@ function Shell(): ReactElement {
 
   const tabs = route.runId
     ? [
-        ['run', 'Run'], ['direction', 'Direction'], ['scorecard', 'Scorecard'],
-        ['review', 'Review'], ['finalize', 'Finalise'],
+        ['run', 'Progress'], ['direction', 'Recommendations'], ['scorecard', 'Scores'],
+        ['review', 'Review'], ['finalize', 'Finish'],
       ] as const
     : [];
 

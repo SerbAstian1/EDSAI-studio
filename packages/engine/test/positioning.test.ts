@@ -91,7 +91,7 @@ describe('building one chart', () => {
     expect(matrix?.points).toHaveLength(1);
     expect(matrix?.points[0]).toMatchObject({ id: 'brand', label: 'Acme', x: 15, y: 70, source: 'computed' });
     // The dot shows its working: the sentence chosen on each axis.
-    expect(matrix?.points[0]?.evidence?.x).toContain('A long table');
+    expect(matrix?.points[0]?.evidence?.x).toContain('Ordered');
     expect(matrix?.points[0]?.evidence?.y).toBeTruthy();
   });
 

@@ -53,7 +53,7 @@ export const SECTIONS: readonly Section[] = [
     status: 'built', href: '#/discovery',
   },
   {
-    id: 'runs', label: 'Pipeline', glyph: '▣', icon: Workflow, group: 'Workspace',
+    id: 'runs', label: 'Runs', glyph: '▣', icon: Workflow, group: 'Workspace',
     status: 'built', href: '#/runs',
   },
   {

@@ -5,11 +5,10 @@ import { ErrorPanel } from '../components/ErrorPanel.js';
 import { histogram, targetSummary, weakestScore } from '../scorecard.js';
 
 /**
- * The scorecard board.
+ * The run's quality scores in plain language.
  *
- * Its whole job is to make a wall of 8s visible before Arbitration rather than
- * after, so the histogram and the widest-band figure are the screen rather than
- * a footnote on it.
+ * The chart keeps the detailed 1–10 evidence, while the surrounding copy says
+ * what the numbers mean and what the user should check next.
  */
 export default function Scorecard({ runId }: { runId: string }): ReactElement {
   const { data, isPending, error, refetch } = useQuery({
@@ -34,9 +33,9 @@ export default function Scorecard({ runId }: { runId: string }): ReactElement {
     <section className="stack">
       <div className="card">
         <div className="row">
-          <h2>Distribution</h2>
+          <h2>Quality scores</h2>
           <span className="mono muted" style={{ marginLeft: 'auto' }}>
-            {h.total} scores · mean {h.mean.toFixed(2)} · range {h.min}–{h.max}
+            {h.total} checks · average {h.mean.toFixed(1)}/10 · lowest {h.min} · highest {h.max}
           </span>
         </div>
 
@@ -53,42 +52,42 @@ export default function Scorecard({ runId }: { runId: string }): ReactElement {
         </div>
 
         <p className={clustered ? 'err' : 'muted'} style={{ marginTop: 12 }}>
-          Widest two-point band: <strong>{h.widestBand.low}–{h.widestBand.high}</strong> at{' '}
+          Most scores sit between <strong>{h.widestBand.low} and {h.widestBand.high}</strong>:{' '}
           <span className="mono">{(h.widestBand.share * 100).toFixed(1)}%</span>
           {clustered
-            ? ' — above the 70% clustering threshold. Re-examine the scores at the edges.'
-            : ' — under the 70% clustering threshold.'}
+            ? ' of all checks. They may be too similar, so review the highest and lowest scores.'
+            : ' of all checks. The scores are spread enough to show meaningful differences.'}
         </p>
       </div>
 
       {weakest && (
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Named weak point</h3>
+          <h3 style={{ marginTop: 0 }}>Lowest score</h3>
           <p>
             <strong>{weakest.dimension} at {weakest.value}</strong>
-            <span className="muted"> (department {weakest.departmentId})</span>
+            <span className="muted"> (step {weakest.departmentId})</span>
           </p>
           <p className="muted">{weakest.justification}</p>
         </div>
       )}
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Provenance</h3>
+        <h3 style={{ marginTop: 0 }}>Measurement check</h3>
         <p className="mono">
-          {targets.measured} of {targets.total} targets instrument-measured
+          {targets.measured} of {targets.total} goals were measured with a tool
           {targets.total > 0 && <> ({(targets.provenance * 100).toFixed(0)}%)</>}
         </p>
         <p className="muted">
-          A stated target carries a mechanism for hitting it. Only an instrument
-          call in that department's own turn can produce an actual.
+          Goals without a tool result are plans, not proven outcomes. EDSAI keeps
+          them visible but does not present them as measurements.
         </p>
       </div>
 
       {data.rescores.length > 0 && (
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Rescores</h3>
+          <h3 style={{ marginTop: 0 }}>Changed scores</h3>
           <table>
-            <thead><tr><th>Dept</th><th>Dimension</th><th>Change</th><th>Directed by</th><th>Reason</th></tr></thead>
+            <thead><tr><th>Step</th><th>Quality</th><th>Change</th><th>Changed by</th><th>Reason</th></tr></thead>
             <tbody>
               {data.rescores.map((r, i) => (
                 <tr key={i}>

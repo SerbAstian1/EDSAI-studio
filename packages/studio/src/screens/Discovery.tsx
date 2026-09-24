@@ -88,7 +88,7 @@ export default function Discovery(): ReactElement {
           <table>
             <thead>
               <tr>
-                <th>Client</th><th>Status</th><th>Progress</th><th>Outstanding</th><th>Sent</th><th />
+                <th>Client</th><th>Status</th><th>Progress</th><th>Questions left</th><th>Sent</th><th />
               </tr>
             </thead>
             <tbody>
@@ -111,7 +111,7 @@ export default function Discovery(): ReactElement {
                   </td>
                   <td className="muted">
                     {onboarding.progress && onboarding.progress.outstanding.length > 0
-                      ? onboarding.progress.outstanding.join(', ')
+                      ? `${onboarding.progress.outstanding.length} question${onboarding.progress.outstanding.length === 1 ? '' : 's'}`
                       : '—'}
                   </td>
                   <td className="muted">{onboarding.createdAt.slice(0, 10)}</td>

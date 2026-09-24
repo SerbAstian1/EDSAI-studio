@@ -72,6 +72,7 @@ export class Executor {
   async runDepartment(
     turn: PreparedTurn,
     callInstrument: (name: string, input: unknown) => unknown,
+    signal?: AbortSignal,
   ): Promise<TurnResult> {
     this.onEvent({
       type: 'department-started',
@@ -88,7 +89,7 @@ export class Executor {
     let instrumentCalls = 0;
 
     for (let round = 0; round <= this.maxToolRounds; round += 1) {
-      const response = await this.send(turn, messages);
+      const response = await this.send(turn, messages, signal);
       usage = addUsage(usage, readUsage(response));
 
       if (response.stopReason === 'refusal') {
@@ -176,11 +177,13 @@ export class Executor {
   private async send(
     turn: PreparedTurn,
     messages: ModelMessage[],
+    signal?: AbortSignal,
   ): Promise<ModelResponse> {
     return this.client.complete({
       model: this.model,
       maxOutputTokens: MAX_TOKENS,
       ...(this.effort ? { effort: this.effort } : {}),
+      ...(signal ? { signal } : {}),
       system: this.systemContent(turn),
       tools: [...INSTRUMENT_TOOLS, SUBMIT_TOOL],
       messages,

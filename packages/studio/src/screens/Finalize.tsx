@@ -3,12 +3,10 @@ import { useState , type ReactElement } from 'react';
 import { api, ApiError } from '../api.js';
 
 /**
- * The finalise screen and the client summary.
+ * Finish the run and prepare the client-facing summary.
  *
- * The FINAL action is disabled while the gate withholds it, and the gate's
- * reasons are rendered rather than summarised — "1 open Major" is actionable in
- * a way that "not ready" is not. The client summary sits behind the same gate
- * and enforces three more constraints server-side.
+ * The finish action stays disabled until every blocking problem is handled.
+ * Exact reasons remain visible so the user knows what to fix.
  */
 export default function Finalize({ runId }: { runId: string }): ReactElement {
   const client = useQueryClient();
@@ -35,24 +33,23 @@ export default function Finalize({ runId }: { runId: string }): ReactElement {
     <section className="stack">
       <div className={`card gate${gate.passed ? ' pass' : ''}`}>
         <h2 style={{ marginTop: 0 }}>
-          {gate.passed ? 'FINAL is reachable' : 'FINAL is withheld'}
+          {gate.passed ? 'Ready to finish' : 'Not ready to finish'}
         </h2>
-        <p className="mono">determination {data.run.determination ?? data.run.version}</p>
+        <p className="muted">Current review result: {data.run.determination ?? data.run.version}</p>
 
         {gate.blockers.length > 0 ? (
           <ul>{gate.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
         ) : (
-          <p className="muted">No open Blockers or Majors, and every conflict carries a resolution.</p>
+          <p className="muted">No critical or major problems remain, and every conflict is resolved.</p>
         )}
 
         <button className="primary" disabled={!gate.passed || finalize.isPending}
           onClick={() => finalize.mutate()}>
-          {finalize.isPending ? 'Finalising…' : 'Mark FINAL'}
+          {finalize.isPending ? 'Finishing…' : 'Finish run'}
         </button>
         {!gate.passed && (
           <p className="muted" style={{ marginTop: 8 }}>
-            The determination is computed, not chosen. Close what is open in Review
-            and this enables itself.
+            Resolve the items listed above in Review. This button will enable automatically.
           </p>
         )}
       </div>
@@ -60,9 +57,8 @@ export default function Finalize({ runId }: { runId: string }): ReactElement {
       <div className="card stack">
         <h3 style={{ margin: 0 }}>Client summary</h3>
         <p className="muted">
-          Under 600 words, no scores, no internal vocabulary, and only from a FINAL
-          run. All four are enforced server-side — this is the one artifact a client
-          reads without you in the room.
+          Write the client-ready explanation in under 600 words. Use everyday language,
+          leave out internal scores, and explain what was decided and why.
         </p>
 
         <input placeholder="Headline (optional)" value={headline} id="headline"
@@ -75,12 +71,12 @@ export default function Finalize({ runId }: { runId: string }): ReactElement {
           <span className={words > 600 ? 'err mono' : 'muted mono'}>{words}/600 words</span>
           <button className="primary" style={{ marginLeft: 'auto' }}
             disabled={!draft.trim() || summarize.isPending}
-            onClick={() => summarize.mutate()}>Generate</button>
+            onClick={() => summarize.mutate()}>Create summary</button>
         </div>
 
         {summarize.error instanceof ApiError && (
           <div className="gate">
-            <p className="err" style={{ marginBottom: 4 }}>Refused.</p>
+            <p className="err" style={{ marginBottom: 4 }}>Could not create the summary.</p>
             <ul>
               {(summarize.error.reasons.length
                 ? summarize.error.reasons
@@ -91,7 +87,7 @@ export default function Finalize({ runId }: { runId: string }): ReactElement {
 
         {summarize.data && (
           <div className="gate pass">
-            <p className="pass">Accepted — {summarize.data.wordCount} words.</p>
+            <p className="pass">Summary ready — {summarize.data.wordCount} words.</p>
             <p><strong>{summarize.data.title}</strong></p>
             <p style={{ whiteSpace: 'pre-wrap' }}>{summarize.data.body}</p>
           </div>
@@ -102,15 +98,15 @@ export default function Finalize({ runId }: { runId: string }): ReactElement {
         <h3 style={{ marginTop: 0 }}>Documents</h3>
         <div className="row">
           <a href={api.documentUrl(runId)} target="_blank" rel="noreferrer">
-            <button>Internal document</button>
+            <button>Full internal report</button>
           </a>
           <a href={api.handoffUrl(runId)} target="_blank" rel="noreferrer">
-            <button>DEVPOINT handoff</button>
+            <button>Developer handoff</button>
           </a>
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
-          The internal document carries every score and the provenance of every
-          number. It is not the client's document.
+          The full report includes every score and shows where each measured number came from.
+          Keep it inside the studio.
         </p>
       </div>
     </section>

@@ -157,6 +157,15 @@ interface RequestContext {
   run?: Run;
 }
 
+interface PipelineControl {
+  pauseRequested: boolean;
+  cancelRequested: boolean;
+  abortController: AbortController;
+  wake?: () => void;
+}
+
+type RunExecutionState = 'idle' | 'running' | 'paused' | 'stopping';
+
 export class ApiServer {
   readonly store: RunStore;
   readonly rubric: Rubric;
@@ -170,6 +179,8 @@ export class ApiServer {
   readonly executor: Executor | undefined;
   /** Runs executing right now, so a second request does not start a second loop. */
   private readonly running = new Set<string>();
+  /** User controls for each live loop. Persisted status remains on the run itself. */
+  private readonly pipelineControls = new Map<string, PipelineControl>();
   private server?: Server;
   private readonly disableAuth: boolean;
   private readonly signInAllow: readonly string[];
@@ -249,6 +260,11 @@ export class ApiServer {
   }
 
   close(): Promise<void> {
+    for (const control of this.pipelineControls.values()) {
+      control.cancelRequested = true;
+      control.abortController.abort();
+      control.wake?.();
+    }
     this.events.closeAll();
     return new Promise((resolve) => {
       if (!this.server) return resolve();
@@ -455,13 +471,23 @@ export class ApiServer {
    */
   startPipeline(runId: string): boolean {
     if (!this.executor || this.running.has(runId)) return false;
+    const control: PipelineControl = {
+      pauseRequested: false,
+      cancelRequested: false,
+      abortController: new AbortController(),
+    };
     this.running.add(runId);
+    this.pipelineControls.set(runId, control);
 
     void runPipeline({
       context: this.context,
       executor: this.executor,
       events: this.events,
       runId,
+      isCancelled: () => control.cancelRequested,
+      isPaused: () => control.pauseRequested,
+      waitWhilePaused: () => new Promise((resolve) => { control.wake = resolve; }),
+      signal: control.abortController.signal,
     })
       .catch((error: unknown) => {
         // The loop reports its own halts; this is for the failure that escapes
@@ -472,10 +498,29 @@ export class ApiServer {
           retryable: true,
           completed: [],
         });
+        const current = this.store.getRun(runId);
+        if (current) {
+          this.store.saveRun({
+            ...current,
+            status: 'failed',
+            haltedReason: error instanceof Error ? error.message : String(error),
+            haltedRetryable: true,
+          });
+        }
       })
-      .finally(() => { this.running.delete(runId); });
+      .finally(() => {
+        this.running.delete(runId);
+        this.pipelineControls.delete(runId);
+      });
 
     return true;
+  }
+
+  private executionState(run: Run): RunExecutionState {
+    const control = this.pipelineControls.get(run.id);
+    if (control?.cancelRequested) return 'stopping';
+    if (control?.pauseRequested || run.status === 'paused') return 'paused';
+    return this.running.has(run.id) ? 'running' : 'idle';
   }
 
   /** The onboarding an invite token opens, or nothing. */
@@ -3201,6 +3246,7 @@ body { max-width: 640px; margin: 48px auto; }
           runs: (scoped?.listRuns() ?? []).map((run) => ({
             ...run,
             completed: this.store.completedDepartments(run.id).length,
+            executionState: this.executionState(run),
           })),
         }),
       },
@@ -3274,7 +3320,7 @@ body { max-width: 640px; margin: 48px auto; }
             issues: bundle.issues, conflicts: bundle.conflicts,
           });
           send(res, 200, {
-            run: bundle.run,
+            run: { ...bundle.run, executionState: this.executionState(bundle.run) },
             outputs: bundle.outputs,
             issues: bundle.issues,
             conflicts: bundle.conflicts,
@@ -3360,6 +3406,12 @@ body { max-width: 640px; margin: 48px auto; }
         method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/execute$/,
         run: ({ res, params, scoped, run }) => {
           if (!scoped || !run) return;
+          if (!scoped.canWrite('run', run.clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot control that run.',
+            });
+            return;
+          }
           if (!this.executor) {
             send(res, 503, {
               error: 'no_executor',
@@ -3373,6 +3425,123 @@ body { max-width: 640px; margin: 48px auto; }
           send(res, started ? 202 : 409, {
             started,
             ...(started ? {} : { message: 'That run is already executing.' }),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/pause$/,
+        run: ({ res, scoped, run }) => {
+          if (!scoped || !run) return;
+          if (!scoped.canWrite('run', run.clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot control that run.',
+            });
+            return;
+          }
+          const control = this.pipelineControls.get(run.id);
+          if (!this.running.has(run.id) || !control) {
+            send(res, 409, {
+              error: 'not_running', message: 'This run is not executing, so there is nothing to pause.',
+            });
+            return;
+          }
+          control.pauseRequested = true;
+          const current = this.store.getRun(run.id);
+          if (current) this.store.saveRun({ ...current, status: 'paused' });
+          this.events.emit(run.id, 'pipeline.pause-requested', {});
+          send(res, 202, {
+            paused: true,
+            message: 'Pause requested. The current step will finish, then the run will wait.',
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/continue$/,
+        run: ({ res, scoped, run }) => {
+          if (!scoped || !run) return;
+          if (!scoped.canWrite('run', run.clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot control that run.',
+            });
+            return;
+          }
+          const control = this.pipelineControls.get(run.id);
+          if (this.running.has(run.id) && control?.pauseRequested) {
+            control.pauseRequested = false;
+            const wake = control.wake;
+            delete control.wake;
+            wake?.();
+            const current = this.store.getRun(run.id);
+            if (current) this.store.saveRun({ ...current, status: 'running' });
+            this.events.emit(run.id, 'pipeline.continue-requested', {});
+            send(res, 202, { continued: true });
+            return;
+          }
+          if (run.status !== 'paused') {
+            send(res, 409, {
+              error: 'not_paused', message: 'This run is not paused.',
+            });
+            return;
+          }
+          if (!this.executor) {
+            send(res, 503, {
+              error: 'no_executor',
+              message: 'Automated execution is not configured on this server.',
+            });
+            return;
+          }
+          const started = this.startPipeline(run.id);
+          send(res, started ? 202 : 409, {
+            continued: started,
+            ...(started ? {} : { message: 'That run is already executing.' }),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/runs\/(?<id>[\w-]+)\/cancel$/,
+        run: ({ res, scoped, run }) => {
+          if (!scoped || !run) return;
+          if (!scoped.canWrite('run', run.clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot control that run.',
+            });
+            return;
+          }
+          if (!this.running.has(run.id) && run.status !== 'paused' && run.status !== 'running') {
+            send(res, 409, {
+              error: 'not_running', message: 'This run has already stopped.',
+            });
+            return;
+          }
+
+          const control = this.pipelineControls.get(run.id);
+          if (control) {
+            control.cancelRequested = true;
+            control.pauseRequested = false;
+            control.abortController.abort();
+            const wake = control.wake;
+            delete control.wake;
+            wake?.();
+          }
+          const current = this.store.getRun(run.id);
+          if (current) {
+            this.store.saveRun({
+              ...current,
+              status: 'cancelled',
+              haltedReason: undefined,
+              haltedRetryable: undefined,
+            });
+          }
+          if (control) this.events.emit(run.id, 'pipeline.stop-requested', {});
+          else this.events.emit(run.id, 'pipeline.cancelled', { completed: [] });
+          send(res, control ? 202 : 200, {
+            stopped: true,
+            message: control
+              ? 'Stop requested. The active model request is being cancelled.'
+              : 'The run is stopped.',
           });
         },
       },

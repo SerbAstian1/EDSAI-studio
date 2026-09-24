@@ -233,9 +233,9 @@ describe('discovery as a brief', () => {
   it('translates each axis back into the sentence the client chose', () => {
     const { facts } = discoveryBrief(answers);
     const byAxis = new Map(facts.decisions.map((d) => [d.axis, d.answer]));
-    expect(byAxis.get('E1')).toBe('They get the number.');
-    expect(byAxis.get('E2')).toMatch(/^Closer to .*throw out/);
-    expect(byAxis.get('E4')).toContain('A long table');
+    expect(byAxis.get('E1')).toBe('Give them the price directly.');
+    expect(byAxis.get('E2')).toMatch(/^Closer to .*short story/);
+    expect(byAxis.get('E4')).toContain('Ordered');
     expect(byAxis.get('E4')).toContain('70/30');
     // Unanswered axes are absent, not invented.
     expect(byAxis.has('E3')).toBe(false);
@@ -245,8 +245,9 @@ describe('discovery as a brief', () => {
     const { markdown } = discoveryBrief(answers);
     expect(markdown).toContain('**Scope of work.** A full visual identity; A website.');
     expect(markdown).toContain('precise, warm, crafted');
-    expect(markdown).toContain('They get the number.');
-    expect(markdown).toContain('the studio drafts');
+    expect(markdown).toContain('Give them the price directly.');
+    expect(markdown).toContain('The studio will decide');
+    expect(markdown).not.toContain('When someone asks your price');
     expect(markdown.toLowerCase()).not.toContain('positioning statement:');
   });
 

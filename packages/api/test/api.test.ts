@@ -159,6 +159,38 @@ describe('runs', () => {
     server['running'].delete(run.id);
   });
 
+  it('pauses, continues and stops a live run', async () => {
+    const run = await startRun();
+    const abortController = new AbortController();
+    const control = {
+      pauseRequested: false,
+      cancelRequested: false,
+      abortController,
+      wake: undefined as (() => void) | undefined,
+    };
+    server['running'].add(run.id);
+    server['pipelineControls'].set(run.id, control);
+
+    const paused = await json(`/api/runs/${run.id}/pause`, { method: 'POST' });
+    expect(paused.status).toBe(202);
+    expect(control.pauseRequested).toBe(true);
+    expect(store.getRun(run.id)?.status).toBe('paused');
+
+    const continued = await json(`/api/runs/${run.id}/continue`, { method: 'POST' });
+    expect(continued.status).toBe(202);
+    expect(control.pauseRequested).toBe(false);
+    expect(store.getRun(run.id)?.status).toBe('running');
+
+    const stopped = await json(`/api/runs/${run.id}/cancel`, { method: 'POST' });
+    expect(stopped.status).toBe(202);
+    expect(control.cancelRequested).toBe(true);
+    expect(abortController.signal.aborted).toBe(true);
+    expect(store.getRun(run.id)?.status).toBe('cancelled');
+
+    server['running'].delete(run.id);
+    server['pipelineControls'].delete(run.id);
+  });
+
   it('deletes a project together with its completed run history', async () => {
     const run = await startRun();
     const saved = store.getRun(run.id);

@@ -158,7 +158,7 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                     {onboarding.progress.answered} of {onboarding.progress.required} answered ·
                     {' '}{onboarding.progress.axesDecided} of 8 directions settled
                     {onboarding.progress.outstanding.length > 0
-                      && ` · outstanding: ${onboarding.progress.outstanding.join(', ')}`}
+                      && ` · ${onboarding.progress.outstanding.length} question${onboarding.progress.outstanding.length === 1 ? '' : 's'} left`}
                   </p>
                 </div>
               )}

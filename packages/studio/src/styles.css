@@ -412,6 +412,15 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
   height: 100vh;
   overflow-y: auto;
 }
+.sidebar-head { display: flex; flex-direction: column; }
+.sidebar-menu {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-section);
+}
+.mobile-nav-toggle { display: none; }
 
 .wordmark {
   font-family: var(--font-display);
@@ -511,28 +520,35 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
  *
  * The breakpoint is where the sidebar stops earning its column, not a device.
  */
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
 
-  /* The sidebar becomes a band across the top. Sticky and full-height is a
-     desktop affordance; on a phone it would eat the screen. */
+  /* The desktop rail becomes one compact menu button. The links stay vertical
+     inside the dropdown, so they remain readable instead of wrapping into a
+     second navigation bar with no clear order. */
   .sidebar {
     position: static;
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: calc(var(--step) * 3);
     padding: calc(var(--step) * 4);
+    display: block;
   }
-  .nav-group { grid-auto-flow: column; grid-auto-columns: max-content; gap: calc(var(--step) * 1); }
-  /* The group labels are a vertical-list affordance and read as noise in a row. */
-  .nav-group > .label { display: none; }
-  .nav-item { border-left: 0; border-bottom: 2px solid transparent; padding: 8px 10px; }
-  .nav-item[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--aw-orange); }
-  .nav-item .phase { margin-left: calc(var(--step) * 1); }
+  .sidebar-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+  .mobile-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .mobile-nav-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-nav-toggle svg:last-child { transition: transform var(--transition); }
+  .mobile-nav-toggle svg:last-child.open { transform: rotate(180deg); }
+  .sidebar-menu { display: none; width: 100%; margin-top: calc(var(--step) * 3); }
+  .sidebar-menu.open { display: flex; }
+  .nav-group { display: grid; }
+  .nav-group > .label { display: block; }
+  .nav-item { padding: 8px 10px; }
 
   .topbar { padding: calc(var(--step) * 3) calc(var(--step) * 4); }
   .content { padding: calc(var(--step) * 4); }
@@ -700,16 +716,13 @@ select.pill { min-height: 0; width: auto; padding: 2px 24px 2px 8px; background-
               font-size: 11px; color: var(--text-muted); text-align: center; }
 .meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .meter > i { display: block; height: 100%; background: var(--accent); }
+.run-controls { flex-wrap: wrap; }
+.run-controls button { display: inline-flex; align-items: center; gap: 7px; }
+.run-technical summary { color: var(--text-muted); cursor: pointer; font-size: 13px; }
 .gate { border-left: 2px solid var(--error); padding-left: calc(var(--step) * 3); }
 .gate.pass { border-left-color: var(--success); }
 
 @media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap;
-             align-items: center; gap: calc(var(--step) * 3); border-right: 0;
-             border-bottom: 1px solid var(--border); }
-  .nav-group { display: flex; flex-wrap: wrap; }
-  .nav-group > .label { display: none; }
   .content, .topbar { padding-left: calc(var(--step) * 4); padding-right: calc(var(--step) * 4); }
   .bars { height: 88px; }
 }
@@ -1780,6 +1793,15 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   height: 100vh;
   overflow-y: auto;
 }
+.portal-sidebar-head { display: flex; flex-direction: column; }
+.portal-sidebar-menu {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-section);
+}
+.portal-nav-toggle { display: none; }
 
 .portal-nav { display: grid; gap: 2px; }
 .portal-nav-item {
@@ -1861,12 +1883,20 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 @media (max-width: 900px) {
   .portal { grid-template-columns: 1fr; }
   .portal-sidebar {
-    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
-    align-items: center; gap: calc(var(--step) * 3); border-right: 0;
+    position: static;
+    height: auto;
+    display: block;
+    border-right: 0;
     border-bottom: 1px solid var(--border);
   }
-  .portal-nav { display: flex; flex-wrap: wrap; }
-  .portal-help { margin-top: 0; margin-left: auto; }
+  .portal-sidebar-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+  .portal-nav-toggle { display: inline-flex; align-items: center; gap: 8px; }
+  .portal-nav-toggle svg:last-child { transition: transform var(--transition); }
+  .portal-nav-toggle svg:last-child.open { transform: rotate(180deg); }
+  .portal-sidebar-menu { display: none; margin-top: calc(var(--step) * 3); }
+  .portal-sidebar-menu.open { display: flex; }
+  .portal-nav { display: grid; }
+  .portal-help { margin-top: 0; }
   .portal-main { padding: calc(var(--step) * 4); }
 }
 

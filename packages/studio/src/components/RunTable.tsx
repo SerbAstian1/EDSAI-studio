@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Compass, ExternalLink, RotateCcw, Trash2 } from 'lucide-react';
+import {
+  BarChart3, CirclePause, CirclePlay, Compass, ExternalLink, RefreshCw, Square, Trash2,
+} from 'lucide-react';
 import { api, type Run } from '../api.js';
 import { requestConfirmation } from './ConfirmDialog.js';
 import OverflowMenu from './OverflowMenu.js';
@@ -31,6 +33,16 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
       go(`#/run/${id}`);
     },
   });
+  const control = useMutation({
+    mutationFn: async ({ id, action }: {
+      id: string; action: 'pause' | 'continue' | 'stop';
+    }): Promise<void> => {
+      if (action === 'pause') await api.pauseRun(id);
+      else if (action === 'continue') await api.continueRun(id);
+      else await api.cancelRun(id);
+    },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['runs'] }); },
+  });
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteRun(id),
     onSuccess: (_, id) => {
@@ -55,6 +67,11 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
           const done = run.completed ?? 0;
           const determination = run.determination ?? run.version;
           const unfinished = done < total;
+          const running = run.executionState === 'running';
+          const paused = run.executionState === 'paused' || run.status === 'paused';
+          const stopping = run.executionState === 'stopping';
+          const interrupted = run.status === 'running' && run.executionState === 'idle';
+          const retry = run.status === 'failed' || run.status === 'cancelled' || interrupted;
           return (
             <tr key={run.id}>
               <td><a className="mono" href={`#/run/${run.id}`}>{run.id}</a></td>
@@ -76,13 +93,35 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
                   { label: 'Open run', icon: ExternalLink, onSelect: () => go(`#/run/${run.id}`) },
                   { label: 'Read the direction', icon: Compass, onSelect: () => go(`#/run/${run.id}/direction`) },
                   { label: 'Scorecard', icon: BarChart3, onSelect: () => go(`#/run/${run.id}/scorecard`) },
-                  ...(unfinished ? [{
-                    label: run.status === 'failed' ? 'Retry execution' : 'Resume execution',
-                    icon: RotateCcw, disabled: execute.isPending,
+                  ...(unfinished && running ? [{
+                    label: 'Pause run', icon: CirclePause, disabled: control.isPending,
+                    onSelect: () => control.mutate({ id: run.id, action: 'pause' }),
+                  }] : []),
+                  ...(unfinished && paused ? [{
+                    label: 'Continue run', icon: CirclePlay, disabled: control.isPending,
+                    onSelect: () => control.mutate({ id: run.id, action: 'continue' }),
+                  }] : []),
+                  ...(unfinished && !running && !paused && !stopping ? [{
+                    label: retry ? 'Retry run' : 'Start run',
+                    icon: retry ? RefreshCw : CirclePlay, disabled: execute.isPending,
                     onSelect: () => execute.mutate(run.id),
                   }] : []),
+                  ...(unfinished && (running || paused || stopping) ? [{
+                    label: stopping ? 'Stopping run…' : 'Stop run',
+                    icon: Square, danger: true, disabled: control.isPending || stopping,
+                    onSelect: () => {
+                      void requestConfirmation({
+                        title: `Stop run ${run.id}?`,
+                        message: 'The active request will be cancelled. Completed steps stay saved, and you can retry later.',
+                        confirmLabel: 'Stop run',
+                      }).then((confirmed) => {
+                        if (confirmed) control.mutate({ id: run.id, action: 'stop' });
+                      });
+                    },
+                  }] : []),
                   {
-                    label: 'Delete run', icon: Trash2, danger: true, disabled: remove.isPending,
+                    label: 'Delete run', icon: Trash2, danger: true,
+                    disabled: remove.isPending || running || paused || stopping,
                     onSelect: () => {
                       void requestConfirmation({
                         title: `Delete run ${run.id}?`,

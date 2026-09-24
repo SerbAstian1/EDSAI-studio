@@ -75,16 +75,16 @@ export const QUESTIONS: readonly Question[] = [
   {
     id: 'f-what', act: 'facts', kind: 'text', required: true,
     prompt: 'In one sentence, what do you make or do?',
-    help: 'Plain language. The way you would say it to someone outside your industry.',
+    help: 'Use plain language that anyone can understand.',
   },
   {
     id: 'f-who', act: 'facts', kind: 'text', required: true,
-    prompt: 'Who buys it, and what were they doing ten minutes before they found you?',
-    help: 'The second half matters more than the first.',
+    prompt: 'Who is your main customer, and what are they trying to do when they find you?',
+    help: 'Describe one real type of customer and their immediate need.',
   },
   {
     id: 'f-deliverables', act: 'facts', kind: 'pick-many', required: true, take: 0,
-    prompt: 'What do you need at the end of this?',
+    prompt: 'What do you want us to deliver?',
     options: [
       { id: 'logo', label: 'A logo and the rules for using it' },
       { id: 'identity', label: 'A full visual identity' },
@@ -92,102 +92,99 @@ export const QUESTIONS: readonly Question[] = [
       { id: 'packaging', label: 'Packaging' },
       { id: 'print', label: 'Print and collateral' },
       { id: 'social', label: 'Social templates' },
-      { id: 'unsure', label: 'Not sure yet — that is a fine answer' },
+      { id: 'unsure', label: 'I am not sure yet' },
     ],
   },
   {
     id: 'f-deadline', act: 'facts', kind: 'text', required: false,
-    prompt: 'Is there a date this has to be ready for?',
-    help: 'A launch, a season, a meeting. If there is not one, say so.',
+    prompt: 'When does this need to be ready?',
+    help: 'Add a launch date or deadline. Leave it blank if there is none.',
   },
 
   /* — warm-up ————————————————————————————————————————————————————— */
   {
     id: 'w-headline', act: 'warm-up', kind: 'text', required: true, axis: 'T1',
-    prompt: 'It is three years from now and a magazine has written about you. What is the headline?',
-    help: 'People answer this one well, because it is a story rather than a definition.',
+    prompt: 'In three years, what do you want people to say you are known for?',
+    help: 'Write one short sentence.',
   },
 
   /* — the eight enumerated axes ——————————————————————————————————— */
   {
     id: 'e1', act: 'axes', kind: 'binary', required: true, axis: 'E1',
-    prompt: 'A customer messages asking your price. What happens next?',
+    prompt: 'When someone asks your price, what should you do first?',
     options: [
-      { id: 'directness', label: 'They get the number.' },
-      { id: 'restraint', label: 'They get a question back about what they are looking for.' },
+      { id: 'directness', label: 'Give them the price directly.' },
+      { id: 'restraint', label: 'Ask what they need before giving a price.' },
     ],
   },
   {
     id: 'e2', act: 'axes', kind: 'scale', required: true, axis: 'E2',
-    prompt: 'Someone asks what you do, at a party. Which is closer to what you would say?',
+    prompt: 'How should you explain what your business does?',
     anchors: {
-      low: '“I make shoes.”',
-      high: '“Ever owned a pair you couldn’t bring yourself to throw out?”',
+      low: 'Say it plainly: “We make shoes.”',
+      high: 'Tell a short story about why the product matters.',
     },
   },
   {
     id: 'e3', act: 'axes', kind: 'scale', required: true, axis: 'E3',
-    prompt: 'Your shop window, done right.',
+    prompt: 'How bold should the brand look at first glance?',
     anchors: {
-      low: 'One shoe. One light. Nothing else.',
-      high: 'Twelve shoes, colour everywhere, something moving.',
+      low: 'Quiet: one product and plenty of empty space.',
+      high: 'Bold: many products, strong colour and movement.',
     },
   },
   {
     id: 'e4', act: 'axes', kind: 'ratio', required: true, axis: 'E4',
-    prompt: 'Two rooms to meet a client in. Pick one.',
+    prompt: 'Should the visual style feel ordered or full of detail?',
     sides: {
-      a: 'A long table, one chair each side, one object on the wall.',
-      b: 'Shelves to the ceiling, samples everywhere, three things half-finished.',
+      a: 'Ordered: a few items, carefully placed.',
+      b: 'Layered: many useful details and signs of work.',
     },
   },
   {
     id: 'e5', act: 'axes', kind: 'ratio', required: true, axis: 'E5',
-    prompt: 'In ten years, should someone be able to tell this was made in 2026?',
+    prompt: 'Should the design feel current to today or hard to date?',
     sides: {
-      a: 'Yes — it should date honestly, and we will redo it.',
-      b: 'No — it should be hard to place.',
+      a: 'Current: let it reflect this moment and update it later.',
+      b: 'Timeless: make it difficult to place in a specific year.',
     },
   },
   {
     id: 'e6', act: 'axes', kind: 'ratio', required: true, axis: 'E6',
-    prompt: 'A national retailer wants to stock you, but wants you to tone it down first.',
-    help: 'Gut reaction.',
-    sides: { a: 'We can work with that.', b: 'Then they don’t want us.' },
+    prompt: 'Would you change the brand to win a large retailer?',
+    help: 'Choose your first reaction.',
+    sides: { a: 'Yes, we can adapt.', b: 'No, protect the brand’s character.' },
   },
   {
     id: 'e7', act: 'axes', kind: 'ratio', required: true, axis: 'E7',
-    prompt: 'Your workbench at the end of the day.',
-    sides: { a: 'Everything back where it lives.', b: 'Everything where the work left it.' },
+    prompt: 'Should the brand system be tightly organised or flexible?',
+    sides: { a: 'Organised: clear rules and a place for everything.', b: 'Flexible: room to change and experiment.' },
   },
   {
     id: 'e8', act: 'axes', kind: 'binary', required: true, axis: 'E8',
-    prompt: 'Which of these holds your eye, and which would you never choose?',
-    help: 'Described rather than shown here. The intended form is six abstract thumbnails; '
-      + 'the reject matters more than the pick.',
+    prompt: 'Which layout style feels most like your brand?',
+    help: 'Choose the closest fit.',
     options: [
-      { id: 'negative-space', label: 'One small thing, a lot of empty space around it' },
-      { id: 'fill-the-frame', label: 'Filled edge to edge, no breathing room' },
-      { id: 'radiating-radial', label: 'Everything arranged around one centre point' },
-      { id: 'diagonal-double-diagonal', label: 'Cut across at an angle, leaning' },
-      { id: 'horizontal-lines', label: 'Calm horizontal bands, stacked' },
-      { id: 'l-arrangement', label: 'Weight along two edges, one corner left open' },
+      { id: 'negative-space', label: 'One focus point with lots of empty space' },
+      { id: 'fill-the-frame', label: 'Content fills the whole space' },
+      { id: 'radiating-radial', label: 'Everything arranged around one centre' },
+      { id: 'diagonal-double-diagonal', label: 'Strong diagonal movement' },
+      { id: 'horizontal-lines', label: 'Calm horizontal sections' },
+      { id: 'l-arrangement', label: 'Content held along two edges' },
     ],
   },
 
   /* — the disagreement round ——————————————————————————————————————— */
   {
     id: 'd-traits', act: 'disagreement', kind: 'pick-many', required: true, take: 3,
-    prompt: 'Pick the three words that belong to you.',
-    help: 'Answer before you talk to anyone else about it. Where your team disagrees is '
-      + 'the most useful thing this whole form will tell us.',
+    prompt: 'Choose the three words that should describe your brand.',
+    help: 'Choose your own answer before comparing it with your team.',
     options: TRAITS.map((trait) => ({ id: trait, label: trait })),
   },
   {
     id: 'd-worst', act: 'disagreement', kind: 'text', required: true,
-    prompt: 'Name a competitor you would hate to be mistaken for, and say why in a few words.',
-    help: 'People identify what they are not far faster, and far more accurately, '
-      + 'than what they are.',
+    prompt: 'Which competitor should people never confuse you with, and why?',
+    help: 'A short answer is enough.',
   },
 ];
 
@@ -465,12 +462,11 @@ export function discoveryBrief(answers: readonly Answer[]): DiscoveryBrief {
   if (facts.worst) lines.push(`**Would hate to be mistaken for.** ${facts.worst}`);
   if (facts.decisions.length > 0) {
     lines.push('', '### Decisions they made', '');
-    for (const d of facts.decisions) lines.push(`- **${d.axis}** ${d.question} → ${d.answer}`);
+    for (const d of facts.decisions) lines.push(`- **${d.axis}:** ${d.answer}`);
   }
   lines.push(
     '',
-    'Positioning, emotional tone and motion law are not here on purpose: the studio drafts',
-    'those three and the client confirms them.',
+    'The studio will decide positioning, emotional tone and motion, then ask the client to confirm them.',
   );
 
   return { facts, markdown: lines.join('\n') };

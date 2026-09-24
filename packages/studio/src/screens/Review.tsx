@@ -6,7 +6,7 @@ import { issueCounts, orderIssues } from '../scorecard.js';
 
 const SEVERITIES: Severity[] = ['Blocker', 'Major', 'Minor', 'Nitpick'];
 
-/** Issue tracker and conflict panel — the two things standing between V1 and FINAL. */
+/** Problems and trade-offs that must be handled before the run can be finished. */
 export default function Review({ runId }: { runId: string }): ReactElement {
   const client = useQueryClient();
   const { data, isPending, error, refetch } = useQuery({
@@ -75,8 +75,7 @@ export default function Review({ runId }: { runId: string }): ReactElement {
           ))}
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
-          A FINAL output with any open Blocker or Major is not final — it is
-          V-next-minus-one wearing a FINAL label.
+          The run cannot be finished while a critical or major problem is still open.
         </p>
       </div>
 
@@ -87,7 +86,7 @@ export default function Review({ runId }: { runId: string }): ReactElement {
             onChange={(e) => setSeverity(e.target.value as Severity)} style={{ width: 'auto' }}>
             {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <input placeholder="Traced to departments, e.g. 5, 8" value={traced} id="traced"
+          <input placeholder="Related step numbers, e.g. 5, 8" value={traced} id="traced"
             onChange={(e) => setTraced(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
         </div>
         <textarea rows={2} placeholder="What is wrong" value={description} id="description"
@@ -95,7 +94,7 @@ export default function Review({ runId }: { runId: string }): ReactElement {
         <textarea rows={2} placeholder="The fix" value={fix} id="fix"
           onChange={(e) => setFix(e.target.value)} />
         {!canSave && (description || fix || traced) && (
-          <p className="muted">An untraced issue is not saveable — name the departments it comes from.</p>
+          <p className="muted">Add at least one related step number so the problem can be found again.</p>
         )}
         <div>
           <button className="primary" disabled={!canSave || addIssue.isPending}
@@ -107,7 +106,7 @@ export default function Review({ runId }: { runId: string }): ReactElement {
         <div className="card" key={issue.id}>
           <div className="row">
             <span className={`pill ${issue.severity}`}>{issue.severity}</span>
-            <span className="muted mono">traced to {issue.tracedTo.join(', ')}</span>
+            <span className="muted mono">related steps {issue.tracedTo.join(', ')}</span>
             <span className="muted" style={{ marginLeft: 'auto' }}>{issue.status}</span>
           </div>
           <p style={{ marginBottom: 4 }}>{issue.description}</p>
@@ -161,13 +160,12 @@ function ConflictRow({ conflict, onResolve }: {
 
       <textarea rows={2} placeholder="Resolution" value={resolution}
         id={`res-${conflict.id}`} onChange={(e) => setResolution(e.target.value)} />
-      <textarea rows={2} placeholder="What was lost — averaging a conflict away is forbidden"
+      <textarea rows={2} placeholder="What did this choice give up?"
         id={`lost-${conflict.id}`} value={lost} onChange={(e) => setLost(e.target.value)} />
 
       {resolution.trim() && !lost.trim() && (
         <p className="muted">
-          A resolution must say what was lost. A conflict resolved without a cost
-          was not a conflict.
+          Explain the trade-off: what became weaker when you chose this solution?
         </p>
       )}
       <div>

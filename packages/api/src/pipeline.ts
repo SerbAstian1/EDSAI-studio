@@ -38,8 +38,14 @@ export async function runPipeline(options: {
   executor: Executor;
   events: RunEvents;
   runId: string;
-  /** Checked between departments so a stop request does not need to interrupt a call. */
+  /** Checked before and after each provider request. */
   isCancelled?: () => boolean;
+  /** Pauses before the next department, after preserving the current one. */
+  isPaused?: () => boolean;
+  /** Keeps a server-side run asleep until Continue or Stop wakes it. */
+  waitWhilePaused?: () => Promise<void>;
+  /** Stops an in-flight provider request when the adapter supports aborting. */
+  signal?: AbortSignal;
 }): Promise<PipelineResult> {
   const { context, executor, events, runId } = options;
   const completed: number[] = [];
@@ -49,7 +55,7 @@ export async function runPipeline(options: {
   // reopened cold reads its own record, not a live event, so a halt that no
   // longer applies has to stop being reported the moment work resumes.
   const opening = context.store.getRun(runId);
-  if (opening?.status === 'failed') {
+  if (opening && !['running', 'complete', 'blocked'].includes(opening.status)) {
     context.store.saveRun({
       ...opening, status: 'running', haltedReason: undefined, haltedRetryable: undefined,
     });
@@ -57,15 +63,50 @@ export async function runPipeline(options: {
 
   events.emit(runId, 'pipeline.started', { model: executor.model });
 
+  const cancelled = (): PipelineResult => {
+    const current = context.store.getRun(runId);
+    if (current) {
+      context.store.saveRun({
+        ...current, status: 'cancelled', haltedReason: undefined, haltedRetryable: undefined,
+      });
+    }
+    events.emit(runId, 'pipeline.cancelled', { completed });
+    const cost = executor.costOf(usage);
+    return { completed, usage, ...(cost === undefined ? {} : { cost }) };
+  };
+
   for (;;) {
-    if (options.isCancelled?.()) {
-      events.emit(runId, 'pipeline.cancelled', { completed });
-      break;
+    if (options.isCancelled?.()) return cancelled();
+
+    if (options.isPaused?.()) {
+      const current = context.store.getRun(runId);
+      if (current) {
+        context.store.saveRun({
+          ...current, status: 'paused', haltedReason: undefined, haltedRetryable: undefined,
+        });
+      }
+      events.emit(runId, 'pipeline.paused', { completed });
+      if (!options.waitWhilePaused) {
+        const cost = executor.costOf(usage);
+        return { completed, usage, ...(cost === undefined ? {} : { cost }) };
+      }
+      await options.waitWhilePaused();
+      if (options.isCancelled?.()) return cancelled();
+      const resumed = context.store.getRun(runId);
+      if (resumed) context.store.saveRun({ ...resumed, status: 'running' });
+      events.emit(runId, 'pipeline.resumed', { completed });
+      continue;
     }
 
     const turn = context.prepare(runId);
     if (!turn) {
       const cost = executor.costOf(usage);
+      const current = context.store.getRun(runId);
+      if (current && current.status !== 'complete' && current.status !== 'blocked') {
+        context.store.saveRun({
+          ...current, status: 'pending', haltedReason: undefined, haltedRetryable: undefined,
+        });
+      }
       events.emit(runId, 'pipeline.finished', {
         completed, usage, ...(cost === undefined ? {} : { cost }),
       });
@@ -82,9 +123,10 @@ export async function runPipeline(options: {
         const output = runInstrument(name, input);
         calls.push({ instrument: name, input, output });
         return output;
-      });
+      }, options.signal);
 
       usage = addUsage(usage, result.usage);
+      if (options.isCancelled?.()) return cancelled();
       const accepted = context.accept(runId, turn.department.id, result.submission, calls);
       completed.push(turn.department.id);
 
@@ -113,6 +155,7 @@ export async function runPipeline(options: {
         cacheHitRate: result.cacheHitRate,
       });
     } catch (error) {
+      if (options.isCancelled?.() || options.signal?.aborted) return cancelled();
       // A refusal is about this department; anything else is about the world.
       // Both stop the run, and the difference decides whether retrying helps.
       const reason = error instanceof TurnRefused

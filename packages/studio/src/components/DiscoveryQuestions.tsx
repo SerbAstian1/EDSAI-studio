@@ -61,8 +61,8 @@ export function DiscoveryQuestions({ data, onAnswer, onSubmit, saving, saveError
           <i style={{ width: `${data.progress.percent}%` }} />
         </div>
         <p className="muted" style={{ fontSize: 13 }}>
-          {data.progress.answered} of {data.progress.required} · question {index + 1}
-          {' '}of {questions.length}
+          {data.progress.answered} of {data.progress.required} required answers complete · question{' '}
+          {index + 1} of {questions.length}
         </p>
       </div>
 
@@ -135,7 +135,7 @@ export function DiscoveryQuestions({ data, onAnswer, onSubmit, saving, saveError
               </div>
               {side && (
                 <>
-                  <p className="label" id={`strength-${current.id}`}>And how strongly?</p>
+                  <p className="label" id={`strength-${current.id}`}>How strongly does this fit?</p>
                   <div className="choices strengths" role="group"
                        aria-labelledby={`strength-${current.id}`}>
                     {data.strengths.map((strength) => (

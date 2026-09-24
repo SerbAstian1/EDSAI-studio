@@ -23,7 +23,10 @@ import type {
 export const OPENAI_DEFAULT_MODEL = 'gpt-6-astra';
 
 export interface OpenAIResponseCreator {
-  create(params: ResponseCreateParamsNonStreaming): Promise<Response>;
+  create(
+    params: ResponseCreateParamsNonStreaming,
+    options?: { signal?: AbortSignal },
+  ): Promise<Response>;
 }
 
 export interface OpenAIModelClientOptions {
@@ -66,7 +69,7 @@ export class OpenAIModelClient implements ModelClient {
       ...(explicitCache
         ? { prompt_cache_options: { mode: 'explicit' as const, ttl: '30m' as const } }
         : {}),
-    });
+    }, request.signal ? { signal: request.signal } : undefined);
 
     if (response.error) {
       if (isPolicyRefusal(response.error)) {
