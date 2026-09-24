@@ -312,6 +312,23 @@ describe('harness mode', () => {
     expect(calls[0]?.instrument).toBe('contrast');
   });
 
+  it('accepts nullable placeholders from strict model tools', () => {
+    const { harness, run } = harnessFixture();
+    harness.next(run.id);
+    const result = harness.callInstrument(run.id, 1, 'composition_check', {
+      frame: { width: 100, height: 100 },
+      elements: [{
+        id: 'hero', x: 0, y: 0, width: 50, height: 50,
+        role: null, contrast: null, kind: null,
+      }],
+      structure: 'rule-of-thirds',
+      eyePath: null,
+      priorStructures: null,
+    }) as { instrument: string };
+
+    expect(result.instrument).toBe('composition_check');
+  });
+
   it('rejects instrument input its schema refuses', () => {
     const { harness, run } = harnessFixture();
     harness.next(run.id);

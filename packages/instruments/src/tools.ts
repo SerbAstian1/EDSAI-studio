@@ -43,7 +43,7 @@ export const ToolInput = {
       value: colorString,
       role: z.enum(['text', 'large-text', 'non-text', 'surface']).optional(),
     })).min(2),
-    pairings: z.array(z.tuple([z.string(), z.string()])).optional()
+    pairings: z.array(z.array(z.string()).length(2)).optional()
       .describe('Foreground/background token-name pairs. Omit to check every foreground on every surface.'),
   }),
 
@@ -216,11 +216,63 @@ export interface InstrumentTool {
   strict: true;
 }
 
+type JsonSchema = Record<string, unknown>;
+
+function isJsonSchema(value: unknown): value is JsonSchema {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function nullable(schema: JsonSchema): JsonSchema {
+  const alternatives = schema['anyOf'];
+  if (Array.isArray(alternatives)) {
+    if (alternatives.some((candidate) => isJsonSchema(candidate) && candidate['type'] === 'null')) {
+      return schema;
+    }
+    return { ...schema, anyOf: [...alternatives, { type: 'null' }] };
+  }
+
+  const { description, ...valueSchema } = schema;
+  return {
+    ...(description === undefined ? {} : { description }),
+    anyOf: [valueSchema, { type: 'null' }],
+  };
+}
+
+/** Convert Zod's optional properties to the nullable-required form strict tools expect. */
+function strictSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(strictSchema);
+  if (!isJsonSchema(value)) return value;
+
+  const schema = Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, strictSchema(child)]),
+  ) as JsonSchema;
+  if (schema['type'] !== 'object' || !isJsonSchema(schema['properties'])) return schema;
+
+  const originallyRequired = new Set(
+    Array.isArray(schema['required'])
+      ? schema['required'].filter((key): key is string => typeof key === 'string')
+      : [],
+  );
+  const properties = schema['properties'];
+  const names = Object.keys(properties);
+
+  schema['properties'] = Object.fromEntries(names.map((name) => {
+    const property = properties[name];
+    return [
+      name,
+      originallyRequired.has(name) || !isJsonSchema(property) ? property : nullable(property),
+    ];
+  }));
+  schema['required'] = names;
+  schema['additionalProperties'] = false;
+  return schema;
+}
+
 function schemaFor(name: ToolName): Record<string, unknown> {
   const schema = toJSONSchema(ToolInput[name]) as Record<string, unknown>;
   // The API takes the schema itself; the dialect declaration is noise on the wire.
   delete schema['$schema'];
-  return schema;
+  return strictSchema(schema) as Record<string, unknown>;
 }
 
 /** Every instrument as a strict model tool, in a stable order. */

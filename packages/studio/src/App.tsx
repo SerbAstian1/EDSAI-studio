@@ -15,6 +15,7 @@ import { Gate } from './shell/Gate.js';
 import { AppErrorBoundary } from './components/AppErrorBoundary.js';
 import { ConfirmationDialog } from './components/ConfirmDialog.js';
 import { FailureBanner } from './components/FailureBanner.js';
+import { LoadingOverlay } from './components/LoadingOverlay.js';
 import { reportFailure } from './failures.js';
 import Home from './screens/Home.js';
 
@@ -326,7 +327,7 @@ function Shell(): ReactElement {
         )}
 
         <main className="content">
-          <Suspense fallback={<p className="muted">Loading…</p>}>
+          <Suspense fallback={<LoadingOverlay label="Loading workspace…" />}>
             {route.screen === 'workspace' && <Home />}
             {route.screen === 'intake' && <NewRun projectId={route.projectId} />}
             {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
@@ -413,14 +414,14 @@ function Entry(): ReactElement {
   const route = useRoute();
   if (route.screen === 'onboard' && route.token) {
     return (
-      <Suspense fallback={<p className="muted" style={{ padding: 32 }}>Opening…</p>}>
+      <Suspense fallback={<LoadingOverlay label="Opening invitation…" />}>
         <Onboard token={route.token} />
       </Suspense>
     );
   }
   if (route.screen === 'clientPortal' && route.token) {
     return (
-      <Suspense fallback={<p className="muted" style={{ padding: 32 }}>Opening your portal…</p>}>
+      <Suspense fallback={<LoadingOverlay label="Opening your portal…" />}>
         <ClientPortalApp token={route.token} />
       </Suspense>
     );

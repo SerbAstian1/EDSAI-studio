@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
+import { LoadingOverlay } from '../components/LoadingOverlay.js';
 
 /**
  * Sign-in, and the studio's own first run.
@@ -34,7 +35,9 @@ export function Gate({ children }: { children: ReactElement }): ReactElement {
     onSuccess: () => { void client.invalidateQueries(); },
   });
 
-  if (health.isPending) return <p className="muted" style={{ padding: 32 }}>Connecting…</p>;
+  if (health.isPending || (health.data?.needsSetup === false && session.isPending)) {
+    return <LoadingOverlay label="Connecting to the studio…" />;
+  }
 
   if (health.error) {
     return (

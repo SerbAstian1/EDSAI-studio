@@ -190,6 +190,17 @@ export const instrumentNames = (): string[] => Object.keys(INSTRUMENT_FUNCTIONS)
  * rejects a malformed call rather than letting a wrong shape reach an
  * instrument and produce a number out of nonsense.
  */
+function withoutNullPlaceholders(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutNullPlaceholders);
+  if (typeof value !== 'object' || value === null) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, child]) => child !== null)
+      .map(([key, child]) => [key, withoutNullPlaceholders(child)]),
+  );
+}
+
 export function runInstrument(name: string, input: unknown): unknown {
   const fn = INSTRUMENT_FUNCTIONS[name];
   if (!fn) {
@@ -197,7 +208,7 @@ export function runInstrument(name: string, input: unknown): unknown {
   }
 
   const schema = instruments.ToolInput[name as instruments.ToolName];
-  const parsed = schema.safeParse(input);
+  const parsed = schema.safeParse(withoutNullPlaceholders(input));
   if (!parsed.success) {
     throw new Error(
       `${name} received input its schema rejects: ` +

@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { INSTRUMENT_TOOLS, toolNames, ToolInput } from '../src/tools.js';
 import * as instruments from '../src/index.js';
 
+type JsonSchema = Record<string, unknown>;
+
+function objectSchemas(value: unknown): JsonSchema[] {
+  if (Array.isArray(value)) return value.flatMap(objectSchemas);
+  if (typeof value !== 'object' || value === null) return [];
+
+  const schema = value as JsonSchema;
+  const nested = Object.values(schema).flatMap(objectSchemas);
+  return schema['type'] === 'object' && typeof schema['properties'] === 'object'
+    ? [schema, ...nested]
+    : nested;
+}
+
 /**
  * Strict tool use requires `strict: true` on the tool definition, and a schema
  * carrying `additionalProperties: false` plus `required`. These tests hold that
@@ -20,9 +33,13 @@ describe('model tool definitions', () => {
     }
   });
 
-  it('closes every schema to additional properties', () => {
+  it('closes every object and requires every declared property', () => {
     for (const tool of INSTRUMENT_TOOLS) {
-      expect(tool.inputSchema['additionalProperties'], tool.name).toBe(false);
+      for (const schema of objectSchemas(tool.inputSchema)) {
+        const properties = schema['properties'] as JsonSchema;
+        expect(schema['additionalProperties'], tool.name).toBe(false);
+        expect(schema['required'], tool.name).toEqual(Object.keys(properties));
+      }
     }
   });
 
@@ -34,10 +51,20 @@ describe('model tool definitions', () => {
     }
   });
 
-  it('lists required fields wherever a tool has any', () => {
-    const withRequired = INSTRUMENT_TOOLS.filter((t) => Array.isArray(t.inputSchema['required']));
-    // Only seo_lengths is entirely optional — a page may legitimately lack all of them.
-    expect(withRequired.length).toBe(INSTRUMENT_TOOLS.length - 1);
+  it('makes semantically optional properties nullable on the wire', () => {
+    const composition = INSTRUMENT_TOOLS.find((tool) => tool.name === 'composition_check');
+    const properties = composition?.inputSchema['properties'] as JsonSchema;
+    const elements = properties['elements'] as JsonSchema;
+    const itemProperties = (elements['items'] as JsonSchema)['properties'] as JsonSchema;
+
+    expect(JSON.stringify(properties['eyePath'])).toContain('"null"');
+    expect(JSON.stringify(itemProperties['role'])).toContain('"null"');
+  });
+
+  it('uses homogeneous arrays instead of unsupported tuple schemas', () => {
+    for (const tool of INSTRUMENT_TOOLS) {
+      expect(JSON.stringify(tool.inputSchema), tool.name).not.toContain('"prefixItems"');
+    }
   });
 
   it('strips the JSON Schema dialect declaration, which is noise on the wire', () => {
