@@ -79,7 +79,7 @@ export default function Portals(): ReactElement {
           <a href="#/clients"><button className="primary">Go to clients</button></a>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Given to</th><th>Client</th><th>Opens</th><th>Use</th><th>Expires</th><th /></tr>
           </thead>
@@ -88,23 +88,23 @@ export default function Portals(): ReactElement {
               const left = daysLeft(key.expiresAt);
               return (
                 <tr key={key.id}>
-                  <td><strong>{key.label}</strong></td>
-                  <td>
+                  <td data-label="Given to"><strong>{key.label}</strong></td>
+                  <td data-label="Client">
                     <a href={`#/clients/${key.clientId}`}>
                       {clientName.get(key.clientId) ?? key.clientId}
                     </a>
                   </td>
-                  <td className="muted">
+                  <td className="muted" data-label="Opens">
                     {key.collections && key.collections.length > 0
                       ? key.collections.join(', ')
                       : 'Everything approved'}
                   </td>
-                  <td className="muted">
+                  <td className="muted" data-label="Use">
                     {key.lastUsedAt
                       ? `${key.uses} time${key.uses === 1 ? '' : 's'}`
                       : 'Never opened'}
                   </td>
-                  <td>
+                  <td data-label="Expires">
                     {left <= 7
                       ? <span className="pill major">{left} day{left === 1 ? '' : 's'} left</span>
                       : <span className="muted">{left} days left</span>}

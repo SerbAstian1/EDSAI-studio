@@ -224,11 +224,11 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
   if (editing) {
     return (
       <tr>
-        <td><input value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" /></td>
-        <td><input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" /></td>
-        <td><input value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" /></td>
-        <td><input value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="WhatsApp number" /></td>
-        <td>
+        <td data-label="Name"><input value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" /></td>
+        <td data-label="Title"><input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" /></td>
+        <td data-label="Email"><input value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" /></td>
+        <td data-label="WhatsApp"><input value={phone} onChange={(e) => setPhone(e.target.value)} aria-label="WhatsApp number" /></td>
+        <td data-label="Decides">
           <label className="row" style={{ gap: 4 }}>
             <input type="checkbox" checked={decisionMaker}
                    onChange={(e) => setDecisionMaker(e.target.checked)} />
@@ -246,11 +246,11 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
 
   return (
     <tr>
-      <td><strong>{contact.name}</strong></td>
-      <td className="muted">{contact.title ?? '—'}</td>
-      <td className="muted">{contact.email ?? '—'}</td>
-      <td className="muted">{contact.phone ?? '—'}</td>
-      <td>{contact.decisionMaker ? <span className="pill pass">yes</span> : ''}</td>
+      <td data-label="Name"><strong>{contact.name}</strong></td>
+      <td className="muted" data-label="Title">{contact.title ?? '—'}</td>
+      <td className="muted" data-label="Email">{contact.email ?? '—'}</td>
+      <td className="muted" data-label="WhatsApp">{contact.phone ?? '—'}</td>
+      <td data-label="Decides">{contact.decisionMaker ? <span className="pill pass">yes</span> : '—'}</td>
       <td className="actions">
         <OverflowMenu label={`Actions for ${contact.name}`} items={[
           { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
@@ -305,19 +305,19 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
   if (editing) {
     return (
       <tr>
-        <td><input value={name} onChange={(e) => setName(e.target.value)} aria-label="Project name" /></td>
-        <td>
+        <td data-label="Project"><input value={name} onChange={(e) => setName(e.target.value)} aria-label="Project name" /></td>
+        <td data-label="Kind">
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
             {PROJECT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         </td>
-        <td>
+        <td data-label="Phase">
           <select value={phase} onChange={(e) => setPhase(e.target.value)}>
             {PROJECT_PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </td>
-        <td className="muted">{project.deadline ?? '—'}</td>
-        <td>
+        <td className="muted" data-label="Deadline">{project.deadline ?? '—'}</td>
+        <td data-label="Figma">
           <input value={figmaUrl} onChange={(e) => setFigmaUrl(e.target.value)}
                  aria-label="Figma file" placeholder="https://figma.com/file/…" />
         </td>
@@ -332,11 +332,11 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
 
   return (
     <tr>
-      <td><strong>{project.name}</strong></td>
-      <td className="muted">{project.kind}</td>
-      <td><span className="pill minor">{project.phase}</span></td>
-      <td className="muted">{project.deadline ?? '—'}</td>
-      <td>
+      <td data-label="Project"><strong>{project.name}</strong></td>
+      <td className="muted" data-label="Kind">{project.kind}</td>
+      <td data-label="Phase"><span className="pill minor">{project.phase}</span></td>
+      <td className="muted" data-label="Deadline">{project.deadline ?? '—'}</td>
+      <td data-label="Figma">
         {project.figmaUrl
           ? <a href={project.figmaUrl} target="_blank" rel="noreferrer" className="row" style={{ gap: 4, display: 'inline-flex' }}>
               Figma <ExternalLink size={12} aria-hidden="true" />
@@ -473,7 +473,7 @@ export default function ClientDetail({ clientId, tab }: {
         ? <p className="muted">Nobody recorded yet. A project whose approver is unnamed is a
             project whose approvals stall.</p>
         : (
-          <table>
+          <table className="stacky">
             <thead><tr><th>Name</th><th>Title</th><th>Email</th><th>WhatsApp</th><th>Decides</th><th /></tr></thead>
             <tbody>
               {contacts.map((contact) => (
@@ -501,7 +501,7 @@ export default function ClientDetail({ clientId, tab }: {
       {projects.length === 0
         ? <p className="muted">No projects yet.</p>
         : (
-          <table>
+          <table className="stacky">
             <thead><tr><th>Project</th><th>Kind</th><th>Phase</th><th>Deadline</th><th>Figma</th><th /></tr></thead>
             <tbody>
               {projects.map((project) => (

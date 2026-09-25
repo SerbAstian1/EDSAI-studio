@@ -111,16 +111,16 @@ export default function FilesSection({ client, canWrite }: { client: Client; can
             />
           </div>
 
-          <table>
+          <table className="stacky">
             <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Added</th><th /></tr></thead>
             <tbody>
               {filtered.map((asset) => (
                 <tr key={asset.id}>
-                  <td><strong>{asset.filename}</strong></td>
-                  <td className="muted">{asset.kind}</td>
-                  <td className="mono">{readableSize(asset.bytes)}</td>
-                  <td className="muted">{asset.uploadedAt.slice(0, 10)}</td>
-                  <td>
+                  <td data-label="Name"><strong>{asset.filename}</strong></td>
+                  <td className="muted" data-label="Kind">{asset.kind}</td>
+                  <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
+                  <td className="muted" data-label="Added">{asset.uploadedAt.slice(0, 10)}</td>
+                  <td className="actions">
                     <a href={api.downloadPath(asset.id)} download={asset.filename}>
                       <button type="button">Download</button>
                     </a>

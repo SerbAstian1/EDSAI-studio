@@ -61,7 +61,7 @@ function DepartmentRow({ department, override, onChanged }: {
                 onSubmit={(e) => { e.preventDefault(); if (reason.trim()) reduce.mutate(); }}>
             <input value={reason} onChange={(e) => setReason(e.target.value)}
                    placeholder="Why kept, and what it's reduced to…" aria-label="Reason"
-                   style={{ minWidth: 260 }} />
+                   className="process-reason" />
             <button type="submit" className="primary" disabled={!reason.trim() || reduce.isPending}>
               {reduce.isPending ? 'Saving…' : 'Save'}
             </button>

@@ -3,9 +3,14 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DiskAssetStore, RunStore } from '@edsai/engine';
 import {
+  departmentModelSelector,
   Executor,
+  lowEffortForGpt6,
   OPENAI_DEFAULT_MODEL,
   OpenAIModelClient,
+  parseDepartmentIds,
+  parseMaxOutputTokens,
+  parseModelEffort,
   RehearsalClient,
   REHEARSAL_MODEL,
 } from '@edsai/executor';
@@ -40,6 +45,12 @@ const rubric = buildRubric();
 const rehearsal = process.env['EDSAI_REHEARSAL'] === '1';
 const rehearsalDelay = Number.parseInt(process.env['EDSAI_REHEARSAL_DELAY_MS'] ?? '', 10);
 const openaiApiKey = process.env['OPENAI_API_KEY'];
+const openaiModel = process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL;
+const brandModel = process.env['EDSAI_BRAND_MODEL']?.trim() || undefined;
+const brandModelDepartments = parseDepartmentIds(process.env['EDSAI_BRAND_MODEL_DEPARTMENTS']);
+const effortSetting = process.env['EDSAI_REASONING_EFFORT'];
+const reasoningEffort = parseModelEffort(effortSetting);
+const maxOutputTokens = parseMaxOutputTokens(process.env['EDSAI_MAX_OUTPUT_TOKENS']);
 
 const executor = rehearsal
   ? new Executor({
@@ -48,10 +59,16 @@ const executor = rehearsal
       rubric,
       ...(Number.isFinite(rehearsalDelay) ? { delayMs: rehearsalDelay } : {}),
     }),
-  })
-  : openaiApiKey
+    })
+    : openaiApiKey
     ? new Executor({
-      model: process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL,
+      model: openaiModel,
+      ...(brandModel ? {
+        modelFor: departmentModelSelector(openaiModel, brandModel, brandModelDepartments),
+      } : {}),
+      ...(reasoningEffort ? { effort: reasoningEffort } : {}),
+      ...(effortSetting === undefined ? { effortFor: lowEffortForGpt6 } : {}),
+      maxOutputTokens,
       client: new OpenAIModelClient({ apiKey: openaiApiKey }),
     })
     : undefined;
@@ -110,7 +127,9 @@ process.stdout.write(app
 process.stdout.write(rehearsal
   ? '  runs     REHEARSAL (EDSAI_REHEARSAL=1) — departments produce placeholders, no model is called\n'
   : executor
-    ? `  runs     OpenAI Responses API on ${executor.model}\n`
+    ? `  runs     OpenAI Responses API on ${executor.model}`
+      + `${brandModel ? `; ${brandModel} for departments ${brandModelDepartments.join(',')}` : ''}`
+      + `; max ${maxOutputTokens} output tokens\n`
     : '  runs     no OPENAI_API_KEY; runs are created but not executed\n');
 process.stdout.write(server.devOwnerCreated
   ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`

@@ -1,3 +1,4 @@
+export * from './configuration.js';
 export * from './executor.js';
 export * from './failure.js';
 export * from './openai.js';

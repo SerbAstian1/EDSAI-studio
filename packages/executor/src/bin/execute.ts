@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { RunContext, RunStore, runInstrument, type InstrumentCall } from '@edsai/engine';
 import { buildRubric } from '@edsai/rubric';
+import {
+  departmentModelSelector, lowEffortForGpt6, parseDepartmentIds, parseMaxOutputTokens,
+  parseModelEffort,
+} from '../configuration.js';
 import { Executor, TurnRefused } from '../executor.js';
 import { diagnose } from '../failure.js';
 import { OPENAI_DEFAULT_MODEL, OpenAIModelClient } from '../openai.js';
 import { addUsage, NO_USAGE } from '../pricing.js';
-import type { ModelEffort } from '../protocol.js';
 import { RehearsalClient, REHEARSAL_MODEL } from '../rehearsal.js';
 
 const usage = `edsai-execute <runId> [--rehearse] [--delay-ms <milliseconds>]
@@ -17,7 +20,8 @@ const usage = `edsai-execute <runId> [--rehearse] [--delay-ms <milliseconds>]
 
   Needs OPENAI_API_KEY for live execution. Use --rehearse (or
   EDSAI_REHEARSAL=1) for marked placeholder output. EDSAI_DB selects the
-  database (default .edsai/runs.db).
+  database (default .edsai/runs.db). EDSAI_BRAND_MODEL optionally routes the
+  brand-critical departments to a second model.
 `;
 
 const flag = (argv: string[], name: string): string | undefined => {
@@ -42,7 +46,12 @@ async function main(argv: string[]): Promise<number> {
   const store = new RunStore(process.env['EDSAI_DB'] ?? '.edsai/runs.db');
   const context = new RunContext({ store });
   const delay = Number.parseInt(flag(argv, 'delay-ms') ?? '', 10);
-  const effort = modelEffort(flag(argv, 'effort'));
+  const explicitModel = flag(argv, 'model');
+  const model = explicitModel ?? process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL;
+  const brandModel = explicitModel ? undefined : process.env['EDSAI_BRAND_MODEL']?.trim() || undefined;
+  const effortSetting = flag(argv, 'effort') ?? process.env['EDSAI_REASONING_EFFORT'];
+  const effort = parseModelEffort(effortSetting);
+  const maxOutputTokens = parseMaxOutputTokens(process.env['EDSAI_MAX_OUTPUT_TOKENS']);
   const executor = rehearsal
     ? new Executor({
       model: REHEARSAL_MODEL,
@@ -52,8 +61,15 @@ async function main(argv: string[]): Promise<number> {
       }),
     })
     : new Executor({
-      model: flag(argv, 'model') ?? process.env['EDSAI_MODEL'] ?? OPENAI_DEFAULT_MODEL,
+      model,
+      ...(brandModel ? {
+        modelFor: departmentModelSelector(
+          model, brandModel, parseDepartmentIds(process.env['EDSAI_BRAND_MODEL_DEPARTMENTS']),
+        ),
+      } : {}),
       ...(effort ? { effort } : {}),
+      ...(effortSetting === undefined ? { effortFor: lowEffortForGpt6 } : {}),
+      maxOutputTokens,
       client: new OpenAIModelClient({ apiKey: requiredApiKey(openaiApiKey) }),
     });
 
@@ -82,7 +98,8 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(
         `${accepted.output.scores.length} scores, ${accepted.output.targets.length} targets`
         + `${result.instrumentCalls > 0 ? `, ${result.instrumentCalls} measurements` : ''}`
-        + `${accepted.violations.length > 0 ? `, ${accepted.violations.length} violations` : ''}\n`,
+        + `${accepted.violations.length > 0 ? `, ${accepted.violations.length} violations` : ''}`
+        + `${result.model !== model ? `, model ${result.model}` : ''}\n`,
       );
       for (const violation of accepted.violations) {
         process.stderr.write(`    violation (${violation.kind}): ${violation.detail}\n`);
@@ -105,13 +122,6 @@ async function main(argv: string[]): Promise<number> {
   );
   store.close();
   return halted ? 1 : 0;
-}
-
-function modelEffort(value: string | undefined): ModelEffort | undefined {
-  if (value === undefined) return undefined;
-  const efforts: ModelEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-  if (efforts.includes(value as ModelEffort)) return value as ModelEffort;
-  throw new Error(`Unknown reasoning effort "${value}".`);
 }
 
 function requiredApiKey(value: string | undefined): string {

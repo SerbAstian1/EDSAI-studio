@@ -36,7 +36,11 @@ those and not all of them can be given a file.
 | `EDSAI_ASSETS` | `.edsai/assets` | Where uploaded files are written. |
 | `EDSAI_APP` | `packages/studio/dist` | The built Studio. Absent or missing means the API is served alone. |
 | `OPENAI_API_KEY` | none | Server-side OpenAI project key. Absent means runs are created but not executed. |
-| `EDSAI_MODEL` | `gpt-6-astra` | OpenAI model used by the Responses API adapter. |
+| `EDSAI_MODEL` | `gpt-6-sol` | OpenAI model used for ordinary pipeline departments. |
+| `EDSAI_BRAND_MODEL` | none | Optional premium model for the brand-critical departments listed below. |
+| `EDSAI_BRAND_MODEL_DEPARTMENTS` | `1,2,5,12,13,14` | Departments routed to `EDSAI_BRAND_MODEL` when it is set. |
+| `EDSAI_REASONING_EFFORT` | `low` on GPT-6 | Reasoning effort. Set `default` to omit the override. |
+| `EDSAI_MAX_OUTPUT_TOKENS` | `16000` | Maximum output and reasoning tokens for one model response. |
 | `EDSAI_REHEARSAL` | off | Set to `1` for clearly marked placeholder output while checking the full pipeline. |
 | `EDSAI_REHEARSAL_DELAY_MS` | `1500` | Delay before each rehearsal department completes, in milliseconds. |
 | `EDSAI_ORIGINS` | — | Extra browser origins allowed to call the API. Not needed for the one-origin layout. |
@@ -68,9 +72,27 @@ increasing `Retry-After` delay.
 
 The bundled adapter uses OpenAI's Responses API with strict function tools.
 Set `OPENAI_API_KEY` on the API process; never put it in a `VITE_` variable or
-any client-side configuration. The default model is `gpt-6-astra`; set
-`EDSAI_MODEL` to another Responses-compatible model when cost, latency, or
-account access calls for it.
+any client-side configuration. The default model is `gpt-6-sol`, which keeps
+strong reasoning while avoiding Astra's flagship price on every department.
+Set `EDSAI_MODEL=gpt-6-luna` for a cheaper draft environment, or choose another
+Responses-compatible model when cost, latency, or account access calls for it.
+
+The Brand Hub does not call a model: it renders approved assets and the brand
+values already stored for the client. If the upstream brand thinking needs the
+highest tier, set `EDSAI_BRAND_MODEL=gpt-6-astra`. Only Brand Strategy (1),
+Creative Direction (2), Interface Design System (5), Brand Identity (12),
+Physical Collateral (13), and Poster Composition (14) use it by default. Leave
+the variable blank to keep the entire run on Sol.
+
+`EDSAI_REASONING_EFFORT=low` reduces reasoning tokens, and
+`EDSAI_MAX_OUTPUT_TOKENS=16000` prevents a single response from consuming the
+old 64K ceiling. Raise the latter only after a run actually stops at the limit.
+Also set an OpenAI project [hard spend limit][openai-spend-limits] before
+enabling live runs. Spend alerts only notify you; they do not stop requests.
+The hard limit is the final guard against an unexpected run consuming more
+credit than planned.
+
+[openai-spend-limits]: https://developers.openai.com/api/docs/guides/spend-limits#choose-a-spend-control
 
 Requests use stateless response replay (`store: false`). The adapter sends the
 encrypted reasoning state back only within the active department turn, maps
@@ -108,7 +130,10 @@ health check is and never to run more than one replica.
    | --- | --- |
    | `PORT` | `4317` |
    | `OPENAI_API_KEY` | the server-side OpenAI project key |
-   | `EDSAI_MODEL` | optional; defaults to `gpt-6-astra` |
+   | `EDSAI_MODEL` | optional; defaults to `gpt-6-sol` |
+   | `EDSAI_BRAND_MODEL` | optional; use `gpt-6-astra` only for premium brand departments |
+   | `EDSAI_REASONING_EFFORT` | `low` |
+   | `EDSAI_MAX_OUTPUT_TOKENS` | `16000` |
    | `EDSAI_ORIGINS` | the Studio's address on Vercel, once it exists (see below) |
 
 3. **Volume.** Service → Volumes → Add Volume, mount path **`/data`**. That

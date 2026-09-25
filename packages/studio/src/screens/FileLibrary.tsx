@@ -79,15 +79,15 @@ export default function FileLibrary(): ReactElement {
                 ? <span className="pill major">{pending} not yet visible</span>
                 : <span className="pill pass">All visible to the client</span>}
             </div>
-            <table>
+            <table className="stacky">
               <thead><tr><th>File</th><th>Collection</th><th>Size</th><th>In the portal</th><th /></tr></thead>
               <tbody>
                 {mine.slice(0, 6).map((asset) => (
                   <tr key={asset.id}>
-                    <td>{asset.filename}</td>
-                    <td className="muted">{asset.collection ?? 'Unfiled'}</td>
-                    <td className="mono">{readableSize(asset.bytes)}</td>
-                    <td>
+                    <td data-label="File">{asset.filename}</td>
+                    <td className="muted" data-label="Collection">{asset.collection ?? 'Unfiled'}</td>
+                    <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
+                    <td data-label="In the portal">
                       {asset.approved
                         ? <span className="pill pass">Visible</span>
                         : <span className="pill major">Not yet</span>}

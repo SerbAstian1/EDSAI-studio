@@ -54,23 +54,23 @@ export default function Projects(): ReactElement {
           </p>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Project</th><th>Client</th><th>Kind</th><th>Phase</th><th>Deadline</th><th>Figma</th><th /></tr>
           </thead>
           <tbody>
             {projects.data.map((project) => (
               <tr key={project.id}>
-                <td><strong>{project.name}</strong></td>
-                <td>
+                <td data-label="Project"><strong>{project.name}</strong></td>
+                <td data-label="Client">
                   <a href={`#/clients/${project.clientId}`}>
                     {clientName.get(project.clientId) ?? project.clientId}
                   </a>
                 </td>
-                <td className="muted">{project.kind}</td>
-                <td><span className={`pill ${PHASE_TONE[project.phase] ?? 'minor'}`}>{project.phase}</span></td>
-                <td className="muted">{project.deadline ?? '—'}</td>
-                <td>
+                <td className="muted" data-label="Kind">{project.kind}</td>
+                <td data-label="Phase"><span className={`pill ${PHASE_TONE[project.phase] ?? 'minor'}`}>{project.phase}</span></td>
+                <td className="muted" data-label="Deadline">{project.deadline ?? '—'}</td>
+                <td data-label="Figma">
                   {project.figmaUrl
                     ? <a href={project.figmaUrl} target="_blank" rel="noreferrer">Open ↗</a>
                     : <span className="muted">—</span>}

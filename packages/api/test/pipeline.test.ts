@@ -166,6 +166,24 @@ describe('running a whole run', () => {
     store.close();
   });
 
+  it('prices each department with the model that actually ran it', async () => {
+    const { context, run, store } = fixture();
+    const premiumDepartment = run.activatedDepartments[0];
+    const result = await runPipeline({
+      context,
+      executor: new Executor({
+        client: alwaysSubmits(),
+        model: 'balanced',
+        modelFor: (turn) => turn.department.id === premiumDepartment ? 'premium' : 'balanced',
+        estimateCost: (_used, model) => model === 'premium' ? 2 : 1,
+      }),
+      events: new RunEvents(), runId: run.id,
+    });
+
+    expect(result.cost).toBe(run.activatedDepartments.length + 1);
+    store.close();
+  });
+
   it('reports each department as it lands, so a long run is watchable', async () => {
     const { context, run, store } = fixture();
     const events = new RunEvents();

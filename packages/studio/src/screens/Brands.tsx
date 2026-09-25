@@ -51,17 +51,17 @@ export default function Brands(): ReactElement {
           <a href="#/"><button>See runs in progress</button></a>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Brand</th><th>Run</th><th>Departments</th><th>Portal</th><th /></tr>
           </thead>
           <tbody>
             {brands.map((run) => (
               <tr key={run.id}>
-                <td><strong>{run.projectId}</strong></td>
-                <td><a className="mono" href={`#/run/${run.id}/scorecard`}>{run.id}</a></td>
-                <td className="mono">{run.activatedDepartments.length}</td>
-                <td><a href="#/portals">Publishable</a></td>
+                <td data-label="Brand"><strong>{run.projectId}</strong></td>
+                <td data-label="Run"><a className="mono" href={`#/run/${run.id}/scorecard`}>{run.id}</a></td>
+                <td className="mono" data-label="Departments">{run.activatedDepartments.length}</td>
+                <td data-label="Portal"><a href="#/portals">Publishable</a></td>
                 <td className="actions">
                   <OverflowMenu label={`Actions for brand ${run.projectId}`} items={[
                     { label: 'Brand values', icon: Palette, onSelect: () => go(`#/clients/${run.clientId}/brand`) },

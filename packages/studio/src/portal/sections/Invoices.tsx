@@ -61,21 +61,21 @@ export default function InvoicesSection({ client }: { client: Client }): ReactEl
       )}
 
       {data && data.invoices.length > 0 && (
-        <table>
+        <table className="stacky">
           <thead><tr><th>Invoice</th><th>Description</th><th>Due</th><th>Amount</th><th>Status</th><th /></tr></thead>
           <tbody>
             {data.invoices.map((invoice) => (
               <tr key={invoice.id}>
-                <td className="mono">{invoice.number}</td>
-                <td>{invoice.description}</td>
-                <td className="muted">{invoice.dueDate}</td>
-                <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
-                <td>
+                <td className="mono" data-label="Invoice">{invoice.number}</td>
+                <td data-label="Description">{invoice.description}</td>
+                <td className="muted" data-label="Due">{invoice.dueDate}</td>
+                <td className="mono" data-label="Amount">{formatCents(invoice.amountCents, invoice.currency)}</td>
+                <td data-label="Status">
                   <span className={`pill ${STATUS_TONE[invoice.status]}`}>
                     {STATUS_LABEL[invoice.status]}
                   </span>
                 </td>
-                <td>
+                <td className="actions">
                   <a href={api.invoiceDocumentUrl(invoice.id)} target="_blank" rel="noreferrer">
                     <button type="button">Download</button>
                   </a>

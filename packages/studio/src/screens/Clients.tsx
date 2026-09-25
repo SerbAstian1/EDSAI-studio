@@ -119,24 +119,24 @@ export default function Clients(): ReactElement {
           <button className="primary" onClick={() => setAdding(true)}>New client</button>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Client</th><th>Industry</th><th>Projects</th><th>Contacts</th><th>Status</th><th /></tr>
           </thead>
           <tbody>
             {clients.map((client) => (
               <tr key={client.id}>
-                <td>
+                <td data-label="Client">
                   <a href={`#/clients/${client.id}`}><strong>{client.name}</strong></a>
                   <div className="muted mono" style={{ fontSize: 12 }}>/{client.slug}</div>
                   {refused?.id === client.id && (
                     <div className="err" style={{ fontSize: 13, marginTop: 4 }}>{refused.message}</div>
                   )}
                 </td>
-                <td className="muted">{client.industry ?? '—'}</td>
-                <td className="mono">{client.projects ?? 0}</td>
-                <td className="mono">{client.contacts ?? 0}</td>
-                <td><span className={`pill ${STATUS_TONE[client.status]}`}>{client.status}</span></td>
+                <td className="muted" data-label="Industry">{client.industry ?? '—'}</td>
+                <td className="mono" data-label="Projects">{client.projects ?? 0}</td>
+                <td className="mono" data-label="Contacts">{client.contacts ?? 0}</td>
+                <td data-label="Status"><span className={`pill ${STATUS_TONE[client.status]}`}>{client.status}</span></td>
                 <td className="actions">
                   <OverflowMenu label={`Actions for ${client.name}`} items={[
                     { label: 'Open', icon: ExternalLink, onSelect: () => go(`#/clients/${client.id}`) },

@@ -4,6 +4,9 @@ import type {
   ModelClient, ModelMessage, ModelRequest, ModelResponse, ModelTextBlock, ModelToolCallBlock,
   ModelToolResultBlock,
 } from './protocol.js';
+import {
+  DEFAULT_MAX_OUTPUT_TOKENS, type EffortSelector, type ModelSelector,
+} from './configuration.js';
 import { SUBMIT_TOOL, SUBMIT_TOOL_NAME, submissionFrom } from './submission.js';
 import {
   addUsage, cacheHitRate, NO_USAGE, type CostEstimator, type Usage,
@@ -17,7 +20,10 @@ export type {
 export interface ExecutorOptions {
   client?: ModelClient;
   model?: string;
+  modelFor?: ModelSelector;
   effort?: ModelRequest['effort'];
+  effortFor?: EffortSelector;
+  maxOutputTokens?: number;
   maxToolRounds?: number;
   estimateCost?: CostEstimator;
   onEvent?: (event: ExecutorEvent) => void;
@@ -45,14 +51,16 @@ export class TurnRefused extends Error {
   }
 }
 
-const MAX_TOKENS = 64_000;
 const DEFAULT_MODEL = 'custom';
 const DEFAULT_TOOL_ROUNDS = 12;
 
 export class Executor {
   private readonly client: ModelClient;
   readonly model: string;
+  private readonly modelFor: ModelSelector | undefined;
   private readonly effort: ExecutorOptions['effort'];
+  private readonly effortFor: EffortSelector | undefined;
+  private readonly maxOutputTokens: number;
   private readonly maxToolRounds: number;
   private readonly estimateCost: CostEstimator | undefined;
   private readonly onEvent: (event: ExecutorEvent) => void;
@@ -63,7 +71,10 @@ export class Executor {
     }
     this.client = options.client;
     this.model = options.model ?? DEFAULT_MODEL;
+    this.modelFor = options.modelFor;
     this.effort = options.effort;
+    this.effortFor = options.effortFor;
+    this.maxOutputTokens = options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
     this.maxToolRounds = options.maxToolRounds ?? DEFAULT_TOOL_ROUNDS;
     this.estimateCost = options.estimateCost;
     this.onEvent = options.onEvent ?? (() => {});
@@ -74,6 +85,8 @@ export class Executor {
     callInstrument: (name: string, input: unknown) => unknown,
     signal?: AbortSignal,
   ): Promise<TurnResult> {
+    const model = this.modelFor?.(turn) ?? this.model;
+    const effort = this.effort ?? this.effortFor?.(turn, model);
     this.onEvent({
       type: 'department-started',
       departmentId: turn.department.id,
@@ -89,7 +102,7 @@ export class Executor {
     let instrumentCalls = 0;
 
     for (let round = 0; round <= this.maxToolRounds; round += 1) {
-      const response = await this.send(turn, messages, signal);
+      const response = await this.send(turn, messages, model, effort, signal);
       usage = addUsage(usage, readUsage(response));
 
       if (response.stopReason === 'refusal') {
@@ -103,7 +116,7 @@ export class Executor {
           block.type === 'tool-call' && block.name === SUBMIT_TOOL_NAME,
       );
       if (submitted) {
-        const cost = this.costOf(usage);
+        const cost = this.costOf(usage, model);
         this.onEvent({
           type: 'department-finished',
           departmentId: turn.department.id,
@@ -116,7 +129,7 @@ export class Executor {
           ...(cost === undefined ? {} : { cost }),
           cacheHitRate: cacheHitRate(usage),
           instrumentCalls,
-          model: this.model,
+          model,
         };
       }
 
@@ -170,19 +183,21 @@ export class Executor {
     );
   }
 
-  costOf(usage: Usage): number | undefined {
-    return this.estimateCost?.(usage, this.model);
+  costOf(usage: Usage, model = this.model): number | undefined {
+    return this.estimateCost?.(usage, model);
   }
 
   private async send(
     turn: PreparedTurn,
     messages: ModelMessage[],
+    model: string,
+    effort: ModelRequest['effort'],
     signal?: AbortSignal,
   ): Promise<ModelResponse> {
     return this.client.complete({
-      model: this.model,
-      maxOutputTokens: MAX_TOKENS,
-      ...(this.effort ? { effort: this.effort } : {}),
+      model,
+      maxOutputTokens: this.maxOutputTokens,
+      ...(effort ? { effort } : {}),
       ...(signal ? { signal } : {}),
       system: this.systemContent(turn),
       tools: [...INSTRUMENT_TOOLS, SUBMIT_TOOL],

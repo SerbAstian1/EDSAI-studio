@@ -85,7 +85,7 @@ export default function Discovery(): ReactElement {
               ? 'Every onboarding here has become a project.'
               : `${outstanding} still outstanding.`}
           </p>
-          <table>
+          <table className="stacky">
             <thead>
               <tr>
                 <th>Client</th><th>Status</th><th>Progress</th><th>Questions left</th><th>Sent</th><th />
@@ -94,27 +94,27 @@ export default function Discovery(): ReactElement {
             <tbody>
               {onboardings.map((onboarding) => (
                 <tr key={onboarding.id}>
-                  <td>
+                  <td data-label="Client">
                     <a href={`#/clients/${onboarding.clientId}`}>
                       <strong>{onboarding.clientName ?? onboarding.clientId}</strong>
                     </a>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`pill ${STATUS_TONE[onboarding.status]}`}>
                       {STATUS_LABEL[onboarding.status]}
                     </span>
                   </td>
-                  <td style={{ minWidth: 140 }}>
+                  <td data-label="Progress">
                     {onboarding.progress ? (
                       <div className="meter"><i style={{ width: `${onboarding.progress.percent}%` }} /></div>
                     ) : <span className="muted">—</span>}
                   </td>
-                  <td className="muted">
+                  <td className="muted" data-label="Questions left">
                     {onboarding.progress && onboarding.progress.outstanding.length > 0
                       ? `${onboarding.progress.outstanding.length} question${onboarding.progress.outstanding.length === 1 ? '' : 's'}`
                       : '—'}
                   </td>
-                  <td className="muted">{onboarding.createdAt.slice(0, 10)}</td>
+                  <td className="muted" data-label="Sent">{onboarding.createdAt.slice(0, 10)}</td>
                   <td className="actions">
                     <OverflowMenu label={`Actions for ${onboarding.clientName ?? 'this discovery'}`}
                                   items={itemsFor(onboarding)} />

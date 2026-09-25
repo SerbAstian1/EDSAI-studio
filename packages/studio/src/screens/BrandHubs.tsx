@@ -75,22 +75,22 @@ export default function BrandHubs(): ReactElement {
           <a href="#/clients"><button type="button">Go to clients</button></a>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Client</th><th>Status</th><th>Tools</th><th>Files</th><th>Designs</th><th>Latest</th><th /></tr>
           </thead>
           <tbody>
             {hubs.map((hub) => (
               <tr key={hub.clientId}>
-                <td>
+                <td data-label="Client">
                   <a href={`#/clients/${hub.clientId}/hub`}><strong>{hub.clientName}</strong></a>
                   <div className="muted" style={{ fontSize: 12 }}>{hub.brandValues} brand values · updated {when(hub.updatedAt)}</div>
                 </td>
-                <td><span className={`pill ${STATUS_TONE[hub.status]}`}>{hub.status}</span></td>
-                <td className="muted">{hub.tools.map((t) => TOOL_NAMES[t] ?? t).join(', ') || '—'}</td>
-                <td className="mono">{hub.approvedAssets}</td>
-                <td className="mono">{hub.designs}</td>
-                <td className="muted">
+                <td data-label="Status"><span className={`pill ${STATUS_TONE[hub.status]}`}>{hub.status}</span></td>
+                <td className="muted" data-label="Tools">{hub.tools.map((t) => TOOL_NAMES[t] ?? t).join(', ') || '—'}</td>
+                <td className="mono" data-label="Files">{hub.approvedAssets}</td>
+                <td className="mono" data-label="Designs">{hub.designs}</td>
+                <td className="muted" data-label="Latest">
                   {hub.recent[0] ? `${hub.recent[0].name} · ${when(hub.recent[0].updatedAt)}` : '—'}
                 </td>
                 <td className="actions">

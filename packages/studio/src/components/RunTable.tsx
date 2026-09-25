@@ -54,7 +54,7 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
   });
 
   return (
-    <table>
+    <table className="stacky run-table">
       <thead>
         <tr>
           <th>Run</th><th>Project</th><th>Level</th>
@@ -74,16 +74,16 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
           const retry = run.status === 'failed' || run.status === 'cancelled' || interrupted;
           return (
             <tr key={run.id}>
-              <td><a className="mono" href={`#/run/${run.id}`}>{run.id}</a></td>
-              <td>{named.get(run.projectId) ?? run.projectId}</td>
-              <td className="mono">{run.level}</td>
-              <td className="mono">
+              <td data-label="Run"><a className="mono" href={`#/run/${run.id}`}>{run.id}</a></td>
+              <td data-label="Project">{named.get(run.projectId) ?? run.projectId}</td>
+              <td className="mono" data-label="Level">{run.level}</td>
+              <td className="mono" data-label="Progress">
                 {done}/{total}
                 <span className="meter" style={{ marginTop: 5 }}>
                   <i style={{ width: total === 0 ? '0%' : `${(done / total) * 100}%` }} />
                 </span>
               </td>
-              <td>
+              <td data-label="Determination">
                 <span className={`pill ${determination === 'FINAL' ? 'pass' : 'minor'}`}>
                   {determination}
                 </span>

@@ -74,7 +74,7 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
   if (editing) {
     return (
       <tr>
-        <td>
+        <td data-label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" />
           <input value={description} onChange={(e) => setDescription(e.target.value)}
                  aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
@@ -83,8 +83,8 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
                  aria-invalid={!figmaOk} style={{ marginTop: 4 }} />
           {!figmaOk && <div className="err" style={{ fontSize: 12, marginTop: 4 }}>{FIGMA_HINT}</div>}
         </td>
-        <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
-        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td className="muted" data-label="Kind">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
+        <td data-label="Due"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
         <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!title.trim() || !figmaOk || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
@@ -97,7 +97,7 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
   return (
     <>
       <tr>
-        <td>
+        <td data-label="Title">
           <strong>{d.title}</strong>
           {d.description && <div className="muted" style={{ fontSize: 13 }}>{d.description}</div>}
           {d.figmaUrl && (
@@ -106,9 +106,9 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
             </div>
           )}
         </td>
-        <td className="muted">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
-        <td className="muted">{d.dueDate ?? '—'}</td>
-        <td>
+        <td className="muted" data-label="Kind">{KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</td>
+        <td className="muted" data-label="Due">{d.dueDate ?? '—'}</td>
+        <td data-label="Status">
           <select
             value={d.status} className={`pill ${STATUS_TONE[d.status]}`}
             onChange={(e) => setStatus.mutate(e.target.value as Deliverable['status'])}
@@ -229,7 +229,7 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
       )}
 
       {data && data.length > 0 && (
-        <table>
+        <table className="stacky">
           <thead><tr><th>Title</th><th>Kind</th><th>Due</th><th>Status</th><th /></tr></thead>
           <tbody>
             {data.map((d) => <DeliverableRow key={d.id} d={d} onChanged={invalidate} />)}

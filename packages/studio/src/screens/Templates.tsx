@@ -62,26 +62,26 @@ export default function Templates(): ReactElement {
           </p>
         </div>
       ) : (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>File</th><th>Client</th><th>Collection</th><th>Size</th><th /></tr>
           </thead>
           <tbody>
             {templates.map((asset) => (
               <tr key={asset.id}>
-                <td>
+                <td data-label="File">
                   <strong>{asset.filename}</strong>
                   {asset.description && (
                     <div className="muted" style={{ fontSize: 13 }}>{asset.description}</div>
                   )}
                 </td>
-                <td>
+                <td data-label="Client">
                   <a href={`#/clients/${asset.clientId}`}>
                     {clientName.get(asset.clientId) ?? asset.clientId}
                   </a>
                 </td>
-                <td className="muted">{asset.collection ?? 'Unfiled'}</td>
-                <td className="mono">{readableSize(asset.bytes)}</td>
+                <td className="muted" data-label="Collection">{asset.collection ?? 'Unfiled'}</td>
+                <td className="mono" data-label="Size">{readableSize(asset.bytes)}</td>
                 <td className="actions"><AssetMenu asset={asset} /></td>
               </tr>
             ))}

@@ -163,15 +163,15 @@ export default function BrandHubAdmin({ clientId }: { clientId: string }): React
           </span>
         </div>
         {(projects.data ?? []).length > 0 ? (
-          <table>
+          <table className="stacky">
             <thead><tr><th>Design</th><th>Tool</th><th>Made by</th><th>Last edited</th></tr></thead>
             <tbody>
               {(projects.data ?? []).map((p) => (
                 <tr key={p.id}>
-                  <td><button type="button" className="link" onClick={() => setTrying({ toolId: p.toolId, project: p })}><strong>{p.name}</strong></button></td>
-                  <td className="muted"><Grid3x3 size={12} aria-hidden="true" /> {p.toolId}</td>
-                  <td className="muted mono" style={{ fontSize: 12 }}>{p.createdBy}</td>
-                  <td className="muted">{new Date(p.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                  <td data-label="Design"><button type="button" className="link" onClick={() => setTrying({ toolId: p.toolId, project: p })}><strong>{p.name}</strong></button></td>
+                  <td className="muted" data-label="Tool"><Grid3x3 size={12} aria-hidden="true" /> {p.toolId}</td>
+                  <td className="muted mono" data-label="Made by" style={{ fontSize: 12 }}>{p.createdBy}</td>
+                  <td className="muted" data-label="Last edited">{new Date(p.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
                 </tr>
               ))}
             </tbody>

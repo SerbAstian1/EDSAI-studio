@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState , type ReactElement } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactElement } from 'react';
 import { flushSync } from 'react-dom';
 import {
   MutationCache, QueryCache, QueryClient, QueryClientProvider, useMutation, useQueryClient,

@@ -49,11 +49,11 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
   if (editing) {
     return (
       <tr>
-        <td className="mono">{invoice.number}</td>
-        <td><input value={description} onChange={(e) => setDescription(e.target.value)}
+        <td className="mono" data-label="Invoice">{invoice.number}</td>
+        <td data-label="Description"><input value={description} onChange={(e) => setDescription(e.target.value)}
                    aria-label="Description" /></td>
-        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
-        <td className="mono muted">{formatCents(invoice.amountCents, invoice.currency)}</td>
+        <td data-label="Due"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td className="mono muted" data-label="Amount">{formatCents(invoice.amountCents, invoice.currency)}</td>
         <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!description.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
@@ -65,11 +65,11 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
 
   return (
     <tr>
-      <td className="mono">{invoice.number}</td>
-      <td>{invoice.description}</td>
-      <td className="muted">{invoice.dueDate}</td>
-      <td className="mono">{formatCents(invoice.amountCents, invoice.currency)}</td>
-      <td><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
+      <td className="mono" data-label="Invoice">{invoice.number}</td>
+      <td data-label="Description">{invoice.description}</td>
+      <td className="muted" data-label="Due">{invoice.dueDate}</td>
+      <td className="mono" data-label="Amount">{formatCents(invoice.amountCents, invoice.currency)}</td>
+      <td data-label="Status"><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
       <td className="actions"><div className="row">
         <button type="button" onClick={() => setPaid.mutate(!invoice.paid)} disabled={setPaid.isPending}>
           {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
@@ -194,7 +194,7 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
       )}
 
       {data && data.invoices.length > 0 && (
-        <table>
+        <table className="stacky">
           <thead>
             <tr><th>Invoice</th><th>Description</th><th>Due</th><th>Amount</th><th>Status</th><th /></tr>
           </thead>

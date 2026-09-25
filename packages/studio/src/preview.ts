@@ -39,6 +39,34 @@ const json = (status: number, body: unknown): Response =>
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 
+function compatibleRecording(path: string, body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const record = body as Record<string, unknown>;
+
+  if (path === '/api/rubric' && !Array.isArray(record['tracks'])) {
+    return { ...record, tracks: [] };
+  }
+
+  if (path === '/api/runs' && Array.isArray(record['runs'])) {
+    return {
+      ...record,
+      runs: record['runs'].map((entry) => {
+        if (!entry || typeof entry !== 'object') return entry;
+        const run = entry as Record<string, unknown>;
+        const tracks = typeof run['tracks'] === 'string'
+          ? run['tracks'].split(/\s+/).filter(Boolean)
+          : run['tracks'];
+        const activatedDepartments = typeof run['activatedDepartments'] === 'string'
+          ? run['activatedDepartments'].split(/\s+/).map(Number).filter(Number.isFinite)
+          : run['activatedDepartments'];
+        return { ...run, tracks, activatedDepartments };
+      }),
+    };
+  }
+
+  return body;
+}
+
 /**
  * The key a recording is filed under: path **and** query.
  *
@@ -81,6 +109,6 @@ export function installPreviewTransport(): void {
           + 'It captures the screens it was built to show, not the whole API.',
       });
     }
-    return json(recorded.status, recorded.body);
+    return json(recorded.status, compatibleRecording(path, recorded.body));
   };
 }

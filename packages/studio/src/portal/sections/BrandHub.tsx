@@ -231,14 +231,14 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
               </div>
             )
             : (
-              <table>
+              <table className="stacky">
                 <thead><tr><th>Design</th><th>Tool</th><th>Last edited</th><th /></tr></thead>
                 <tbody>
                   {(projects.data ?? []).map((p) => (
                     <tr key={p.id}>
-                      <td><button type="button" className="link" onClick={() => setEditing({ toolId: p.toolId, project: p })}><strong>{p.name}</strong></button></td>
-                      <td className="muted">{tools.find((t) => t.id === p.toolId)?.name ?? p.toolId}</td>
-                      <td className="muted">{new Date(p.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                      <td data-label="Design"><button type="button" className="link" onClick={() => setEditing({ toolId: p.toolId, project: p })}><strong>{p.name}</strong></button></td>
+                      <td className="muted" data-label="Tool">{tools.find((t) => t.id === p.toolId)?.name ?? p.toolId}</td>
+                      <td className="muted" data-label="Last edited">{new Date(p.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
                       <td className="actions">
                         <OverflowMenu label={`Actions for ${p.name}`} items={[
                           { label: 'Open', onSelect: () => setEditing({ toolId: p.toolId, project: p }) },

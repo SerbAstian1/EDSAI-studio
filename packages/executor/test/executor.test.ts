@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import type { PreparedTurn } from '@edsai/engine';
 import { Executor, TurnRefused } from '../src/executor.js';
+import { departmentModelSelector, lowEffortForGpt6 } from '../src/configuration.js';
 import { diagnose } from '../src/failure.js';
 import type {
   ModelClient, ModelContentBlock, ModelRequest, ModelResponse, ModelTextBlock, ModelToolCallBlock,
@@ -195,6 +196,28 @@ describe('running one department', () => {
     expect(result.usage.inputTokens).toBe(1500);
     expect(result.usage.outputTokens).toBe(100);
     expect(result.cost ?? 0).toBeGreaterThan(0);
+  });
+
+  it('uses the routed model, low effort and configured output ceiling for a department', async () => {
+    const { client, sent } = fakeClient([
+      response({ content: [finished], stopReason: 'tool-call' }),
+    ]);
+    const routedTurn = {
+      ...turn,
+      department: { ...turn.department, id: 5 },
+    };
+    const result = await new Executor({
+      client,
+      model: 'gpt-6-sol',
+      modelFor: departmentModelSelector('gpt-6-sol', 'gpt-6-astra', [5]),
+      effortFor: lowEffortForGpt6,
+      maxOutputTokens: 16_000,
+    }).runDepartment(routedTurn, () => ({}));
+
+    expect(sent[0]?.model).toBe('gpt-6-astra');
+    expect(sent[0]?.effort).toBe('low');
+    expect(sent[0]?.maxOutputTokens).toBe(16_000);
+    expect(result.model).toBe('gpt-6-astra');
   });
 
   it('refuses rather than looping forever on an instrument', async () => {

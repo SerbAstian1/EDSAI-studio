@@ -20,7 +20,7 @@ import type {
   ModelTool,
 } from './protocol.js';
 
-export const OPENAI_DEFAULT_MODEL = 'gpt-6-astra';
+export const OPENAI_DEFAULT_MODEL = 'gpt-6-sol';
 
 export interface OpenAIResponseCreator {
   create(

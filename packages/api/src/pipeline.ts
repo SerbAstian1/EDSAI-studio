@@ -50,6 +50,11 @@ export async function runPipeline(options: {
   const { context, executor, events, runId } = options;
   const completed: number[] = [];
   let usage = NO_USAGE;
+  let cost: number | undefined;
+
+  const addCost = (amount: number | undefined): void => {
+    if (amount !== undefined) cost = (cost ?? 0) + amount;
+  };
 
   // A retry starts by clearing whatever the last attempt left behind — a run
   // reopened cold reads its own record, not a live event, so a halt that no
@@ -71,7 +76,6 @@ export async function runPipeline(options: {
       });
     }
     events.emit(runId, 'pipeline.cancelled', { completed });
-    const cost = executor.costOf(usage);
     return { completed, usage, ...(cost === undefined ? {} : { cost }) };
   };
 
@@ -87,7 +91,6 @@ export async function runPipeline(options: {
       }
       events.emit(runId, 'pipeline.paused', { completed });
       if (!options.waitWhilePaused) {
-        const cost = executor.costOf(usage);
         return { completed, usage, ...(cost === undefined ? {} : { cost }) };
       }
       await options.waitWhilePaused();
@@ -100,7 +103,6 @@ export async function runPipeline(options: {
 
     const turn = context.prepare(runId);
     if (!turn) {
-      const cost = executor.costOf(usage);
       const current = context.store.getRun(runId);
       if (current && current.status !== 'complete' && current.status !== 'blocked') {
         context.store.saveRun({
@@ -126,6 +128,7 @@ export async function runPipeline(options: {
       }, options.signal);
 
       usage = addUsage(usage, result.usage);
+      addCost(result.cost);
       if (options.isCancelled?.()) return cancelled();
       const accepted = context.accept(runId, turn.department.id, result.submission, calls);
       completed.push(turn.department.id);
@@ -151,6 +154,7 @@ export async function runPipeline(options: {
         violations: accepted.violations.length,
         rejected: accepted.rejected.length,
         instrumentCalls: result.instrumentCalls,
+        model: result.model,
         cost: result.cost,
         cacheHitRate: result.cacheHitRate,
       });
@@ -183,7 +187,6 @@ export async function runPipeline(options: {
           haltedRetryable: diagnosis.retryable,
         });
       }
-      const cost = executor.costOf(usage);
       return {
         completed,
         usage,
@@ -193,6 +196,5 @@ export async function runPipeline(options: {
     }
   }
 
-  const cost = executor.costOf(usage);
   return { completed, usage, ...(cost === undefined ? {} : { cost }) };
 }

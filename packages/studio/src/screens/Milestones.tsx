@@ -54,13 +54,13 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
   if (editing) {
     return (
       <tr>
-        <td />
-        <td>
+        <td className="mono muted" data-label="Order">{index + 1}</td>
+        <td data-label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" />
           <input value={description} onChange={(e) => setDescription(e.target.value)}
                  aria-label="Description" placeholder="Description" style={{ marginTop: 4 }} />
         </td>
-        <td><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
+        <td data-label="Due"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
         <td colSpan={2}><div className="row">
           <button type="button" className="primary" disabled={!title.trim() || save.isPending}
                   onClick={() => save.mutate()}>Save</button>
@@ -72,13 +72,13 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
 
   return (
     <tr>
-      <td className="mono muted">{index + 1}</td>
-      <td>
+      <td className="mono muted" data-label="Order">{index + 1}</td>
+      <td data-label="Title">
         <strong>{m.title}</strong>
         {m.description && <div className="muted" style={{ fontSize: 13 }}>{m.description}</div>}
       </td>
-      <td className="muted">{m.dueDate ?? '—'}</td>
-      <td>
+      <td className="muted" data-label="Due">{m.dueDate ?? '—'}</td>
+      <td data-label="Status">
         <select
           value={m.status} className={`pill ${STATUS_TONE[m.status]}`}
           onChange={(e) => setStatus.mutate(e.target.value as Milestone['status'])}
@@ -186,7 +186,7 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
       )}
 
       {data && data.length > 0 && (
-        <table>
+        <table className="stacky">
           <thead><tr><th>#</th><th>Title</th><th>Due</th><th>Status</th><th /></tr></thead>
           <tbody>
             {data.map((m, i) => (

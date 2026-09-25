@@ -62,7 +62,8 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactE
 
   return (
     <div className="app-header">
-      <button type="button" className="header-search" onClick={onOpenPalette}>
+      <button type="button" className="header-search" onClick={onOpenPalette}
+              aria-label="Search clients, projects, stages, and tasks">
         <Search className="header-search-glyph" size={15} strokeWidth={1.75} aria-hidden="true" />
         <span className="header-search-text">Client, project, stage, or task</span>
         <span className="kbd" aria-hidden="true">⌘K</span>
