@@ -84,13 +84,28 @@ export async function inlineImages(svg: string): Promise<string> {
 }
 
 export async function exportSvg(svg: string, basename: string): Promise<void> {
-  const inlined = await inlineImages(svg);
-  const url = URL.createObjectURL(new Blob([inlined], { type: 'image/svg+xml' }));
-  downloadFile(url, `${basename}.svg`);
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  const blob = await renderSvg(svg);
+  saveBlob(blob, `${basename}.svg`);
 }
 
 export async function exportPng(svg: string, basename: string, width: number, height: number): Promise<void> {
+  const blob = await renderPng(svg, width, height);
+  saveBlob(blob, `${basename}.png`);
+}
+
+/**
+ * The design as bytes, rather than as a download.
+ *
+ * **Separated from the download because there are now two things to do with a
+ * finished design**, and they are not the same act: hand it to the person who
+ * made it, or put it in the brand's library where the client and the studio can
+ * both reach it. The bytes are produced once here and each caller decides.
+ */
+export async function renderSvg(svg: string): Promise<Blob> {
+  return new Blob([await inlineImages(svg)], { type: 'image/svg+xml' });
+}
+
+export async function renderPng(svg: string, width: number, height: number): Promise<Blob> {
   const inlined = await inlineImages(svg);
   const url = URL.createObjectURL(new Blob([inlined], { type: 'image/svg+xml' }));
   try {
@@ -105,12 +120,18 @@ export async function exportPng(svg: string, basename: string, width: number, he
     canvas.getContext('2d')?.drawImage(image, 0, 0, width, height);
     const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
     if (!png) throw new Error('The design could not be encoded as PNG.');
-    const out = URL.createObjectURL(png);
-    downloadFile(out, `${basename}.png`);
-    setTimeout(() => URL.revokeObjectURL(out), 10_000);
+    return png;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Hand a finished file to the person who made it. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  downloadFile(url, filename);
+  // Long enough for the click that started this to finish starting.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export function safeBasename(name: string, fallback: string): string {
@@ -119,17 +140,29 @@ export function safeBasename(name: string, fallback: string): string {
 
 /* --------------------------------------------------------------- controls */
 
-export function Dial({ label, value, min, max, step, unit, onChange }: {
+/**
+ * One number, on a slider.
+ *
+ * `locked` is how a parameter the studio has taken away behind a preset stays
+ * *visible* without being reachable. That is a deliberate difference from a
+ * hidden control: the value is part of the design and hiding it would make the
+ * panel read as though the thing were not being set at all, whereas showing it
+ * greyed says "the studio decided this" — which is the truth, and is the
+ * message a client needs in order not to go looking for a way to change it.
+ */
+export function Dial({ label, value, min, max, step, unit, locked, onChange }: {
   label: string; value: number; min: number; max: number; step: number; unit?: string;
+  /** Set by the studio: shown, not turnable. */
+  locked?: boolean;
   onChange: (value: number) => void;
 }): ReactElement {
   return (
-    <label className="dial">
+    <label className={`dial${locked ? ' locked' : ''}`}>
       <span className="row">
         <span className="label">{label}</span>
         <span className="mono muted" style={{ marginLeft: 'auto' }}>{Math.round(value * 100) / 100}{unit ?? ''}</span>
       </span>
-      <input type="range" min={min} max={max} step={step} value={value}
+      <input type="range" min={min} max={max} step={step} value={value} disabled={locked}
              onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   );
@@ -162,16 +195,17 @@ export function Swatches({ label, colours, value, onChange, allowNone, noneLabel
   );
 }
 
-/** A row of choices, one lit. */
-export function Segmented<T extends string>({ label, options, value, onChange }: {
-  label: string; options: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void;
+/** A row of choices, one lit. `disabled` is the studio holding a choice still. */
+export function Segmented<T extends string>({ label, options, value, disabled, onChange }: {
+  label: string; options: readonly { id: T; label: string }[]; value: T; disabled?: boolean;
+  onChange: (id: T) => void;
 }): ReactElement {
   return (
-    <div className="dial">
+    <div className={`dial${disabled ? ' locked' : ''}`}>
       <span className="label">{label}</span>
       <div className="segmented" role="radiogroup" aria-label={label}>
         {options.map((o) => (
-          <button key={o.id} type="button" role="radio" aria-checked={value === o.id}
+          <button key={o.id} type="button" role="radio" aria-checked={value === o.id} disabled={disabled}
                   className={value === o.id ? 'on' : ''} onClick={() => onChange(o.id)}>{o.label}</button>
         ))}
       </div>

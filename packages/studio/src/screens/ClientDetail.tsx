@@ -7,6 +7,7 @@ import { ErrorPanel } from '../components/ErrorPanel.js';
 import { RunTable } from '../components/RunTable.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import DocumentShelf from '../components/DocumentShelf.js';
+import DocumentLibrary from '../components/DocumentLibrary.js';
 import BrandHubAdmin from './BrandHubAdmin.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import { TranscriptStrategy } from '../components/TranscriptStrategy.js';
@@ -478,6 +479,16 @@ export default function ClientDetail({ clientId, tab }: {
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ['client', clientId], queryFn: () => api.client(clientId),
   });
+  /*
+   * The added-document library renders an upload inline, which needs the file's
+   * content type, and the content type is on the asset row. Fetched here so the
+   * Documents tab can show a PDF as a PDF rather than as a download link, and
+   * keyed to the client so it is fetched when the tab exists and not before.
+   */
+  const assets = useQuery({
+    queryKey: ['assets', clientId], queryFn: () => api.assets(clientId),
+    enabled: tab === 'documents',
+  });
 
   const [contactName, setContactName] = useState('');
   const [contactTitle, setContactTitle] = useState('');
@@ -658,6 +669,7 @@ export default function ClientDetail({ clientId, tab }: {
 
       {current === 'documents' && (<>
         <DocumentShelf clientId={clientId} editable={!clientView} />
+        <DocumentLibrary clientId={clientId} editable={!clientView} assets={assets.data ?? []} />
         <Deliverables clientId={clientId} />
       </>)}
 

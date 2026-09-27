@@ -70,10 +70,18 @@ function forRoute(route: Route): Warm[] {
     case 'client': {
       const id = route.clientId;
       if (!id) return [];
+      // The Documents tab reads the added-document list, so it is warmed with
+      // the rest of the client. It is a second panel on the same screen rather
+      // than a screen of its own, and the shelf above it was never warmed
+      // either — this one is here because the library renders an upload inline
+      // and a document opening as a blank box is a worse first impression than
+      // a loading line.
       return [
         { queryKey: ['client', id], queryFn: () => api.client(id) },
         { queryKey: ['brand', id], queryFn: () => api.brand(id) },
         { queryKey: ['assets', id], queryFn: () => api.assets(id) },
+        { queryKey: ['document-entries', id], queryFn: () => api.documentEntries(id) },
+        { queryKey: ['brand-hub', id], queryFn: () => api.brandHub(id) },
         { queryKey: ['portal-keys', id], queryFn: () => api.portalKeys(id) },
         { queryKey: ['onboardings', id], queryFn: () => api.onboardings(id) },
         { queryKey: ['positioning', id, 'E4', 'E6'], queryFn: () => api.positioning(id, 'E4', 'E6') },

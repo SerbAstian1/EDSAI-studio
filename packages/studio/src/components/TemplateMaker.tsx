@@ -1,11 +1,13 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, Save } from 'lucide-react';
-import { api, type Asset, type BrandProject, type BrandValue } from '../api.js';
+import { api, type Asset, type BrandModule, type BrandProject, type BrandRules, type BrandValue } from '../api.js';
 import {
   AssetPicker, Dial, Segmented, Stage, Swatches, Workspace, brandColours, brandFonts, escapeXml,
   exportPng, isImageAsset, safeBasename, wrap,
 } from './toolkit.js';
+import { PresetChoices, withPreset } from './BrandControls.js';
+import { allowedColors, presetsFor } from './brandModules.js';
 
 /**
  * Smart templates: Social Post Maker and Poster Maker are one tool at two
@@ -105,12 +107,16 @@ export function templateSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${parts.join('')}</svg>`;
 }
 
-export default function TemplateMaker({ format, clientId, assets, values, project, onSaved, onClose }: {
+export default function TemplateMaker({ format, clientId, assets, values, project, module, rules, onSaved, onClose }: {
   format: Format;
   clientId: string;
   assets: readonly Asset[];
   values: readonly BrandValue[];
   project: BrandProject | undefined;
+  /** What the studio decided this module may offer. */
+  module: BrandModule;
+  /** The brand's standing colour, type and export rules. */
+  rules: BrandRules;
   onSaved: (project: BrandProject) => void;
   onClose: () => void;
 }): ReactElement {
@@ -120,15 +126,23 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
   const templates = approved.filter((a) => a.kind === 'template');
   const photos = approved.filter((a) => a.kind === 'photography');
   const logos = approved.filter((a) => a.kind === 'logo');
-  const colours = useMemo(() => brandColours(values), [values]);
+  // The brand's rules first, the measured palette as the fallback: a designer
+  // who named three colours means three.
+  const allowed = useMemo(() => allowedColors(rules, values), [rules, values]);
+  const colours = useMemo(() => {
+    const named = allowed.hexes.map((hex) => ({ name: hex.toUpperCase(), hex }));
+    return named.length > 0 ? named : brandColours(values);
+  }, [allowed.hexes, values]);
   const fonts = useMemo(() => brandFonts(values), [values]);
+  const { defaultPreset } = presetsFor(module);
+  const [presetId, setPresetId] = useState<string | undefined>(defaultPreset);
 
   const initial = (): TemplateConfiguration => {
     const s = project?.configuration as Partial<TemplateConfiguration> | undefined;
     const dark = colours.find((c) => /char|black|ink|dark|text/i.test(c.name))?.hex ?? '#14161a';
     const light = colours.find((c) => /cream|paper|white|light|back/i.test(c.name))?.hex ?? '#ffffff';
     const accent = colours.find((c) => /accent|ember|orange|primary|brand/i.test(c.name))?.hex ?? colours[0]?.hex ?? dark;
-    return {
+    const base = {
       templateAssetId: s?.templateAssetId ?? templates[0]?.id ?? '',
       photoAssetId: s?.photoAssetId ?? '',
       logoAssetId: s?.logoAssetId ?? logos[0]?.id ?? '',
@@ -140,6 +154,9 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
       background: s?.background ?? light, textColor: s?.textColor ?? dark, accent: s?.accent ?? accent,
       scrim: s?.scrim ?? 0.3,
     };
+    // A preset is applied on open, so a post made under the studio's chosen
+    // layout reopens in it.
+    return withPreset(module, base, presetId);
   };
   const [config, setConfig] = useState<TemplateConfiguration>(initial);
   const [name, setName] = useState(project?.name ?? '');
@@ -147,6 +164,14 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const set = (patch: Partial<TemplateConfiguration>): void => setConfig((c) => ({ ...c, ...patch }));
+
+  /** Choose a preset: the studio's values land, then anything the client kept. */
+  const choosePreset = (id: string): void => {
+    setPresetId(id);
+    setConfig((c) => withPreset(module, c, id));
+  };
+  /** Whether the studio has taken this control away behind a preset. */
+  const held = (id: string): boolean => module.locked.includes(id);
 
   const svg = useMemo(() => templateSvg(format, config, fonts, api.downloadPath), [format, config, fonts]);
 
@@ -176,9 +201,11 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
     <Stage svg={svg} label={`${size.label} preview`} width={size.w} height={size.h} actions={(
       <>
         <span className="muted" style={{ fontSize: 13 }}>{size.w} × {size.h} px · type and colours are the brand's</span>
-        <button type="button" style={{ marginLeft: 'auto' }} disabled={exporting} onClick={() => void doExport()}>
-          <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'PNG'}
-        </button>
+        {module.exports.includes('png') && (
+          <button type="button" style={{ marginLeft: 'auto' }} disabled={exporting} onClick={() => void doExport()}>
+            <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting…' : 'PNG'}
+          </button>
+        )}
       </>
     )} />
   );
@@ -202,9 +229,12 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
           <input value={config.cta} maxLength={40} onChange={(e) => set({ cta: e.target.value })} placeholder="Shop the range" />
         </label>
 
-        <Segmented label="Words sit" value={config.layout} onChange={(v) => set({ layout: v })}
+        <PresetChoices module={module} presetId={presetId} onChange={choosePreset}
+                       name={`${format}-${clientId}`} />
+
+        <Segmented label="Words sit" value={config.layout} disabled={held('layout')} onChange={(v) => set({ layout: v })}
                    options={[{ id: 'top', label: 'Top' }, { id: 'centre', label: 'Centre' }, { id: 'bottom', label: 'Bottom' }]} />
-        <Segmented label="Aligned" value={config.align} onChange={(v) => set({ align: v })}
+        <Segmented label="Aligned" value={config.align} disabled={held('align')} onChange={(v) => set({ align: v })}
                    options={[{ id: 'left', label: 'Left' }, { id: 'centre', label: 'Centred' }]} />
 
         {templates.length > 0 && (
@@ -216,7 +246,8 @@ export default function TemplateMaker({ format, clientId, assets, values, projec
             <AssetPicker label="Photograph" assets={photos} value={config.photoAssetId} allowNone
                          onChange={(id) => set({ photoAssetId: id })} src={api.downloadPath} />
             {config.photoAssetId && (
-              <Dial label="Darken photo" value={config.scrim} min={0} max={0.8} step={0.05} onChange={(v) => set({ scrim: v })} />
+              <Dial label="Darken photo" value={config.scrim} min={0} max={0.8} step={0.05}
+                   locked={held('scrim')} onChange={(v) => set({ scrim: v })} />
             )}
           </>
         )}

@@ -1,35 +1,40 @@
-import type { ReactElement } from 'react';
-import type { Asset, BrandProject, BrandValue } from '../api.js';
-import PatternStudio, { tileable } from './PatternStudio.js';
-import IllustrationBuilder, { partsFor } from './IllustrationBuilder.js';
-import TemplateMaker from './TemplateMaker.js';
+import { Suspense, type ReactElement } from 'react';
+import type { Asset, BrandModule, BrandProject, BrandValue } from '../api.js';
+import { moduleComponent, moduleReady, type ToolProps } from './brandModules.js';
 
 /**
- * One place that knows which component a tool id opens, so the portal and
- * the studio's own preview cannot disagree about it.
+ * One place that knows which component a module opens, so the portal and the
+ * studio's own preview cannot disagree about it.
+ *
+ * **Registry-driven rather than a switch.** The old version asked "which id is
+ * this?" in a chain of `if`s, which meant every future tool was an edit here,
+ * in the portal's icon map, and in the studio's. The module registry answers
+ * the same question from data, and a module the server sends that this build
+ * has no component for is not rendered at all rather than rendered blank.
+ *
+ * The component is loaded on open, so a client whose hub holds four tools
+ * downloads one of them.
  */
-
-export interface ToolProps {
-  clientId: string;
-  assets: readonly Asset[];
-  values: readonly BrandValue[];
-  project: BrandProject | undefined;
-  onSaved: (project: BrandProject) => void;
-  onClose: () => void;
-}
 
 /** Whether a tool has what it needs among the approved files. */
 export function toolReady(toolId: string, assets: readonly Asset[]): boolean {
-  const approved = assets.filter((a) => a.approved);
-  if (toolId === 'pattern-studio') return approved.some(tileable);
-  if (toolId === 'illustration-builder') return partsFor(approved).length > 0;
-  // A template tool works from the palette alone; artwork and photos make it better.
-  return true;
+  return moduleReady(toolId, assets);
 }
 
-export default function ToolHost({ toolId, ...props }: ToolProps & { toolId: string }): ReactElement | null {
-  if (toolId === 'pattern-studio') return <PatternStudio {...props} />;
-  if (toolId === 'illustration-builder') return <IllustrationBuilder {...props} />;
-  if (toolId === 'social-post' || toolId === 'poster') return <TemplateMaker format={toolId} {...props} />;
-  return null;
+export default function ToolHost({ toolId, module, ...props }: Omit<ToolProps, 'module'> & {
+  toolId: string;
+  /** The resolved module, so the tool renders only the controls the brand allows. */
+  module: BrandModule;
+}): ReactElement | null {
+  const Component = moduleComponent(toolId);
+  // A module the server resolved but this build cannot draw. Returning null is
+  // the honest answer; the caller renders the module list, not the tool.
+  if (!Component) return null;
+  return (
+    <Suspense fallback={<div className="empty"><p className="muted">Opening the tool…</p></div>}>
+      <Component {...props} module={module} />
+    </Suspense>
+  );
 }
+
+export type { Asset, BrandModule, BrandProject, BrandValue, ToolProps };

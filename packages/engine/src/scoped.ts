@@ -10,8 +10,12 @@ import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 import type { Deliverable } from './deliverables.js';
-import type { ClientDocument } from './documents.js';
-import { hubEnabled, type BrandHub, type BrandProject } from './brand-hub.js';
+import type { ClientDocument, ClientDocumentEntry, DocumentPage } from './documents.js';
+import { figmaUrlProblem } from './figma-source.js';
+import {
+  assetsInBrandAsset, hubEnabled,
+  type BrandAsset, type BrandHub, type BrandProject,
+} from './brand-hub.js';
 import type { Milestone } from './milestones.js';
 import type { Event } from './events.js';
 import type { Strategy } from './strategy.js';
@@ -232,6 +236,53 @@ export class ScopedStore {
     this.store.saveAsset(asset);
   }
 
+  /**
+   * The file a design is about to point at, approval notwithstanding.
+   *
+   * `getAsset` answers "what may this session see", and a file a client has
+   * just uploaded is deliberately not that. This answers the narrower question
+   * "is this file this client's", which is a `clientId` comparison and nothing
+   * else, so it is not a second way around the approval filter: it is the one
+   * place that has to look at an unapproved file, and it can see nothing but
+   * which client owns it.
+   */
+  ownedAsset(clientId: string, assetId: string): Asset | undefined {
+    const asset = this.store.getAsset(assetId);
+    if (!asset || asset.clientId !== clientId) return undefined;
+    return asset;
+  }
+
+  /**
+   * Approve a file that has just become a design.
+   *
+   * **This is the one path by which a client's own upload becomes approved**,
+   * and it is narrow on purpose. Every upload lands `approved: false` so that
+   * forgetting to review cannot expose a draft, and that default is not touched
+   * here. What makes a design different is that it was not received — it was
+   * *made*, in this client's own session, from brand files that are already
+   * approved, and by a module this hub offers. There is nothing in it the studio
+   * has not already signed off, and a hub built around making brand assets
+   * cannot work if a client makes a pattern and is then unable to use it.
+   *
+   * **Writes through the store rather than `saveAsset`, deliberately.** The gate
+   * that matters here is the one the design save already passed — `brand-project`
+   * for this client — and `mustWrite('asset')` is a different question asked at
+   * the wrong moment. Nothing weaker is available on the way in: the policy makes
+   * the only principal that cannot write assets a `limited` session, and a
+   * `limited` session cannot write anything at all, so it never reaches here.
+   */
+  approveGeneratedFile(clientId: string, assetId: string): void {
+    const asset = this.ownedAsset(clientId, assetId);
+    if (!asset) {
+      throw new Forbidden('write', { kind: 'brand-project', clientId },
+        'that file is not this client\'s');
+    }
+    // Approving an already-approved file would rewrite its `uploadedAt`-adjacent
+    // state for nothing, and a design may legitimately be filed twice.
+    if (asset.approved) return;
+    this.store.saveAsset({ ...asset, approved: true });
+  }
+
   deleteAsset(id: string): void {
     const existing = this.store.getAsset(id);
     if (!existing) return;
@@ -350,6 +401,56 @@ export class ScopedStore {
     this.store.deleteBrandProject(id);
   }
 
+  /* ------------------------------------------------------- generated assets */
+
+  /**
+   * A design exported out of a tool into the shared library.
+   *
+   * **`brand-project`, not `asset`, and the reason is who may do it.** A
+   * `brand-project` is deliberately not studio-managed: a client writes their
+   * own designs. Exporting one is a continuation of that act, not a separate
+   * privilege, so borrowing `brand-project` means the permissions cannot
+   * disagree — there is no way to be allowed to save a design and refused the
+   * right to keep the thing they just made.
+   *
+   * The approval rule rides along for free. A portal session's `getAsset` will
+   * not return an unapproved file, so a client cannot publish their working
+   * copy into their own library and then cite it as a delivered design.
+   */
+  listBrandAssets(clientId: string): BrandAsset[] {
+    if (!this.mayRead('brand-project', clientId)) return [];
+    return this.store.listBrandAssets(clientId);
+  }
+
+  getBrandAsset(id: string): BrandAsset | undefined {
+    const asset = this.store.getBrandAsset(id);
+    if (!asset || !this.mayRead('brand-project', asset.clientId)) return undefined;
+    return asset;
+  }
+
+  saveBrandAsset(asset: BrandAsset): void {
+    this.mustWrite('brand-project', asset.clientId);
+    for (const id of assetsInBrandAsset(asset)) {
+      const target = this.store.getAsset(id);
+      // Checked against the store, not through `getAsset`: a studio is writing
+      // here and must be able to attach a file it has not approved yet. What
+      // still cannot happen is pointing at another client's asset, and that is
+      // a `clientId` comparison rather than a visibility one.
+      if (!target || target.clientId !== asset.clientId) {
+        throw new Forbidden('write', { kind: 'brand-project', clientId: asset.clientId },
+          'that file is not this client\'s');
+      }
+    }
+    this.store.saveBrandAsset(asset);
+  }
+
+  deleteBrandAsset(id: string): void {
+    const existing = this.store.getBrandAsset(id);
+    if (!existing) return;
+    this.mustWrite('brand-project', existing.clientId);
+    this.store.deleteBrandAsset(id);
+  }
+
   /* --------------------------------------------------------------- documents */
 
   listDocuments(clientId: string): ClientDocument[] {
@@ -365,6 +466,118 @@ export class ScopedStore {
   deleteDocument(clientId: string, slot: string): void {
     this.mustWrite('document', clientId);
     this.store.deleteDocument(clientId, slot);
+  }
+
+  /**
+   * The added documents, under the same rules as the eight.
+   *
+   * `document` again rather than a new resource, for the reason the resource
+   * list needs no new entry to say: a document in this library is the same
+   * object to a client whichever shelf it arrived on. Giving the second kind
+   * its own permission would mean a rule that reads one way and applies to half
+   * the library.
+   */
+  listDocumentEntries(clientId: string): ClientDocumentEntry[] {
+    if (!this.mayRead('document', clientId)) return [];
+    return this.store.listDocumentEntries(clientId);
+  }
+
+  getDocumentEntry(id: string): ClientDocumentEntry | undefined {
+    const entry = this.store.getDocumentEntry(id);
+    if (!entry || !this.mayRead('document', entry.clientId)) return undefined;
+    return entry;
+  }
+
+  /**
+   * Add or revise a document.
+   *
+   * **The shape of the source is checked here, not by the caller's form.** A
+   * Figma document must name a real Figma file and an upload must name a real
+   * file of this client's, and both are refusals a client must not be able to
+   * talk its way past by editing a request body. The check is a refusal, not a
+   * silent repair: a document that arrived wrong is a mistake worth seeing.
+   */
+  saveDocumentEntry(entry: ClientDocumentEntry): void {
+    this.mustWrite('document', entry.clientId);
+    if (entry.source === 'figma' && !entry.sourceUrl) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'a Figma document needs a link');
+    }
+    if (entry.source === 'figma' && figmaUrlProblem(entry.sourceUrl ?? '')) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'that is not a Figma link');
+    }
+    if (entry.source === 'upload' && !entry.assetId) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'an uploaded document needs a file');
+    }
+    // A document that arrives claiming to be a link is also allowed to keep a
+    // Figma URL, and an upload must not: the source is what says where the
+    // bytes come from, and a row that says both is a row no later reader can
+    // trust.
+    if (entry.source === 'upload' && entry.sourceUrl) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'an uploaded document cannot also carry a link');
+    }
+    for (const id of [entry.assetId, entry.thumbnailAssetId]) {
+      if (!id) continue;
+      const target = this.store.getAsset(id);
+      if (!target || target.clientId !== entry.clientId) {
+        throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+          'that file is not this client\'s');
+      }
+    }
+    this.store.saveDocumentEntry(entry);
+  }
+
+  deleteDocumentEntry(id: string): void {
+    const existing = this.store.getDocumentEntry(id);
+    if (!existing) return;
+    this.mustWrite('document', existing.clientId);
+    this.store.deleteDocumentEntry(id);
+  }
+
+  /**
+   * A presentation's manifest, readable only through its document.
+   *
+   * The document is resolved first and its `clientId` is the one checked, so
+   * there is no way to ask for pages by a document id belonging to somebody
+   * else and get an empty list instead of a refusal — the id in the path is
+   * never trusted on its own.
+   */
+  listDocumentPages(documentId: string): DocumentPage[] {
+    const entry = this.getDocumentEntry(documentId);
+    if (!entry) return [];
+    return this.store.listDocumentPages(documentId);
+  }
+
+  /**
+   * Replace a manifest, and refuse the two ways it could be wrong.
+   *
+   * The document must be this client's, and the orders must be 1..n with no
+   * gaps: a manifest with two page fours, or pages four and seven, is one the
+   * viewer would render with a control pointing at nothing. Normalising them
+   * would be friendlier and would hide the mistake, so it is a refusal.
+   */
+  saveDocumentPages(documentId: string, pages: readonly DocumentPage[]): void {
+    const entry = this.getDocumentEntry(documentId);
+    if (!entry) {
+      throw new Forbidden('write', { kind: 'document', clientId: '' },
+        'no such document');
+    }
+    this.mustWrite('document', entry.clientId);
+    if (entry.source !== 'figma') {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'only a Figma document has pages');
+    }
+    const orders = pages.map((page) => page.order);
+    const sequential = orders.length > 0
+      && orders.every((order, index) => order === index + 1);
+    if (!sequential) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'pages must be numbered 1 to n with no gaps');
+    }
+    this.store.saveDocumentPages(documentId, pages);
   }
 
   /* -------------------------------------------------------------- milestones */

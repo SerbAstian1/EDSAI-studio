@@ -277,24 +277,166 @@ export interface DiscoveryForm {
 
 export type BrandHubStatus = 'draft' | 'active' | 'suspended' | 'archived';
 
-export interface BrandTool {
+/**
+ * The visual systems a brand can be built out of.
+ *
+ * A named list rather than a fixed object of booleans, so a system the studio
+ * has not thought of yet has somewhere to live and adding one is not a
+ * migration. Most of these have no tool built, which is correct: naming a
+ * capability grants nothing.
+ */
+export type BrandCapability =
+  | 'pattern' | 'illustration' | 'photography' | 'typography'
+  | 'grain' | 'noise' | 'halftone' | 'duotone' | 'riso' | 'photocopy' | 'distress'
+  | 'paper' | 'metal' | 'glass' | 'gradient' | 'light-shadow'
+  | 'shape' | 'icon' | 'frame' | 'sticker' | 'collage' | 'type-fx' | 'three-d'
+  | 'template';
+
+export const BRAND_CAPABILITIES: readonly BrandCapability[] = [
+  'pattern', 'illustration', 'photography', 'typography',
+  'grain', 'noise', 'halftone', 'duotone', 'riso', 'photocopy', 'distress',
+  'paper', 'metal', 'glass', 'gradient', 'light-shadow',
+  'shape', 'icon', 'frame', 'sticker', 'collage', 'type-fx', 'three-d',
+  'template',
+];
+
+/** What this brand *is*. The designer fills this in once; modules follow from it. */
+export interface BrandDna {
+  systems: BrandCapability[];
+  /** Free text beside the systems, for the designer. Never shown to a client. */
+  note?: string;
+  updatedAt?: string;
+}
+
+/** One thing a client can change about a design. */
+export interface BrandParameter {
+  id: string;
+  label: string;
+  control: 'dial' | 'choice' | 'colour' | 'asset' | 'text';
+  /** True when the client reaches this only by choosing a preset. */
+  presetOnly: boolean;
+}
+
+/** A named set of values a client may choose instead of a number field. */
+export interface BrandPreset {
+  id: string;
+  label: string;
+  /** Keyed by parameter id, so a preset survives a tool gaining a dial. */
+  values: Record<string, number | string | boolean>;
+}
+
+/** What a designer decides about one module. */
+export interface BrandModuleConfig {
+  order?: number;
+  presets: BrandPreset[];
+  defaultPreset?: string;
+  /** Parameters frozen whatever else is configured. */
+  locked: string[];
+  /** Parameters deliberately opened up; applied after `locked`. */
+  unlocked: string[];
+}
+
+/**
+ * The rules that keep generated work inside the brand.
+ *
+ * Every list is "the designer named them", so an empty list means "fall back to
+ * what the brand already has" rather than "nothing is allowed".
+ */
+export interface BrandRules {
+  colors: string[];
+  allowCustomColor: boolean;
+  fonts: string[];
+  allowCustomFont: boolean;
+  exports: string[];
+}
+
+export interface BrandHubConfig {
+  modules: Record<string, BrandModuleConfig>;
+  rules: BrandRules;
+}
+
+/** Which half of the hub a module belongs to. */
+export type BrandLayer = 'asset-lab' | 'composer';
+
+/**
+ * Everything a screen needs to render one module, already resolved.
+ *
+ * The server sends this rather than the raw hub because the same module has to
+ * look different to the studio and to a client, and because the decision about
+ * what a client may open has to be made once, in the same place the
+ * authorization is made.
+ */
+export interface BrandModule {
   id: string;
   name: string;
   description: string;
-  /** Built and switchable; false for a tool that is named but not yet made. */
+  layer: BrandLayer;
+  /** The visual system this module serves. */
+  capability: BrandCapability;
+  /** Built and switchable; false for a module that is named but not yet made. */
   available: boolean;
+  requires: readonly string[];
+  /** Export formats, after the brand's rules have narrowed them. */
   exports: readonly string[];
-  /** Switched on for this client's hub. */
+  /** Whether this audience may open it at all. */
   enabled: boolean;
+  parameters: readonly BrandParameter[];
+  /** The parameters a client may not touch. */
+  locked: readonly string[];
+  presets: readonly BrandPreset[];
+  defaultPreset: string | undefined;
+  order: number;
 }
 
 export interface BrandHubView {
   enabled: boolean;
-  hub?: { clientId: string; status: BrandHubStatus; tools: string[]; createdAt: string; updatedAt: string };
-  tools: BrandTool[];
+  hub?: {
+    clientId: string;
+    status: BrandHubStatus;
+    tools: string[];
+    dna: BrandDna;
+    config: BrandHubConfig;
+    createdAt: string;
+    updatedAt: string;
+  };
+  /**
+   * The resolved modules, for whoever is asking.
+   *
+   * Named `modules` because it is no longer just the tool list: a studio sees
+   * every module the hub could offer including the ones that are not built,
+   * and a client only the ones their brand actually has.
+   */
+  modules: BrandModule[];
   /** Studio only: what the hub has to work with. */
   approvedAssets?: number;
   brandValues?: number;
+}
+
+/** What a designer may change about a hub in one save. */
+export interface BrandHubUpdate {
+  status?: BrandHubStatus;
+  tools?: string[];
+  dna?: Partial<BrandDna>;
+  config?: BrandHubConfig;
+}
+
+/** A design exported out of a tool into the shared library. */
+export interface BrandAsset {
+  id: string;
+  clientId: string;
+  /** The stored file, in `assets`. Not copied, not re-uploaded. */
+  assetId: string;
+  toolId: string;
+  projectId?: string;
+  presetId?: string;
+  /** What the design is: the tool's own word, e.g. `pattern`, `poster`. */
+  kind: string;
+  format: string;
+  width?: number;
+  height?: number;
+  sourceAssetId?: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface BrandHubSummary {
@@ -342,6 +484,88 @@ export interface ClientDocument {
   figmaUrl?: string;
   note?: string;
   updatedAt?: string;
+}
+
+/* ------------------------------------------------------ the documents list */
+
+/** Where an added document came from. A code list, so a new source is a release. */
+export type DocumentSource = 'upload' | 'figma';
+
+/**
+ * How a document is read.
+ *
+ * The first two are the distinction that matters. A proposal and a brand
+ * presentation are both "a deck", and treating them the same is what produces
+ * an infinite scroll through eighteen pages with a Figma zoom bar on top.
+ */
+export type DocumentViewMode = 'document' | 'presentation' | 'external';
+
+export type DocumentStatus = 'draft' | 'ready' | 'archived';
+
+/** What a document is called, coarsely. Drives the icon. */
+export const DOCUMENT_TYPES = [
+  'proposal', 'contract', 'invoice', 'strategy', 'guideline', 'presentation', 'reference',
+] as const;
+export type DocumentType = typeof DOCUMENT_TYPES[number];
+
+/**
+ * A document somebody added to a client's library.
+ *
+ * **A sibling of the eight, not a replacement for them.** An uploaded document
+ * is a pointer rather than a copy: the bytes are an `Asset`, stored and served
+ * by the machinery that already serves every other file, and this row says what
+ * the document is called, how it should be read, and where it came from.
+ */
+export interface DocumentEntry {
+  id: string;
+  clientId: string;
+  title: string;
+  description?: string;
+  documentType: string;
+  source: DocumentSource;
+  /** The uploaded file, for `upload`. Never for a Figma document. */
+  assetId?: string;
+  /** The Figma link exactly as it was pasted, for `figma`. */
+  sourceUrl?: string;
+  thumbnailAssetId?: string;
+  viewMode: DocumentViewMode;
+  status: DocumentStatus;
+  /** Counted from the manifest by the server, never believed from a request. */
+  pageCount?: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One page of a presentation, as a Figma frame.
+ *
+ * The ordered list is recorded by the designer rather than discovered: Figma's
+ * public embed gives a document a viewer, not a page list, and EDSAI holds no
+ * Figma token and wants none in the browser. `nodeId` is Figma's own deep-link
+ * parameter, not a scrape of anything.
+ */
+export interface DocumentPage {
+  documentId: string;
+  /** 1-based, and the only ordering that means anything. */
+  order: number;
+  name: string;
+  /** A Figma node id, `12-345`. Absent means "the file as a whole". */
+  nodeId?: string;
+}
+
+/** What a designer may set when adding a document. */
+export interface DocumentEntryInput {
+  title: string;
+  description?: string;
+  documentType?: string;
+  source: DocumentSource;
+  assetId?: string;
+  sourceUrl?: string;
+  viewMode?: DocumentViewMode;
+  status?: DocumentStatus;
+  /** A manifest, for a presentation. The server renumbers it to 1..n. */
+  pages?: { name: string; nodeId?: string }[];
 }
 
 export interface DiscoveryFacts {
@@ -852,8 +1076,15 @@ export const api = {
   /** Every hub in the studio, with what is in it. */
   brandHubs: () => call<{ hubs: BrandHubSummary[] }>('/api/brand-hubs').then((r) => r.hubs),
   brandHub: (clientId: string) => call<BrandHubView>(`/api/clients/${clientId}/brand-hub`),
-  setBrandHub: (clientId: string, input: { status?: BrandHubStatus; tools?: string[] }) =>
-    call<{ hub: BrandHubView['hub']; enabled: boolean }>(`/api/clients/${clientId}/brand-hub`, {
+  /**
+   * The studio's side of a hub: its status, its tools, its DNA and its rules.
+   *
+   * DNA and config are sent whole rather than patched, because the server merges
+   * `dna` field by field and validates the result — a half-sent capability set
+   * is a refusal there, not a silent drop.
+   */
+  setBrandHub: (clientId: string, input: BrandHubUpdate) =>
+    call<{ hub: NonNullable<BrandHubView['hub']>; enabled: boolean }>(`/api/clients/${clientId}/brand-hub`, {
       method: 'PUT', body: JSON.stringify(input),
     }),
   brandProjects: (clientId: string) =>
@@ -869,6 +1100,16 @@ export const api = {
   deleteBrandProject: (id: string) =>
     call<{ removed: string }>(`/api/brand-projects/${id}`, { method: 'DELETE' }),
 
+  /** The shared library of designs clients exported out of their tools. */
+  brandAssets: (clientId: string) =>
+    call<{ assets: BrandAsset[] }>(`/api/clients/${clientId}/brand-assets`).then((r) => r.assets),
+  createBrandAsset: (clientId: string, input: Omit<BrandAsset, 'id' | 'clientId' | 'createdBy' | 'createdAt'>) =>
+    call<{ asset: BrandAsset }>(`/api/clients/${clientId}/brand-assets`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.asset),
+  deleteBrandAsset: (id: string) =>
+    call<{ removed: string }>(`/api/brand-assets/${id}`, { method: 'DELETE' }),
+
   documents: (clientId: string) =>
     call<{ documents: ClientDocument[] }>(`/api/clients/${clientId}/documents`).then((r) => r.documents),
   setDocument: (clientId: string, slot: string, input: { figmaUrl: string; note?: string }) =>
@@ -877,6 +1118,40 @@ export const api = {
     }).then((r) => r.document),
   clearDocument: (clientId: string, slot: string) =>
     call<{ removed: string }>(`/api/clients/${clientId}/documents/${slot}`, { method: 'DELETE' }),
+
+  /**
+   * The added documents, beside the eight.
+   *
+   * A separate route from the shelf because the shelf's shape is fixed — every
+   * slot listed, filled or not — and a list that grew a ninth entry would break
+   * that contract. The two are read together and rendered as one section.
+   */
+  documentEntries: (clientId: string) =>
+    call<{ documents: DocumentEntry[] }>(`/api/clients/${clientId}/document-entries`).then((r) => r.documents),
+  /** One document and its manifest, together. */
+  documentEntry: (id: string) =>
+    call<{ document: DocumentEntry; pages: DocumentPage[] }>(`/api/document-entries/${id}`),
+  createDocumentEntry: (clientId: string, input: DocumentEntryInput) =>
+    call<{ document: DocumentEntry }>(`/api/clients/${clientId}/document-entries`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.document),
+  updateDocumentEntry: (id: string, input: Partial<Omit<DocumentEntry, 'id' | 'clientId' | 'createdAt' | 'createdBy'>>) =>
+    call<{ document: DocumentEntry }>(`/api/document-entries/${id}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }).then((r) => r.document),
+  deleteDocumentEntry: (id: string) =>
+    call<{ removed: string }>(`/api/document-entries/${id}`, { method: 'DELETE' }),
+  /**
+   * Replace a presentation's manifest whole.
+   *
+   * The array is the order and the numbers are regenerated server-side, so a
+   * designer reordering by dragging expresses an intent rather than sending a
+   * malformed list.
+   */
+  saveDocumentPages: (id: string, pages: { name: string; nodeId?: string }[]) =>
+    call<{ pages: DocumentPage[]; pageCount: number }>(`/api/document-entries/${id}/pages`, {
+      method: 'PUT', body: JSON.stringify({ pages }),
+    }),
   /** The client's discovery, translated: facts a designer reads, and a brief a run reads. */
   discovery: (clientId: string) => call<Discovery>(`/api/clients/${clientId}/discovery`),
   positioning: (clientId: string, x: string, y: string) =>

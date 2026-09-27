@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { ExternalLink, PenTool } from 'lucide-react';
+import { isFigmaUrl } from '../figmaLinks.js';
 
 /**
  * A Figma file or prototype, previewed in place.
@@ -17,33 +18,36 @@ import { ExternalLink, PenTool } from 'lucide-react';
  * The placeholder is not decorative: Figma's viewer takes a moment to boot,
  * and a blank rectangle reads as broken. It shows the file's name and a way
  * out until the frame reports it has loaded.
+ *
+ * `compact` drops the caption for a caller that supplies its own chrome — the
+ * presentation viewer has a title bar with its own way out to Figma, and two
+ * "open in Figma" links forty centimetres apart reads as a mistake.
  */
 
-export function isFigmaUrl(value: string): boolean {
-  let url: URL;
-  try { url = new URL(value); } catch { return false; }
-  if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  return host === 'figma.com' || host.endsWith('.figma.com');
-}
+export { isFigmaUrl };
 
 export function figmaEmbedSrc(url: string): string {
   return `https://www.figma.com/embed?embed_host=edsai&url=${encodeURIComponent(url)}`;
 }
 
-export default function FigmaEmbed({ url, title }: { url: string; title: string }): ReactElement | null {
+export default function FigmaEmbed({ url, title, compact }: {
+  url: string;
+  title: string;
+  compact?: boolean;
+}): ReactElement | null {
   const [loaded, setLoaded] = useState(false);
   // A frame whose load event never comes (a blocked request, a file Figma
   // refuses) would otherwise sit behind "Loading…" for good. After a while
   // the frame is shown regardless, so whatever Figma has to say is visible.
   useEffect(() => {
+    setLoaded(false);
     const timer = setTimeout(() => setLoaded(true), 8000);
     return () => clearTimeout(timer);
   }, [url]);
   if (!isFigmaUrl(url)) return null;
 
   return (
-    <figure className={`figma-embed${loaded ? ' loaded' : ''}`}>
+    <figure className={`figma-embed${loaded ? ' loaded' : ''}${compact ? ' compact' : ''}`}>
       <div className="figma-embed-placeholder" aria-hidden={loaded}>
         <PenTool size={20} strokeWidth={1.75} aria-hidden="true" />
         <span>Loading {title} from Figma…</span>
@@ -56,13 +60,15 @@ export default function FigmaEmbed({ url, title }: { url: string; title: string 
         sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
         onLoad={() => setLoaded(true)}
       />
-      <figcaption className="figma-embed-caption">
-        <PenTool size={14} strokeWidth={1.75} aria-hidden="true" />
-        <span>Figma preview</span>
-        <a href={url} target="_blank" rel="noreferrer">
-          Open in Figma <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-        </a>
-      </figcaption>
+      {!compact && (
+        <figcaption className="figma-embed-caption">
+          <PenTool size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span>Figma preview</span>
+          <a href={url} target="_blank" rel="noreferrer">
+            Open in Figma <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+          </a>
+        </figcaption>
+      )}
     </figure>
   );
 }

@@ -2509,11 +2509,13 @@ describe('the Brand Hub, over the wire', () => {
     const { body } = await json(`/api/clients/${id}/brand-hub`);
     expect(body['enabled']).toBe(false);
     expect(body['hub']).toBeUndefined();
-    // A portal for that client is told nothing more than "no".
+    // A portal for that client is told nothing more than "no". The studio
+    // still gets every module, so a designer can see what exists to switch on.
+    expect((body['modules'] as unknown[]).length).toBeGreaterThan(0);
     const saved = cookie;
     cookie = await portalCookie(id);
     const seen = await json(`/api/clients/${id}/brand-hub`);
-    expect(seen.body).toMatchObject({ enabled: false, tools: [] });
+    expect(seen.body).toMatchObject({ enabled: false, modules: [] });
     cookie = saved;
   });
 
@@ -2620,6 +2622,55 @@ describe('the Brand Hub, over the wire', () => {
       method: 'POST', body: JSON.stringify({ toolId: 'pattern-studio', name: 'Wrap', configuration: configuration(pattern) }),
     });
     expect(refused.status).toBe(404);
+    cookie = saved;
+  });
+
+  it('clears a design it made, so the client can go on using it', async () => {
+    // The loop the Asset Lab is built around: a client makes a pattern, and that
+    // pattern has to become something they can tile with again. Every upload
+    // lands unapproved, so without this a client would make a file, see it
+    // vanish, and have no way to get it back.
+    const id = await client('Making Co');
+    await json(`/api/clients/${id}/brand-hub`, {
+      method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio'] }),
+    });
+    const saved = cookie;
+    cookie = await portalCookie(id);
+    const upload = await fetch(`${base}/api/clients/${id}/assets`, {
+      method: 'POST', headers: { cookie, 'content-type': 'image/png', 'x-filename': 'wrap.png' }, body: png,
+    });
+    const { id: assetId } = (await upload.json() as { asset: { id: string } }).asset;
+
+    const filed = await json(`/api/clients/${id}/brand-assets`, {
+      method: 'POST', body: JSON.stringify({ assetId, toolId: 'pattern-studio', kind: 'pattern', format: 'png' }),
+    });
+    expect(filed.status).toBe(201);
+
+    // Now the client can see it. Before, the same list is empty - which is the
+    // whole reason this approval exists.
+    const files = await json(`/api/clients/${id}/assets`);
+    expect((files.body['assets'] as unknown as { id: string }[]).map((a) => a.id)).toContain(assetId);
+    expect((await json(`/api/clients/${id}/brand-assets`)).status).toBe(200);
+    cookie = saved;
+  });
+
+  it('refuses to file another client’s file, and leaves it unapproved', async () => {
+    // The approval must not become a way to reach a file this client does not
+    // own. Saving the design is refused first, so the approval never runs.
+    const a = await client('Mine Co');
+    const b = await client('Theirs Co');
+    const theirs = await approvedPattern(b);
+    await json(`/api/clients/${a}/brand-hub`, {
+      method: 'PUT', body: JSON.stringify({ status: 'active', tools: ['pattern-studio'] }),
+    });
+    const saved = cookie;
+    cookie = await portalCookie(a);
+    const refused = await json(`/api/clients/${a}/brand-assets`, {
+      method: 'POST', body: JSON.stringify({ assetId: theirs, toolId: 'pattern-studio', kind: 'pattern', format: 'png' }),
+    });
+    expect(refused.status).toBe(403);
+    expect(store.getAsset(theirs)?.approved).toBe(true);
+    expect((await json(`/api/clients/${a}/brand-assets`)).body['assets']).toEqual([]);
     cookie = saved;
   });
 });

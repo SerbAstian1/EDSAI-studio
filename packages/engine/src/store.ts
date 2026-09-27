@@ -11,9 +11,15 @@ import { Comparator, type Comparator as ComparatorType } from './positioning.js'
 import { BrandValue, type BrandValue as BrandValueType } from './brand.js';
 import { Asset, type Asset as AssetType } from './assets.js';
 import { Deliverable, type Deliverable as DeliverableType } from './deliverables.js';
-import { ClientDocument, type ClientDocument as ClientDocumentType } from './documents.js';
 import {
-  BrandHub, BrandProject,
+  ClientDocument, ClientDocumentEntry, DocumentPage,
+  type ClientDocument as ClientDocumentType,
+  type ClientDocumentEntry as DocumentEntryType,
+  type DocumentPage as DocumentPageType,
+} from './documents.js';
+import {
+  BrandAsset, BrandHub, BrandProject,
+  type BrandAsset as BrandAssetType,
   type BrandHub as BrandHubType, type BrandProject as BrandProjectType,
 } from './brand-hub.js';
 import { Milestone, type Milestone as MilestoneType } from './milestones.js';
@@ -297,6 +303,8 @@ CREATE TABLE IF NOT EXISTS brand_hubs (
   client_id TEXT PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'draft',
   tools TEXT NOT NULL DEFAULT '[]',
+  dna TEXT NOT NULL DEFAULT '{"systems":[]}',
+  config TEXT NOT NULL DEFAULT '{"modules":{},"rules":{}}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -322,6 +330,80 @@ CREATE TABLE IF NOT EXISTS client_documents (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (client_id, slot)
 );
+
+/*
+ * The documents somebody added, beside the eight every client has.
+ *
+ * A separate table rather than a nullable slot column on client_documents, and
+ * the reason is the primary key: that table is keyed (client_id, slot), so a
+ * row with no slot could not be addressed at all, and making it addressable
+ * means rebuilding the table and moving every existing row to do it. The eight
+ * are fixed and few; these are open-ended. Keeping them apart also means the
+ * shelf a client has always known cannot change shape under them.
+ *
+ * The asset_id column points at assets rather than holding bytes, so an
+ * uploaded document is served, approved and isolated by exactly the machinery
+ * that already serves every other file.
+ */
+CREATE TABLE IF NOT EXISTS document_entries (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  document_type TEXT NOT NULL DEFAULT 'document',
+  source TEXT NOT NULL,
+  asset_id TEXT,
+  source_url TEXT,
+  thumbnail_asset_id TEXT,
+  view_mode TEXT NOT NULL DEFAULT 'document',
+  status TEXT NOT NULL DEFAULT 'ready',
+  page_count INTEGER,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS document_entries_by_client ON document_entries (client_id);
+
+/*
+ * A presentation's ordered frames.
+ *
+ * PRIMARY KEY (document_id, ord) rather than a rowid, so a manifest cannot
+ * contain two pages claiming to be page four, and so a whole manifest is
+ * replaced in one transaction instead of being diffed.
+ */
+CREATE TABLE IF NOT EXISTS document_pages (
+  document_id TEXT NOT NULL,
+  ord INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  node_id TEXT,
+  PRIMARY KEY (document_id, ord)
+);
+
+/*
+ * A design exported out of a Brand Hub tool into the shared library.
+ *
+ * The bytes are in assets, as asset_id; this is the provenance the asset
+ * itself has no column for, and the join that lets a pattern made in the Asset
+ * Lab be used by a composer later.
+ */
+CREATE TABLE IF NOT EXISTS brand_assets (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  project_id TEXT,
+  preset_id TEXT,
+  kind TEXT NOT NULL,
+  format TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  source_asset_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS brand_assets_by_client ON brand_assets (client_id);
 
 CREATE TABLE IF NOT EXISTS milestones (
   id TEXT PRIMARY KEY,
@@ -595,6 +677,16 @@ export class RunStore {
     if (!columns('invoices').includes('tax_basis_points')) {
       this.db.exec('ALTER TABLE invoices ADD COLUMN tax_basis_points INTEGER NOT NULL DEFAULT 0');
       this.db.exec('ALTER TABLE invoices ADD COLUMN terms TEXT');
+    }
+    // A hub now carries what the brand *is* and what the studio decided to
+    // allow, beside which tools it offers. Both default to empty, which is
+    // exactly what a hub written before either existed meant: a tool list, and
+    // nothing said about the identity behind it. No row is rewritten.
+    if (!columns('brand_hubs').includes('dna')) {
+      this.db.exec(`ALTER TABLE brand_hubs ADD COLUMN dna TEXT NOT NULL DEFAULT '{"systems":[]}'`);
+    }
+    if (!columns('brand_hubs').includes('config')) {
+      this.db.exec(`ALTER TABLE brand_hubs ADD COLUMN config TEXT NOT NULL DEFAULT '{"modules":{},"rules":{}}'`);
     }
 
     this.attachOrphanedRuns();
@@ -870,13 +962,15 @@ export class RunStore {
   }
 
   saveBrandHub(hub: BrandHubType): void {
-    BrandHub.parse(hub);
+    const row = BrandHub.parse(hub);
     this.db.prepare(`
-      INSERT INTO brand_hubs (client_id, status, tools, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO brand_hubs (client_id, status, tools, dna, config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(client_id) DO UPDATE SET
-        status = excluded.status, tools = excluded.tools, updated_at = excluded.updated_at
-    `).run(hub.clientId, hub.status, JSON.stringify(hub.tools), hub.createdAt, hub.updatedAt);
+        status = excluded.status, tools = excluded.tools, dna = excluded.dna,
+        config = excluded.config, updated_at = excluded.updated_at
+    `).run(row.clientId, row.status, JSON.stringify(row.tools),
+      JSON.stringify(row.dna), JSON.stringify(row.config), row.createdAt, row.updatedAt);
   }
 
   /** Every client with a hub, for the studio's own overview. */
@@ -913,6 +1007,44 @@ export class RunStore {
     this.db.prepare('DELETE FROM brand_projects WHERE id = ?').run(id);
   }
 
+  /**
+   * A design a client exported into the shared library.
+   *
+   * The upsert cannot change `client_id` or `asset_id` on an existing id, for
+   * the same reason `saveAsset` cannot: an id is handed out once and a row that
+   * silently changed owner would be a cross-client leak wearing a row id.
+   */
+  saveBrandAsset(asset: BrandAssetType): void {
+    const row = BrandAsset.parse(asset);
+    this.db.prepare(`
+      INSERT INTO brand_assets (id, client_id, asset_id, tool_id, project_id, preset_id, kind,
+                                format, width, height, source_asset_id, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        tool_id = excluded.tool_id, project_id = excluded.project_id, preset_id = excluded.preset_id,
+        kind = excluded.kind, format = excluded.format, width = excluded.width,
+        height = excluded.height, source_asset_id = excluded.source_asset_id
+    `).run(row.id, row.clientId, row.assetId, row.toolId, row.projectId ?? null,
+      row.presetId ?? null, row.kind, row.format, row.width ?? null, row.height ?? null,
+      row.sourceAssetId ?? null, row.createdBy, row.createdAt);
+  }
+
+  listBrandAssets(clientId: string): BrandAssetType[] {
+    return (this.db.prepare(
+      'SELECT * FROM brand_assets WHERE client_id = ? ORDER BY created_at DESC',
+    ).all(clientId) as Record<string, unknown>[]).map(hydrateBrandAsset);
+  }
+
+  getBrandAsset(id: string): BrandAssetType | undefined {
+    const row = this.db.prepare('SELECT * FROM brand_assets WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateBrandAsset(row) : undefined;
+  }
+
+  deleteBrandAsset(id: string): void {
+    this.db.prepare('DELETE FROM brand_assets WHERE id = ?').run(id);
+  }
+
   /* --------------------------------------------------------------- documents */
 
   saveDocument(document: ClientDocumentType): void {
@@ -933,6 +1065,98 @@ export class RunStore {
 
   deleteDocument(clientId: string, slot: string): void {
     this.db.prepare('DELETE FROM client_documents WHERE client_id = ? AND slot = ?').run(clientId, slot);
+  }
+
+  /**
+   * A document somebody added, beside the eight.
+   *
+   * As with `saveBrandHub`, the parsed record is what gets written, so a caller
+   * that omits `viewMode` or `status` gets the schema's defaults rather than an
+   * unbound `undefined` reaching SQLite.
+   */
+  saveDocumentEntry(entry: DocumentEntryType): void {
+    const row = ClientDocumentEntry.parse(entry);
+    this.db.prepare(`
+      INSERT INTO document_entries (id, client_id, title, description, document_type, source,
+                                    asset_id, source_url, thumbnail_asset_id, view_mode, status,
+                                    page_count, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title, description = excluded.description,
+        document_type = excluded.document_type, asset_id = excluded.asset_id,
+        source_url = excluded.source_url, thumbnail_asset_id = excluded.thumbnail_asset_id,
+        view_mode = excluded.view_mode, status = excluded.status,
+        page_count = excluded.page_count, updated_at = excluded.updated_at
+    `).run(row.id, row.clientId, row.title, row.description ?? null, row.documentType,
+      row.source, row.assetId ?? null, row.sourceUrl ?? null, row.thumbnailAssetId ?? null,
+      row.viewMode, row.status, row.pageCount ?? null, row.createdBy,
+      row.createdAt, row.updatedAt);
+  }
+
+  /** Newest first: the document being worked on is the one just added. */
+  listDocumentEntries(clientId: string): DocumentEntryType[] {
+    return (this.db.prepare(
+      'SELECT * FROM document_entries WHERE client_id = ? ORDER BY updated_at DESC, created_at DESC',
+    ).all(clientId) as Record<string, unknown>[]).map(hydrateDocumentEntry);
+  }
+
+  getDocumentEntry(id: string): DocumentEntryType | undefined {
+    const row = this.db.prepare('SELECT * FROM document_entries WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateDocumentEntry(row) : undefined;
+  }
+
+  /**
+   * Remove a document, and its manifest with it.
+   *
+   * Nothing here cascades, so a manifest left behind would outlive the
+   * document it describes and be found by a later document that happens to
+   * reuse the id. Both rows go, in one transaction, so a failure cannot leave
+   * the half that matters.
+   */
+  deleteDocumentEntry(id: string): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM document_pages WHERE document_id = ?').run(id);
+      this.db.prepare('DELETE FROM document_entries WHERE id = ?').run(id);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
+   * A presentation's pages, replaced wholesale.
+   *
+   * A manifest is one ordered list edited in one sitting, and rewriting it is
+   * exactly right: diffing it would leave a stale page behind a page that was
+   * renumbered, which is a viewer that jumps to a frame the designer deleted.
+   */
+  saveDocumentPages(documentId: string, pages: readonly DocumentPageType[]): void {
+    const rows = pages
+      .map((page) => DocumentPage.parse({ ...page, documentId }))
+      .sort((a, b) => a.order - b.order);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM document_pages WHERE document_id = ?').run(documentId);
+      const insert = this.db.prepare(`
+        INSERT INTO document_pages (document_id, ord, name, node_id) VALUES (?, ?, ?, ?)
+      `);
+      for (const page of rows) {
+        insert.run(documentId, page.order, page.name, page.nodeId ?? null);
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  listDocumentPages(documentId: string): DocumentPageType[] {
+    return (this.db.prepare(
+      'SELECT * FROM document_pages WHERE document_id = ? ORDER BY ord',
+    ).all(documentId) as Record<string, unknown>[]).map(hydrateDocumentPage);
   }
 
   /* -------------------------------------------------------------- milestones */
@@ -2008,18 +2232,51 @@ function hydrateAsset(row: Record<string, unknown>): AssetType {
   });
 }
 
+/**
+ * A JSON column, or the fallback if it cannot be read.
+ *
+ * A thrown `JSON.parse` here would fail a whole list, because one bad row takes
+ * the `map` with it. These columns hold things a schema already validates on
+ * the way in, so a value that will not parse is not a shape the caller can fix
+ * by catching — it is a row to leave as empty and let the schema default it,
+ * which is the same answer the row had when the column did not exist.
+ */
+function jsonColumn(row: Record<string, unknown>, key: string, fallback: unknown): unknown {
+  const raw = row[key];
+  if (typeof raw !== 'string' || raw === '') return fallback;
+  try { return JSON.parse(raw) as unknown; } catch { return fallback; }
+}
+
 function hydrateBrandHub(row: Record<string, unknown>): BrandHubType {
   return BrandHub.parse({
     clientId: row['client_id'], status: row['status'],
-    tools: JSON.parse(String(row['tools'] ?? '[]')) as unknown,
+    tools: jsonColumn(row, 'tools', []),
+    // A hub written before the brand had a way of saying so is a hub whose brand
+    // carries no systems, which is a real state and not a missing one.
+    dna: jsonColumn(row, 'dna', { systems: [] }),
+    config: jsonColumn(row, 'config', { modules: {}, rules: {} }),
     createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateBrandAsset(row: Record<string, unknown>): BrandAssetType {
+  return BrandAsset.parse({
+    id: row['id'], clientId: row['client_id'], assetId: row['asset_id'],
+    toolId: row['tool_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    ...(row['preset_id'] ? { presetId: row['preset_id'] } : {}),
+    kind: row['kind'], format: row['format'],
+    ...(typeof row['width'] === 'number' ? { width: row['width'] } : {}),
+    ...(typeof row['height'] === 'number' ? { height: row['height'] } : {}),
+    ...(row['source_asset_id'] ? { sourceAssetId: row['source_asset_id'] } : {}),
+    createdBy: row['created_by'], createdAt: row['created_at'],
   });
 }
 
 function hydrateBrandProject(row: Record<string, unknown>): BrandProjectType {
   return BrandProject.parse({
     id: row['id'], clientId: row['client_id'], toolId: row['tool_id'], name: row['name'],
-    configuration: JSON.parse(String(row['configuration'])) as unknown,
+    configuration: jsonColumn(row, 'configuration', {}),
     createdBy: row['created_by'], createdAt: row['created_at'], updatedAt: row['updated_at'],
   });
 }
@@ -2029,6 +2286,30 @@ function hydrateDocument(row: Record<string, unknown>): ClientDocumentType {
     clientId: row['client_id'], slot: row['slot'], figmaUrl: row['figma_url'],
     ...(row['note'] ? { note: row['note'] } : {}),
     updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateDocumentEntry(row: Record<string, unknown>): DocumentEntryType {
+  return ClientDocumentEntry.parse({
+    id: row['id'], clientId: row['client_id'], title: row['title'],
+    ...(row['description'] ? { description: row['description'] } : {}),
+    documentType: row['document_type'], source: row['source'],
+    ...(row['asset_id'] ? { assetId: row['asset_id'] } : {}),
+    ...(row['source_url'] ? { sourceUrl: row['source_url'] } : {}),
+    ...(row['thumbnail_asset_id'] ? { thumbnailAssetId: row['thumbnail_asset_id'] } : {}),
+    viewMode: row['view_mode'], status: row['status'],
+    // `page_count` is written from the manifest, so it is a count of rows that
+    // may since have been edited. It is a hint for the UI, not a source of
+    // truth: `listDocumentPages` is.
+    ...(typeof row['page_count'] === 'number' ? { pageCount: row['page_count'] } : {}),
+    createdBy: row['created_by'], createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateDocumentPage(row: Record<string, unknown>): DocumentPageType {
+  return DocumentPage.parse({
+    documentId: row['document_id'], order: row['ord'], name: row['name'],
+    ...(row['node_id'] ? { nodeId: row['node_id'] } : {}),
   });
 }
 

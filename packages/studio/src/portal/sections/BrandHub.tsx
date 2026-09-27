@@ -1,27 +1,48 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Grid3x3, Image as ImageIcon, Layers, LayoutTemplate, Palette, PenTool, Type, type LucideIcon } from 'lucide-react';
-import { api, type Asset, type BrandProject, type BrandValue, type Client } from '../../api.js';
+import { Image as ImageIcon, Layers, Palette, Sparkles, Type } from 'lucide-react';
+import {
+  api,
+  type Asset,
+  type BrandLayer,
+  type BrandProject,
+  type BrandValue,
+  type Client,
+} from '../../api.js';
 import { requestConfirmation } from '../../components/ConfirmDialog.js';
-import ToolHost, { toolReady } from '../../components/ToolHost.js';
+import ToolHost from '../../components/ToolHost.js';
 import OverflowMenu from '../../components/OverflowMenu.js';
 import { downloadFile } from '../../components/actions.js';
+import { brandRulesOf, moduleIcon, moduleReady, moduleWaiting } from '../../components/brandModules.js';
 
 /**
  * The client's Brand Hub: the brand as something to keep using.
  *
- * Four rooms. BRAND is the system itself — the measured colours and type
- * the studio settled. ASSETS is every approved file, by kind. CREATE is the
- * tools this hub offers. PROJECTS is what the client has made with them.
- * Nothing here is editable except a project; the master brand stays the
+ * Five rooms. BRAND is the system itself — the measured colours and type the
+ * studio settled. ASSETS is every approved file, by kind. CREATE is split into
+ * the two halves the studio described, ASSET LAB for making new brand assets
+ * and COMPOSER for assembling them. PROJECTS is what the client has made with
+ * either. Nothing here is editable except a project; the master brand stays the
  * studio's.
  *
- * Only ever rendered when the hub is active — the section does not exist
- * in the rail otherwise, so a client who did not buy one never sees an
- * empty room with a "coming soon" sign on it.
+ * **The two halves exist because they answer different questions.** Asset Lab is
+ * "give me more of what the brand already has"; Composer is "put what the brand
+ * has into something". A client who only needs the second never sees the first,
+ * which is the point of the studio choosing per client rather than shipping
+ * everyone the same shelf.
+ *
+ * Only ever rendered when the hub is active — the section does not exist in the
+ * rail otherwise, so a client who did not buy one never sees an empty room with
+ * a "coming soon" sign on it.
  */
 
 type Room = 'brand' | 'assets' | 'create' | 'projects';
+
+/** The two halves, in the order the studio's module order puts them. */
+const LAYERS: { id: BrandLayer; label: string; detail: string }[] = [
+  { id: 'asset-lab', label: 'Asset Lab', detail: 'Make more of what the brand already has.' },
+  { id: 'composer', label: 'Composer', detail: 'Put the brand into something new.' },
+];
 
 const ASSET_GROUPS: { label: string; kinds: Asset['kind'][] }[] = [
   { label: 'Logos', kinds: ['logo'] },
@@ -141,35 +162,39 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['brand-projects', client.id] }); },
   });
 
-  const tools = hub.data?.tools ?? [];
+  const modules = hub.data?.modules ?? [];
+  const rules = brandRulesOf(hub.data?.hub?.config.rules);
+  const nameOf = (toolId: string): string => modules.find((m) => m.id === toolId)?.name ?? toolId;
   const approved = (assets.data ?? []).filter((a) => a.approved);
-  const TOOL_ICONS: Record<string, LucideIcon> = {
-    'pattern-studio': Grid3x3, 'illustration-builder': PenTool, 'social-post': LayoutTemplate, poster: LayoutTemplate,
-  };
   const logo = approved.find((a) => a.kind === 'logo' && isImage(a));
 
   const rooms: { id: Room; label: string }[] = [
     { id: 'brand', label: 'Brand' },
     { id: 'assets', label: 'Assets' },
-    ...(tools.length > 0 ? [{ id: 'create' as Room, label: 'Create' }, { id: 'projects' as Room, label: 'Projects' }] : []),
+    ...(modules.length > 0 ? [{ id: 'create' as Room, label: 'Create' }, { id: 'projects' as Room, label: 'Projects' }] : []),
   ];
 
   if (editing) {
+    const module = modules.find((m) => m.id === editing.toolId);
     return (
       <section className="stack">
         <div>
-          <p className="label mono">{tools.find((t) => t.id === editing.toolId)?.name ?? editing.toolId}</p>
+          <p className="label mono">{module?.name ?? editing.toolId}</p>
           <h1 className="display" style={{ fontSize: 32, margin: 0 }}>{editing.project?.name ?? 'New design'}</h1>
         </div>
-        <ToolHost
-          toolId={editing.toolId}
-          clientId={client.id}
-          assets={approved}
-          values={values.data ?? []}
-          project={editing.project}
-          onSaved={(saved) => setEditing({ toolId: editing.toolId, project: saved })}
-          onClose={() => { setEditing(undefined); setRoom('projects'); }}
-        />
+        {module && (
+          <ToolHost
+            toolId={editing.toolId}
+            module={module}
+            rules={rules}
+            clientId={client.id}
+            assets={approved}
+            values={values.data ?? []}
+            project={editing.project}
+            onSaved={(saved) => setEditing({ toolId: editing.toolId, project: saved })}
+            onClose={() => { setEditing(undefined); setRoom('projects'); }}
+          />
+        )}
       </section>
     );
   }
@@ -199,24 +224,38 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
 
       {room === 'create' && (
         <div className="stack">
-          <p className="muted">What would you like to make?</p>
-          <div className="shelf-tiles">
-            {tools.map((t) => {
-              const ready = toolReady(t.id, approved);
-              const Icon = TOOL_ICONS[t.id] ?? Grid3x3;
-              return (
-                <button key={t.id} type="button" className={`shelf-tile${ready ? ' linked' : ' empty'}`}
-                        disabled={!ready || !canWrite}
-                        onClick={() => setEditing({ toolId: t.id })}>
-                  <Icon className="shelf-icon" size={22} strokeWidth={1.5} aria-hidden="true" />
-                  <span className="shelf-label">{t.name}</span>
-                  <span className="shelf-meta">
-                    {!canWrite ? 'View only on this link' : ready ? t.description : 'Waiting for approved files to work from'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {LAYERS.map((layer) => {
+            // A half the studio gave this client no modules of is not shown at
+            // all. An empty room with a heading over nothing reads as a fault.
+            const inLayer = modules.filter((m) => m.layer === layer.id);
+            if (inLayer.length === 0) return null;
+            return (
+              <section key={layer.id} className="stack">
+                <div>
+                  <h3><Sparkles size={16} aria-hidden="true" /> {layer.label}</h3>
+                  <p className="muted" style={{ margin: '2px 0 0', maxWidth: '60ch' }}>{layer.detail}</p>
+                </div>
+                <div className="shelf-tiles">
+                  {inLayer.map((m) => {
+                    const ready = moduleReady(m.id, approved);
+                    const waiting = moduleWaiting(m.id, approved);
+                    const Icon = moduleIcon(m.id);
+                    return (
+                      <button key={m.id} type="button" className={`shelf-tile${ready ? ' linked' : ' empty'}`}
+                              disabled={!ready || !canWrite}
+                              onClick={() => setEditing({ toolId: m.id })}>
+                        <Icon className="shelf-icon" size={22} strokeWidth={1.5} aria-hidden="true" />
+                        <span className="shelf-label">{m.name}</span>
+                        <span className="shelf-meta">
+                          {!canWrite ? 'View only on this link' : ready ? m.description : waiting}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
 
@@ -232,12 +271,12 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
             )
             : (
               <table className="stacky">
-                <thead><tr><th>Design</th><th>Tool</th><th>Last edited</th><th /></tr></thead>
+                <thead><tr><th>Design</th><th>Module</th><th>Last edited</th><th /></tr></thead>
                 <tbody>
                   {(projects.data ?? []).map((p) => (
                     <tr key={p.id}>
                       <td data-label="Design"><button type="button" className="link" onClick={() => setEditing({ toolId: p.toolId, project: p })}><strong>{p.name}</strong></button></td>
-                      <td className="muted" data-label="Tool">{tools.find((t) => t.id === p.toolId)?.name ?? p.toolId}</td>
+                      <td className="muted" data-label="Module">{nameOf(p.toolId)}</td>
                       <td className="muted" data-label="Last edited">{new Date(p.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
                       <td className="actions">
                         <OverflowMenu label={`Actions for ${p.name}`} items={[

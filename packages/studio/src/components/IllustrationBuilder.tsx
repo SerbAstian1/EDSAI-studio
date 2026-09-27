@@ -1,11 +1,15 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Copy, Download, FlipHorizontal2, Plus, Save, Shuffle, Trash2 } from 'lucide-react';
-import { api, type Asset, type BrandProject, type BrandValue } from '../api.js';
+import { ArrowDown, ArrowUp, Copy, Download, FlipHorizontal2, Library, Plus, Save, Shuffle, Trash2 } from 'lucide-react';
+import { api, type Asset, type BrandModule, type BrandProject, type BrandRules, type BrandValue } from '../api.js';
 import {
   Dial, DialGrid, Stage, Swatches, Workspace, brandColours, exportPng, exportSvg, isImageAsset,
-  safeBasename, tintedImage,
+  renderPng, safeBasename, tintedImage,
 } from './toolkit.js';
+
+import { PresetChoices, withPreset } from './BrandControls.js';
+import { allowedColors, presetsFor } from './brandModules.js';
+import { filesIntoLibrary, saveToLibrary } from './brandLibrary.js';
 
 /**
  * Illustration Builder: parts the studio drew, arranged by the client.
@@ -17,6 +21,11 @@ import {
  * faces, how it is turned and which brand colour it wears. That is every
  * control there is. Nothing is drawn, nothing is edited, and the parts on
  * the canvas are always the files the studio approved.
+ *
+ * Where the studio has locked a placement control it is shown greyed rather
+ * than removed, because a part sitting somewhere the client cannot explain is
+ * worse than one sitting somewhere the studio chose. Presets move the whole
+ * arrangement at once.
  */
 
 export const CANVAS = 1200;
@@ -50,17 +59,27 @@ export function illustrationSvg(config: IllustrationConfiguration, src: (id: str
     + `</svg>`;
 }
 
-export default function IllustrationBuilder({ clientId, assets, values, project, onSaved, onClose }: {
+export default function IllustrationBuilder({ clientId, assets, values, project, module, rules, onSaved, onClose }: {
   clientId: string;
   assets: readonly Asset[];
   values: readonly BrandValue[];
   project: BrandProject | undefined;
+  /** What the studio decided this module may offer. */
+  module: BrandModule;
+  /** The brand's standing colour, type and export rules. */
+  rules: BrandRules;
   onSaved: (project: BrandProject) => void;
   onClose: () => void;
 }): ReactElement {
   const queryClient = useQueryClient();
   const parts = useMemo(() => partsFor(assets), [assets]);
-  const colours = useMemo(() => brandColours(values), [values]);
+  // The brand's rules first, the measured palette as the fallback: a designer who
+  // named three colours means three.
+  const allowed = useMemo(() => allowedColors(rules, values), [rules, values]);
+  const colours = useMemo(() => {
+    const named = allowed.hexes.map((hex) => ({ name: hex.toUpperCase(), hex }));
+    return named.length > 0 ? named : brandColours(values);
+  }, [allowed.hexes, values]);
   const groups = useMemo(() => {
     const by = new Map<string, Asset[]>();
     for (const p of parts) {
@@ -70,19 +89,39 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
     return [...by.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [parts]);
 
+  // The preset is state *before* `initial` rather than after, because `initial`
+  // runs during the very first render and reads it. Declared below, it would be
+  // in its temporal dead zone and the tool would throw on open.
+  const { defaultPreset } = presetsFor(module);
+  const [presetId, setPresetId] = useState<string | undefined>(defaultPreset);
+
   const initial = (): IllustrationConfiguration => {
     const saved = project?.configuration as Partial<IllustrationConfiguration> | undefined;
-    return {
+    const base = {
       background: saved?.background ?? colours.find((c) => /back|cream|paper|light/i.test(c.name))?.hex ?? colours[0]?.hex ?? '#ffffff',
       layers: (saved?.layers ?? []).filter((l) => parts.some((p) => p.id === l.assetId)),
     };
+    // A preset is applied on open, so a scene made under the studio's chosen
+    // arrangement reopens in it.
+    return withPreset(module, base, presetId);
   };
   const [config, setConfig] = useState<IllustrationConfiguration>(initial);
   const [selected, setSelected] = useState<number | undefined>(undefined);
   const [name, setName] = useState(project?.name ?? '');
   const [saveAs, setSaveAs] = useState(false);
   const [exporting, setExporting] = useState<string | undefined>(undefined);
+  // The library row this session created, so the button reads "Filed" instead
+  // of quietly making a second copy of the same design.
+  const [filed, setFiled] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  /** Choose a preset: the studio's values land, then anything the client kept. */
+  const choosePreset = (id: string): void => {
+    setPresetId(id);
+    setConfig((c) => withPreset(module, c, id));
+  };
+  /** Whether the studio has taken this control away behind a preset. */
+  const held = (id: string): boolean => module.locked.includes(id);
 
   const svg = useMemo(() => illustrationSvg(config, api.downloadPath), [config]);
   const current = selected === undefined ? undefined : config.layers[selected];
@@ -117,17 +156,31 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
     });
     setSelected(to);
   };
+  /**
+   * Move every part at once.
+   *
+   * A locked placement control is left alone rather than moved and put back:
+   * a shuffle that quietly overrides a value the studio set is the exact
+   * failure the presets exist to prevent, and a background at scale 4 has
+   * always been left alone because it *is* the scene.
+   */
   const shuffle = (): void => {
     setConfig((c) => ({
       ...c,
-      layers: c.layers.map((l) => (l.scale >= 4 ? l : {
-        ...l,
-        x: 0.15 + Math.random() * 0.7, y: 0.15 + Math.random() * 0.7,
-        scale: 0.6 + Math.random() * 1.2, rotation: Math.round((Math.random() - 0.5) * 40),
-        flip: Math.random() < 0.5,
-      })),
+      layers: c.layers.map((l) => {
+        if (l.scale >= 4) return l;
+        const next: Layer = { ...l };
+        if (!held('x')) next.x = 0.15 + Math.random() * 0.7;
+        if (!held('y')) next.y = 0.15 + Math.random() * 0.7;
+        if (!held('scale')) next.scale = 0.6 + Math.random() * 1.2;
+        if (!held('rotation')) next.rotation = Math.round((Math.random() - 0.5) * 40);
+        if (!held('flip')) next.flip = Math.random() < 0.5;
+        return next;
+      }),
     }));
   };
+  /** Whether the studio has fixed the arrangement, which disables Shuffle. */
+  const placedHeld = (): boolean => ['x', 'y', 'scale', 'rotation', 'flip'].some(held);
 
   const save = useMutation({
     mutationFn: async (asNew: boolean) => {
@@ -143,13 +196,44 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
     onError: (e) => setError((e as Error).message),
   });
 
-  const doExport = async (format: 'png' | 'svg'): Promise<void> => {
+  const doExport = async (format: string): Promise<void> => {
+    // The module's export list has already had the brand's rules applied to it
+    // by the server, so an empty list is the only thing that can be refused.
+    if (format !== 'png' && format !== 'svg') return;
     setExporting(format);
     setError(undefined);
     try {
       const base = safeBasename(name, 'scene');
       if (format === 'svg') await exportSvg(svg, base);
       else await exportPng(svg, base, CANVAS, CANVAS);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(undefined);
+    }
+  };
+
+  /**
+   * File this scene into the brand's library, so a finished illustration can
+   * become a part Pattern Studio tiles with, rather than a file that only ever
+   * lived on somebody's desktop.
+   */
+  const doFile = async (): Promise<void> => {
+    if (config.layers.length === 0) return;
+    setExporting('library');
+    setError(undefined);
+    try {
+      const blob = await renderPng(svg, CANVAS, CANVAS);
+      const result = await saveToLibrary({
+        clientId, toolId: module.id, kind: 'illustration', format: 'png', blob,
+        filename: `${safeBasename(name, 'scene')}.png`,
+        width: CANVAS, height: CANVAS,
+        ...(project ? { projectId: project.id } : {}),
+        ...(presetId ? { presetId } : {}),
+      });
+      void queryClient.invalidateQueries({ queryKey: ['brand-assets', clientId] });
+      void queryClient.invalidateQueries({ queryKey: ['assets', clientId] });
+      setFiled(result.design.id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -172,14 +256,21 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
   const stage = (
     <Stage svg={svg} label="Scene preview" width={CANVAS} height={CANVAS} actions={(
       <>
-        <button type="button" onClick={shuffle} disabled={config.layers.length === 0}><Shuffle size={14} aria-hidden="true" /> Shuffle</button>
+        <button type="button" onClick={shuffle} disabled={config.layers.length === 0 || placedHeld()}><Shuffle size={14} aria-hidden="true" /> Shuffle</button>
         <span style={{ marginLeft: 'auto' }} className="row">
-          <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('png')}>
-            <Download size={14} aria-hidden="true" /> {exporting === 'png' ? 'Exporting…' : 'PNG'}
-          </button>
-          <button type="button" disabled={Boolean(exporting) || config.layers.length === 0} onClick={() => void doExport('svg')}>
-            <Download size={14} aria-hidden="true" /> {exporting === 'svg' ? 'Exporting…' : 'SVG'}
-          </button>
+          {filesIntoLibrary(module) && (
+            <button type="button" disabled={Boolean(exporting) || filed !== undefined || config.layers.length === 0}
+                    onClick={() => void doFile()}>
+              <Library size={14} aria-hidden="true" />
+              {exporting === 'library' ? 'Filing…' : filed ? 'Filed' : 'Add to library'}
+            </button>
+          )}
+          {module.exports.map((format) => (
+            <button key={format} type="button" disabled={Boolean(exporting) || config.layers.length === 0}
+                    onClick={() => void doExport(format)}>
+              <Download size={14} aria-hidden="true" /> {exporting === format ? 'Exporting…' : format.toUpperCase()}
+            </button>
+          ))}
         </span>
       </>
     )} />
@@ -191,6 +282,9 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
           <span className="label">Design name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Morning scene" />
         </label>
+
+        <PresetChoices module={module} presetId={presetId} onChange={choosePreset}
+                       name={`illustration-builder-${clientId}`} />
 
         {/* The scene's parts, back to front. Selecting one brings its dials up. */}
         {config.layers.length > 0 && (
@@ -230,12 +324,12 @@ export default function IllustrationBuilder({ clientId, assets, values, project,
           <div className="stack" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <span className="label">{nameOf(current.assetId)}</span>
             <DialGrid>
-              <Dial label="Size" value={current.scale} min={0.1} max={4} step={0.05} onChange={(v) => setLayer(selected, { scale: v })} />
-              <Dial label="Turn" value={current.rotation} min={-180} max={180} step={1} unit="°" onChange={(v) => setLayer(selected, { rotation: v })} />
-              <Dial label="Across" value={current.x} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { x: v })} />
-              <Dial label="Down" value={current.y} min={-0.25} max={1.25} step={0.01} onChange={(v) => setLayer(selected, { y: v })} />
+              <Dial label="Size" value={current.scale} min={0.1} max={4} step={0.05} locked={held('scale')} onChange={(v) => setLayer(selected, { scale: v })} />
+              <Dial label="Turn" value={current.rotation} min={-180} max={180} step={1} unit="°" locked={held('rotation')} onChange={(v) => setLayer(selected, { rotation: v })} />
+              <Dial label="Across" value={current.x} min={-0.25} max={1.25} step={0.01} locked={held('x')} onChange={(v) => setLayer(selected, { x: v })} />
+              <Dial label="Down" value={current.y} min={-0.25} max={1.25} step={0.01} locked={held('y')} onChange={(v) => setLayer(selected, { y: v })} />
             </DialGrid>
-            <button type="button" onClick={() => setLayer(selected, { flip: !current.flip })} aria-pressed={current.flip}>
+            <button type="button" disabled={held('flip')} onClick={() => setLayer(selected, { flip: !current.flip })} aria-pressed={current.flip}>
               <FlipHorizontal2 size={14} aria-hidden="true" /> {current.flip ? 'Facing left' : 'Facing right'}
             </button>
             {colours.length > 0 && (

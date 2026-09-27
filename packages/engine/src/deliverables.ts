@@ -44,14 +44,11 @@ export const Deliverable = z.object({
 export type Deliverable = z.infer<typeof Deliverable>;
 
 /**
- * True only for an https link on figma.com or one of its subdomains. This is
- * the whole gate between "a URL someone typed" and "an origin we frame", so
- * it is deliberately strict: no http, no look-alike hosts, no bare strings.
+ * True only for an https link on figma.com or one of its subdomains.
+ *
+ * Re-exported rather than reimplemented. The rule used to live here and again
+ * in the studio, which is the arrangement where a tightened check reaches the
+ * server and misses the browser; `figma-source.ts` is now the one place it is
+ * written down, and this re-export keeps every existing import working.
  */
-export function isFigmaUrl(value: string): boolean {
-  let url: URL;
-  try { url = new URL(value); } catch { return false; }
-  if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  return host === 'figma.com' || host.endsWith('.figma.com');
-}
+export { isFigmaUrl } from './figma-source.js';

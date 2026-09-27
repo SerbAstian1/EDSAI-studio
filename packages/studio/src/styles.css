@@ -2902,3 +2902,191 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .event-dialog { padding: calc(var(--step) * 4); }
 }
 
+
+/* ===================================================================== brand hub */
+
+/* A held control is shown, not hidden, and looks held.
+   The designer took it away deliberately and the client can still read the
+   value they were given, so the range greys rather than vanishing — a control
+   that disappears reads as a bug in the tool. */
+.dial.locked { opacity: 0.62; }
+.dial.locked .label::after {
+  content: "held";
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+.dial.locked input[type="range"] { cursor: default; }
+.segmented button[disabled] { opacity: 0.5; cursor: default; }
+
+/* The brand description. A fieldset per group because the groups are the
+   taxonomy a designer is reading, not a flat list of 24 capabilities. */
+.dna-group { border: 0; margin: 0; padding: 0; display: grid; gap: calc(var(--step) * 1.5); }
+.dna-group legend { padding: 0; }
+.dna-row { display: flex; flex-wrap: wrap; gap: calc(var(--step) * 2); }
+.dna-chip {
+  align-items: center; gap: 6px;
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 2.5);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  cursor: pointer;
+}
+.dna-chip:hover { border-color: var(--border-strong); }
+.dna-chip.on, .dna-chip:has(input:checked) { border-color: var(--accent); background: var(--surface); }
+/* A capability with no tool built yet. Greyed and unclickable, because naming
+   it grants nothing — but still listed, so a designer recording "grain-led"
+   today finds it there when the Grain FX ships. */
+.dna-chip.soon { opacity: 0.5; cursor: default; border-style: dashed; }
+.dna-chip.soon:hover { border-color: var(--border); }
+.dna-chip .why { font-size: 12px; }
+
+/* One module's configuration, collapsed to a single line until asked for.
+   The collapsed row is the answer to "what did you decide here" without
+   opening six cards to read six numbers. */
+.module-config-head {
+  display: flex; align-items: center; gap: calc(var(--step) * 2);
+  width: 100%; min-height: 0; padding: 0;
+  background: transparent; border: 0; box-shadow: none;
+  font-size: var(--text-base); font-weight: 600; text-align: left;
+}
+.module-config-head .muted { margin-left: auto; font-weight: 400; }
+.module-config-head .muted svg { vertical-align: -1px; }
+
+/* Presets: the named choices a client gets instead of number fields. */
+.preset-row {
+  display: grid; gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 2.5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.preset-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: calc(var(--step) * 2);
+}
+.preset-value { display: grid; gap: 2px; }
+.preset-value .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.preset-value input[type="number"] { max-width: 110px; }
+.preset-value input[type="color"] { width: 44px; height: 34px; padding: 2px; }
+
+/* The rules list lets a named colour be removed from the same place it was
+   added, so the allowlist can be corrected without a retype. */
+.swatch-pick { position: relative; width: 64px; }
+.swatch-pick .swatch-pick-label { font-size: 9px; }
+.swatch-pick > button {
+  position: absolute; top: 0; right: 0;
+  display: grid; place-items: center;
+  width: 16px; height: 16px; min-height: 0; padding: 0;
+  background: var(--surface-elevated); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 50%;
+  font-size: 9px;
+}
+.swatch-pick > button:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.swatch-row .pill.minor > button {
+  display: inline-grid; place-items: center;
+  width: 14px; height: 14px; min-height: 0; margin-left: 4px; padding: 0;
+  background: transparent; border: 0; color: inherit;
+}
+.icon-link {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; min-height: 0;
+  color: var(--text-muted); border-radius: var(--radius);
+}
+.icon-link:hover { color: var(--text-primary); background: var(--surface); }
+
+/* ===================================================================== documents */
+
+/* A draft document is dimmed rather than hidden: the studio needs to know it
+   is there, and a client is better served by seeing it is not ready yet than
+   by it simply not existing. */
+.shelf-tile.dimmed { opacity: 0.7; border-style: dashed; }
+.shelf-tile.dimmed .shelf-icon { color: var(--text-muted); }
+
+/* A deck. One frame, a bar, and a strip of page numbers.
+   The stage is a fixed tall box rather than auto height so the bar does not
+   jump as Figma boots, which is what makes an embedded deck feel like it is
+   loading forever. */
+.deck {
+  display: grid; gap: calc(var(--step) * 2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--step) * 2.5);
+}
+.deck:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.deck-bar { display: flex; align-items: center; gap: calc(var(--step) * 3); flex-wrap: wrap; }
+.deck-title { display: flex; align-items: baseline; gap: calc(var(--step) * 2); min-width: 0; }
+.deck-title .muted {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--text-sm);
+}
+.deck-nav { display: flex; align-items: center; gap: 2px; }
+.deck-counter {
+  min-width: 68px; text-align: center;
+  font-size: var(--text-sm); color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.deck-stage { min-height: 60vh; }
+.deck-stage .figma-embed { height: 100%; min-height: 60vh; }
+.deck-strip {
+  display: flex; gap: 2px; margin: 0; padding: 0; list-style: none;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.deck-strip button {
+  display: flex; align-items: baseline; gap: 6px;
+  min-height: 0; padding: calc(var(--step) * 1) calc(var(--step) * 2);
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-muted); font-size: var(--text-xs); font-weight: 400;
+  white-space: nowrap;
+}
+.deck-strip button:hover { color: var(--text-primary); border-color: var(--border); }
+.deck-strip button.on {
+  color: var(--text-primary); background: var(--surface-elevated);
+  border-color: var(--accent); font-weight: 600;
+}
+.deck-strip-name { overflow: hidden; text-overflow: ellipsis; max-width: 14ch; }
+
+/* Fullscreen is a fixed overlay rather than the Fullscreen API, because the
+   API needs a user gesture per browser and refuses inside a cross-origin
+   frame on some of them. */
+.deck-full {
+  position: fixed; inset: 0; z-index: 60; margin: 0;
+  border: 0; border-radius: 0;
+  background: var(--surface-elevated);
+  padding: calc(var(--step) * 3);
+}
+.deck-full .deck-stage, .deck-full .deck-stage .figma-embed { min-height: 0; height: 100%; }
+
+/* One document, read the way it was declared. */
+.doc-viewer { display: grid; gap: calc(var(--step) * 2); }
+.doc-image {
+  max-width: 100%; max-height: 70vh; object-fit: contain;
+  justify-self: center;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.doc-frame {
+  width: 100%; height: 70vh; min-height: 420px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* A caller with its own chrome does not get a second one. */
+.figma-embed.compact { height: 100%; }
+.figma-embed.compact .figma-embed-placeholder { border-radius: var(--radius); }
+
+@media (max-width: 900px) {
+  .deck-stage, .deck-stage .figma-embed { min-height: 48vh; }
+  .deck-bar { gap: calc(var(--step) * 2); }
+  .deck-title { width: 100%; }
+  .doc-frame { height: 60vh; min-height: 320px; }
+  .preset-values { grid-template-columns: 1fr 1fr; }
+}

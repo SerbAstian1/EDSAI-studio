@@ -26,8 +26,11 @@ import {
   Contract, ContractFee, contractFees, contractReadyToSend, type Contract as ContractType,
   type Event, type EventKind,
   STRATEGY_SYSTEM, strategyUser, cutTranscript, type Strategy, type TranscriptCut,
-  DOCUMENT_SLOTS, isDocumentSlot, type ClientDocument,
-  BRAND_TOOLS, BrandHubStatus, assetsInConfiguration, hubEnabled, isBrandToolId,
+  DOCUMENT_SLOTS, isDocumentSlot, manifestFrom, orderedPages, type ClientDocument,
+  ClientDocumentEntry, type DocumentPage,
+  BRAND_TOOLS, BrandDna, BrandHubConfig, BrandHubStatus, assetsInConfiguration, hubEnabled,
+  isBrandToolId, moduleAllowed, resolveModules,
+  BrandAsset,
   type BrandHub, type BrandProject, type BrandToolId,
   type AssetStore,
   type Run, type Onboarding, type PortalKey, type Answer, type Client,
@@ -540,10 +543,17 @@ export class ApiServer {
    * is the tool's own shape pointing only at assets this session may see.
    * Checked on both create and update, because a project edited to point at
    * another client's asset is the same leak as one created that way.
+   *
+   * **The tool gate is `moduleAllowed`, not a re-statement of the rules.** It
+   * asks the same resolver the Create room was rendered from, so a hub whose
+   * DNA does not carry the tool's visual system refuses the save even though
+   * the tool is in the tool list — which is the one case a hand-written check
+   * here would get wrong, and the reason "necessary but not sufficient" needs
+   * only one implementation.
    */
   private checkBrandProject(
     scoped: ScopedStore, clientId: string,
-    input: { toolId?: string; name?: string; configuration?: unknown },
+    input: { toolId?: string; name?: string; configuration?: unknown; presetId?: string },
   ): { status: number; body: unknown } | undefined {
     const hub = scoped.getBrandHub(clientId);
     if (!hubEnabled(hub)) {
@@ -551,7 +561,7 @@ export class ApiServer {
     }
     const toolId = input.toolId ?? '';
     const tool = BRAND_TOOLS.find((t) => t.id === toolId);
-    if (!tool || !tool.available || !hub?.tools.includes(tool.id)) {
+    if (!tool || !moduleAllowed(hub, toolId, 'portal')) {
       return { status: 400, body: { error: 'bad_request', message: 'That tool is not offered in this Brand Hub.' } };
     }
     if (!(input.name ?? '').trim()) {
@@ -1962,8 +1972,188 @@ export class ApiServer {
         },
       },
 
-      /* ----------------------------------------------------------- brand hub */
+      /* ------------------------------------------------- the documents a studio added */
 
+      /**
+       * The added documents, beside the eight.
+       *
+       * **One endpoint, one library.** The fixed shelf keeps its own route
+       * because its shape is fixed — every slot listed, filled or not — and a
+       * list that grew a ninth entry would break that contract. This one is
+       * open-ended, and the two are read together and rendered as one section.
+       *
+       * The page count is deliberately *not* taken from the request. It is
+       * written from the manifest, so a client that says "three pages" and then
+       * records five has a viewer that trusts the wrong number; here it is
+       * counted, which is the only version that cannot drift.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/document-entries$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, {
+            documents: scoped.listDocumentEntries(clientId).map((entry) => ({
+              ...entry,
+              // Counted, never believed.
+              ...(entry.source === 'figma' ? { pageCount: scoped.listDocumentPages(entry.id).length } : {}),
+            })),
+          });
+        },
+      },
+
+      /**
+       * Add a document, or revise the one with this id.
+       *
+       * The shape of the source — a real Figma file, a real file of this
+       * client's, never both — is refused inside `ScopedStore`, so every caller
+       * gets the same answer and a request body cannot talk its way past it.
+       * What is decided here is what a form cannot know: the id, who created
+       * it, and the page count.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/document-entries$/,
+        run: ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as Partial<ClientDocumentEntry> & { pages?: DocumentPage[] };
+          const now = new Date().toISOString();
+          const draft: ClientDocumentEntry = {
+            id: newId('doc'), clientId,
+            title: (input.title ?? '').trim().slice(0, 200),
+            ...(input.description?.trim() ? { description: input.description.trim().slice(0, 600) } : {}),
+            documentType: input.documentType ?? 'document',
+            source: input.source ?? 'figma',
+            ...(input.assetId ? { assetId: input.assetId } : {}),
+            ...(input.sourceUrl?.trim() ? { sourceUrl: input.sourceUrl.trim() } : {}),
+            ...(input.thumbnailAssetId ? { thumbnailAssetId: input.thumbnailAssetId } : {}),
+            viewMode: input.viewMode ?? 'document',
+            status: input.status ?? 'ready',
+            createdBy: principal.userId, createdAt: now, updatedAt: now,
+          };
+          // A title of nothing is not a document, and this is the one field a
+          // form can get wrong by being left empty.
+          if (!draft.title) {
+            send(res, 400, { error: 'bad_request', message: 'A document needs a name.' });
+            return;
+          }
+          const document = ClientDocumentEntry.parse(draft);
+          // Refused by the boundary, which turns a `Forbidden` into a 403 with
+          // the reason already written.
+          scoped.saveDocumentEntry(document);
+          if (Array.isArray(input.pages) && input.pages.length > 0) {
+            scoped.saveDocumentPages(document.id, manifestFrom(document.id, input.pages));
+            const pageCount = scoped.listDocumentPages(document.id).length;
+            scoped.saveDocumentEntry({ ...document, pageCount, updatedAt: now });
+          }
+          send(res, 201, { document: scoped.getDocumentEntry(document.id) });
+        },
+      },
+
+      {
+        method: 'GET', pattern: /^\/api\/document-entries\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const document = scoped.getDocumentEntry(params['id'] ?? '');
+          if (!document) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          send(res, 200, { document, pages: orderedPages(scoped.listDocumentPages(document.id)) });
+        },
+      },
+
+      {
+        method: 'PUT', pattern: /^\/api\/document-entries\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getDocumentEntry(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          const input = body as Partial<ClientDocumentEntry>;
+          const document: ClientDocumentEntry = {
+            ...existing,
+            title: (input.title ?? existing.title).trim().slice(0, 200),
+            ...(input.description !== undefined
+              ? { description: input.description.trim().slice(0, 600) }
+              : existing.description ? { description: existing.description } : {}),
+            documentType: input.documentType ?? existing.documentType,
+            viewMode: input.viewMode ?? existing.viewMode,
+            status: input.status ?? existing.status,
+            ...(input.thumbnailAssetId !== undefined
+              ? { thumbnailAssetId: input.thumbnailAssetId } : {}),
+            // Counted after the fact rather than accepted, so a caller cannot
+            // leave a count that disagrees with the manifest beside it.
+            pageCount: existing.source === 'figma'
+              ? scoped.listDocumentPages(existing.id).length
+              : existing.pageCount,
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveDocumentEntry(ClientDocumentEntry.parse(document));
+          send(res, 200, { document: scoped.getDocumentEntry(existing.id) });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/document-entries\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getDocumentEntry(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          scoped.deleteDocumentEntry(existing.id);
+          send(res, 200, { removed: existing.id });
+        },
+      },
+
+      /**
+       * A presentation's manifest, replaced whole.
+       *
+       * **Pages are renumbered here, not refused.** The designer reorders by
+       * dragging, and the numbers are an implementation detail of the list they
+       * dragged; a studio sorting two pages the other way round is expressing
+       * an intent, not sending a malformed request. So the order is taken from
+       * the array and written as 1..n. A manifest with two pages both claiming
+       * to be page four — which can no longer be expressed — is still refused
+       * by the boundary, and so is a document with no pages to attach them to.
+       */
+      {
+        method: 'PUT', pattern: /^\/api\/document-entries\/(?<id>[\w-]+)\/pages$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const document = scoped.getDocumentEntry(params['id'] ?? '');
+          if (!document) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          const input = body as { pages?: DocumentPage[] };
+          if (!Array.isArray(input?.pages)) {
+            send(res, 400, { error: 'bad_request', message: 'A manifest is a list of pages.' });
+            return;
+          }
+          const pages = manifestFrom(document.id, input.pages);
+          scoped.saveDocumentPages(document.id, pages);
+          // The count is written with the manifest, in the same breath, so the
+          // two cannot disagree.
+          const now = new Date().toISOString();
+          scoped.saveDocumentEntry({ ...document, pageCount: pages.length, updatedAt: now });
+          send(res, 200, { pages, pageCount: pages.length });
+        },
+      },
+
+      /* ----------------------------------------------------------- brand hub */
       /**
        * Every hub in the studio, with what is in it — the studio-wide view
        * that the Brand Hub section lists. Studio only: a portal has one hub
@@ -1996,10 +2186,18 @@ export class ApiServer {
       },
 
       /**
-       * The hub as whoever is asking may see it. A studio session gets the
-       * record whatever its status, plus every tool with whether it is built;
-       * a portal session gets `enabled: false` and nothing else unless the
-       * hub is active, and then only the tools switched on for it.
+       * The hub as whoever is asking may see it, resolved in one place.
+       *
+       * A studio session gets the record whatever its status, and every module
+       * with whether it is built, switched on, and served by the brand's DNA —
+       * because a designer deciding what to switch on needs to know what exists
+       * and what the brand has underneath it. A portal session gets an inactive
+       * hub as `enabled: false` and nothing else, and an active one only the
+       * modules that pass all three gates.
+       *
+       * Both audiences come out of `resolveModules`, so the screen and the
+       * authorization in `checkBrandProject` cannot come to disagree about what
+       * a client is allowed to open.
        */
       {
         method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-hub$/,
@@ -2011,20 +2209,14 @@ export class ApiServer {
             return;
           }
           const hub = scoped.getBrandHub(clientId);
-          const enabled = hubEnabled(hub);
-          const tools = BRAND_TOOLS
-            .filter((t) => principal?.kind !== 'portal' || (t.available && hub?.tools.includes(t.id)))
-            .map((t) => ({
-              id: t.id, name: t.name, description: t.description, available: t.available,
-              exports: t.exports, enabled: Boolean(hub?.tools.includes(t.id)),
-            }));
+          const audience = principal?.kind === 'portal' ? 'portal' : 'studio';
           send(res, 200, {
-            enabled,
+            enabled: hubEnabled(hub),
             ...(hub ? { hub } : {}),
-            tools,
+            modules: resolveModules(hub, audience),
             // What the hub has to work with, so the studio can see at a
             // glance whether switching it on would show the client anything.
-            ...(principal?.kind !== 'portal' ? {
+            ...(audience !== 'portal' ? {
               approvedAssets: this.store.listAssets(clientId).filter((a) => a.approved).length,
               brandValues: this.store.listBrandValues(clientId).length,
             } : {}),
@@ -2032,6 +2224,17 @@ export class ApiServer {
         },
       },
 
+      /**
+       * The studio's side of the hub: its status, its tools, and — since this
+       * release — what the brand *is* and what the studio decided to allow.
+       *
+       * **The DNA and the configuration are validated, not coerced.** A hub that
+       * silently dropped a capability nobody recognised would show a designer a
+       * brand that looks like the one they described and is not; the same goes
+       * for a preset with no name. A refusal is the only honest answer, and it
+       * is why these two fields are validated here and nowhere else in the
+       * request path.
+       */
       {
         method: 'PUT', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-hub$/,
         run: ({ res, params, body, scoped }) => {
@@ -2041,7 +2244,7 @@ export class ApiServer {
             send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
             return;
           }
-          const input = body as { status?: string; tools?: unknown };
+          const input = body as { status?: string; tools?: unknown; dna?: unknown; config?: unknown };
           const existing = this.store.getBrandHub(clientId);
           const status = input?.status ?? existing?.status ?? 'draft';
           if (!BrandHubStatus.safeParse(status).success) {
@@ -2054,9 +2257,36 @@ export class ApiServer {
             ? input.tools.filter((t): t is BrandToolId => typeof t === 'string' && isBrandToolId(t)
                 && BRAND_TOOLS.some((b) => b.id === t && b.available))
             : existing?.tools ?? [];
+
           const now = new Date().toISOString();
+          // Always run through the schema, even when the request left the field
+          // out: an existing value that no longer parses is a studio session's
+          // problem to be told about, not something to write back unchanged.
+          // `updatedAt` is stamped only when the request actually carried a
+          // DNA, because it means "this was reviewed", and a status-only save
+          // has not reviewed anything.
+          const sentDna = input?.dna && typeof input.dna === 'object'
+            ? input.dna as Record<string, unknown>
+            : undefined;
+          const dna = BrandDna.safeParse(sentDna
+            ? { ...(existing?.dna ?? {}), ...sentDna, updatedAt: sentDna['updatedAt'] ?? now }
+            : (existing?.dna ?? {}));
+          if (!dna.success) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'That is not a set of visual systems this studio knows about.',
+            });
+            return;
+          }
+          const config = BrandHubConfig.safeParse(input?.config ?? existing?.config ?? {});
+          if (!config.success) {
+            send(res, 400, { error: 'bad_request', message: 'That is not a hub configuration.' });
+            return;
+          }
+
           const hub: BrandHub = {
             clientId, status: status as BrandHubStatus, tools: [...new Set(tools)],
+            dna: dna.data, config: config.data,
             createdAt: existing?.createdAt ?? now, updatedAt: now,
           };
           scoped.saveBrandHub(hub);
@@ -2133,6 +2363,129 @@ export class ApiServer {
             return;
           }
           scoped.deleteBrandProject(params['id'] ?? '');
+          send(res, 200, { removed: params['id'] ?? '' });
+        },
+      },
+
+      /* ------------------------------------------------------ generated assets */
+
+      /**
+       * What the client has made, in one library across every tool.
+       *
+       * The point of this list is that it does not care which tool produced
+       * anything: a pattern from the Asset Lab and a poster from the Composer
+       * are both here, because the join between them is the client rather than
+       * the tool. A studio that made a client a pattern and three months later
+       * built a composer can finally put the pattern inside a post.
+       *
+       * Only what the session may see comes back, which for a client means
+       * approved files only — the same rule `listAssets` applies, reached
+       * through `ScopedStore` rather than repeated here.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-assets$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const designs = scoped.listBrandAssets(clientId);
+          send(res, 200, {
+            assets: designs.map((asset) => ({
+              ...asset,
+              // The file itself, resolved through the session so an unapproved
+              // one comes back as nothing rather than as a link that 403s.
+              file: scoped.getAsset(asset.assetId) ?? null,
+            })),
+            // Which tools have actually been used, so the studio can see where
+            // this client is and has not been.
+            byTool: designs.reduce<Record<string, number>>((counts, asset) => {
+              counts[asset.toolId] = (counts[asset.toolId] ?? 0) + 1;
+              return counts;
+            }, {}),
+          });
+        },
+      },
+
+      /**
+       * Keep a design a client exported.
+       *
+       * **The bytes are uploaded first, separately, through the asset route.**
+       * That is deliberate: a file that is 12 MB does not belong in a JSON body
+       * next to its provenance, and the asset route already knows the size
+       * limit, the content type and the digest. What arrives here is a pointer
+       * to a file that already exists, and `ScopedStore` refuses one belonging
+       * to another client.
+       *
+       * **The file is approved here, which is the one place that happens.**
+       * Every upload lands `approved: false`, because nothing a studio receives
+       * should reach a client unreviewed. A design is the exception, and a
+       * narrow one: the authorization has *already* been made below — this
+       * session belongs to this client, and this hub offers this tool — and the
+       * file was drawn from brand files that are already approved, so there is
+       * nothing in it the studio has not already signed off. Approving it here
+       * is what closes the loop the Asset Lab exists for; without it a client
+       * makes a pattern and then cannot use it, and a hub built around making
+       * brand assets has a room that leads nowhere.
+       *
+       * It is deliberately *not* a change to the upload default. A file becomes
+       * approved only by being filed as a design from a module the hub offers,
+       * which is a deliberate act by a real session — and never by merely
+       * uploading something.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/brand-assets$/,
+        run: ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getBrandHub(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'This client has no active Brand Hub.' });
+            return;
+          }
+          const input = body as { assetId?: string; toolId?: string; projectId?: string; presetId?: string; kind?: string; format?: string; width?: number; height?: number; sourceAssetId?: string };
+          const toolId = input.toolId ?? '';
+          // The same gate a design is saved through: a tool the brand's hub
+          // does not offer cannot have produced something worth keeping.
+          if (!moduleAllowed(scoped.getBrandHub(clientId), toolId, 'portal')) {
+            send(res, 400, { error: 'bad_request', message: 'That tool is not offered in this Brand Hub.' });
+            return;
+          }
+          const design: BrandAsset = {
+            id: newId('design-file'), clientId,
+            assetId: input.assetId ?? '',
+            toolId: toolId as BrandToolId,
+            ...(input.projectId ? { projectId: input.projectId } : {}),
+            ...(input.presetId ? { presetId: input.presetId } : {}),
+            kind: (input.kind ?? 'design').trim().slice(0, 40),
+            format: (input.format ?? 'png').trim().slice(0, 20),
+            ...(typeof input.width === 'number' ? { width: Math.round(input.width) } : {}),
+            ...(typeof input.height === 'number' ? { height: Math.round(input.height) } : {}),
+            ...(input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
+            createdBy: principal.userId, createdAt: new Date().toISOString(),
+          };
+          scoped.saveBrandAsset(BrandAsset.parse(design));
+          // After the design is safely stored, never before: if the save is
+          // refused, an approved file with no design pointing at it would be a
+          // loose end nobody asked for.
+          scoped.approveGeneratedFile(clientId, design.assetId);
+          send(res, 201, { asset: scoped.getBrandAsset(design.id) });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/brand-assets\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          if (!scoped.getBrandAsset(params['id'] ?? '')) {
+            send(res, 404, { error: 'not_found', message: 'No such design for this session.' });
+            return;
+          }
+          // The file is left alone. It is an asset like any other, it may be
+          // referenced by a project, and deleting a pointer is not a decision
+          // about a file that other records can point at.
+          scoped.deleteBrandAsset(params['id'] ?? '');
           send(res, 200, { removed: params['id'] ?? '' });
         },
       },
