@@ -64,7 +64,7 @@ export default function Brands(): ReactElement {
                 <td data-label="Portal"><a href="#/portals">Publishable</a></td>
                 <td className="actions">
                   <OverflowMenu label={`Actions for brand ${run.projectId}`} items={[
-                    { label: 'Brand values', icon: Palette, onSelect: () => go(`#/clients/${run.clientId}/brand`) },
+                    { label: 'Brand values', icon: Palette, onSelect: () => go(`#/clients/${run.clientId}/strategy`) },
                     { label: 'Read the direction', icon: Compass, onSelect: () => go(`#/run/${run.id}/direction`) },
                     { label: 'Scorecard', icon: BarChart3, onSelect: () => go(`#/run/${run.id}/scorecard`) },
                     { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${run.clientId}`) },

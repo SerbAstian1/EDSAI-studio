@@ -93,21 +93,24 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
                   { label: 'Open run', icon: ExternalLink, onSelect: () => go(`#/run/${run.id}`) },
                   { label: 'Read the direction', icon: Compass, onSelect: () => go(`#/run/${run.id}/direction`) },
                   { label: 'Scorecard', icon: BarChart3, onSelect: () => go(`#/run/${run.id}/scorecard`) },
+                  // Everything from here down moves the pipeline. A client
+                  // watching their own work is told where it has got to; it is
+                  // not handed the controls that start and stop it.
                   ...(unfinished && running ? [{
-                    label: 'Pause run', icon: CirclePause, disabled: control.isPending,
+                    label: 'Pause run', icon: CirclePause, disabled: control.isPending, studioOnly: true,
                     onSelect: () => control.mutate({ id: run.id, action: 'pause' }),
                   }] : []),
                   ...(unfinished && paused ? [{
-                    label: 'Continue run', icon: CirclePlay, disabled: control.isPending,
+                    label: 'Continue run', icon: CirclePlay, disabled: control.isPending, studioOnly: true,
                     onSelect: () => control.mutate({ id: run.id, action: 'continue' }),
                   }] : []),
                   ...(unfinished && !running && !paused && !stopping ? [{
-                    label: retry ? 'Retry run' : 'Start run',
+                    label: retry ? 'Retry run' : 'Start run', studioOnly: true,
                     icon: retry ? RefreshCw : CirclePlay, disabled: execute.isPending,
                     onSelect: () => execute.mutate(run.id),
                   }] : []),
                   ...(unfinished && (running || paused || stopping) ? [{
-                    label: stopping ? 'Stopping run…' : 'Stop run',
+                    label: stopping ? 'Stopping run…' : 'Stop run', studioOnly: true,
                     icon: Square, danger: true, disabled: control.isPending || stopping,
                     onSelect: () => {
                       void requestConfirmation({
@@ -120,7 +123,7 @@ export function RunTable({ runs }: { runs: readonly Run[] }): ReactElement {
                     },
                   }] : []),
                   {
-                    label: 'Delete run', icon: Trash2, danger: true,
+                    label: 'Delete run', icon: Trash2, danger: true, studioOnly: true,
                     disabled: remove.isPending || running || paused || stopping,
                     onSelect: () => {
                       void requestConfirmation({

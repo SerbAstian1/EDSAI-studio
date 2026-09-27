@@ -111,9 +111,9 @@ export default function Portals(): ReactElement {
                   </td>
                   <td className="actions">
                     <OverflowMenu label={`Actions for ${key.label}'s link`} items={[
-                      { label: 'Manage on client page', icon: KeyRound,
-                        onSelect: () => go(`#/clients/${key.clientId}/client`) },
-                      { label: 'Revoke link', icon: Ban, danger: true, disabled: revoke.isPending,
+                      { label: 'Manage on client page', icon: KeyRound, studioOnly: true,
+                        onSelect: () => go(`#/clients/${key.clientId}/settings`) },
+                      { label: 'Revoke link', icon: Ban, danger: true, disabled: revoke.isPending, studioOnly: true,
                         onSelect: () => {
                           void requestConfirmation({
                             title: `Revoke ${key.label}'s link?`,

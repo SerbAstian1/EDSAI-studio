@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import QuadrantChart from '../components/QuadrantChart.js';
+import { StudioOnly, useStudio } from '../viewMode.js';
 
 /**
  * Where this brand sits, and who says so.
@@ -21,6 +22,10 @@ import QuadrantChart from '../components/QuadrantChart.js';
 
 export default function Positioning({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
+  // The chart is click-to-place, so the flag is needed here as well as in the
+  // wrappers: without it a client clicking the chart would silently do nothing
+  // on a surface that looks live.
+  const studio = useStudio();
   const [xAxis, setXAxis] = useState('E4');
   const [yAxis, setYAxis] = useState('E6');
   const [placing, setPlacing] = useState<{ x: number; y: number } | null>(null);
@@ -91,31 +96,37 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
             + 'and the chart says so.'}
       </p>
 
-      <div className="row">
-        <label className="field">
-          <span className="label">Across</span>
-          <select value={xAxis} onChange={(e) => { setXAxis(e.target.value); setPlacing(null); }}>
-            {axes.map((a) => (
-              <option key={a.id} value={a.id} disabled={a.id === yAxis}>
-                {a.low} → {a.high}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span className="label">Up</span>
-          <select value={yAxis} onChange={(e) => { setYAxis(e.target.value); setPlacing(null); }}>
-            {axes.map((a) => (
-              <option key={a.id} value={a.id} disabled={a.id === xAxis}>
-                {a.low} → {a.high}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {/* The whole editing half of the chart: choosing the two axes, clicking
+          to place a brand, and removing one. The chart itself is the client's
+          to read — where they sit against everyone else is the finding, and
+          the finding is what they are paying for. */}
+      <StudioOnly>
+        <div className="row">
+          <label className="field">
+            <span className="label">Across</span>
+            <select value={xAxis} onChange={(e) => { setXAxis(e.target.value); setPlacing(null); }}>
+              {axes.map((a) => (
+                <option key={a.id} value={a.id} disabled={a.id === yAxis}>
+                  {a.low} → {a.high}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="label">Up</span>
+            <select value={yAxis} onChange={(e) => { setYAxis(e.target.value); setPlacing(null); }}>
+              {axes.map((a) => (
+                <option key={a.id} value={a.id} disabled={a.id === xAxis}>
+                  {a.low} → {a.high}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </StudioOnly>
 
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div onClick={takeClick}>
+      <div onClick={studio ? takeClick : undefined}>
         <QuadrantChart x={matrix.x} y={matrix.y} points={matrix.points} />
       </div>
 
@@ -128,57 +139,61 @@ export default function Positioning({ clientId }: { clientId: string }): ReactEl
       )}
 
       {placing && (
-        <form className="card stack" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-          <span className="label">
-            Put a brand here — {matrix.x.label} {placing.x}, {matrix.y.label} {placing.y}
-          </span>
-          <label className="field">
-            <span className="label">Which brand?</span>
-            <input
-              value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="A competitor, or someone they admire" required autoFocus
-            />
-          </label>
-          <label className="field">
-            <span className="label">Why here?</span>
-            <input
-              value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional, and worth writing down."
-            />
-          </label>
-          {add.error && <p className="err">{(add.error as Error).message}</p>}
+        <StudioOnly>
+          <form className="card stack" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+            <span className="label">
+              Put a brand here — {matrix.x.label} {placing.x}, {matrix.y.label} {placing.y}
+            </span>
+            <label className="field">
+              <span className="label">Which brand?</span>
+              <input
+                value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="A competitor, or someone they admire" required autoFocus
+              />
+            </label>
+            <label className="field">
+              <span className="label">Why here?</span>
+              <input
+                value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder="Optional, and worth writing down."
+              />
+            </label>
+            {add.error && <p className="err">{(add.error as Error).message}</p>}
+            <div className="row">
+              <button className="primary" type="submit" disabled={!name.trim() || add.isPending}>
+                {add.isPending ? 'Placing…' : 'Place it'}
+              </button>
+              <button type="button" onClick={() => setPlacing(null)}>Cancel</button>
+            </div>
+          </form>
+        </StudioOnly>
+      )}
+
+      <StudioOnly>
+        {!placing && (
+          <p className="muted">Click anywhere on the chart to put another brand on it.</p>
+        )}
+
+        {placed.length > 0 && (
           <div className="row">
-            <button className="primary" type="submit" disabled={!name.trim() || add.isPending}>
-              {add.isPending ? 'Placing…' : 'Place it'}
-            </button>
-            <button type="button" onClick={() => setPlacing(null)}>Cancel</button>
+            {placed.map((point) => (
+              <button
+                key={point.id} type="button" disabled={remove.isPending}
+                onClick={() => {
+                  void requestConfirmation({
+                    title: `Remove ${point.label}?`,
+                    message: 'This removes the brand from the current positioning chart. It cannot be undone.',
+                    confirmLabel: 'Remove brand',
+                  }).then((confirmed) => { if (confirmed) remove.mutate(point.id); });
+                }}
+              >
+                Remove {point.label}
+              </button>
+            ))}
           </div>
-        </form>
-      )}
-
-      {!placing && (
-        <p className="muted">Click anywhere on the chart to put another brand on it.</p>
-      )}
-
-      {placed.length > 0 && (
-        <div className="row">
-          {placed.map((point) => (
-            <button
-              key={point.id} type="button" disabled={remove.isPending}
-              onClick={() => {
-                void requestConfirmation({
-                  title: `Remove ${point.label}?`,
-                  message: 'This removes the brand from the current positioning chart. It cannot be undone.',
-                  confirmLabel: 'Remove brand',
-                }).then((confirmed) => { if (confirmed) remove.mutate(point.id); });
-              }}
-            >
-              Remove {point.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {remove.error && <p className="err">{(remove.error as Error).message}</p>}
+        )}
+        {remove.error && <p className="err">{(remove.error as Error).message}</p>}
+      </StudioOnly>
     </section>
   );
 }

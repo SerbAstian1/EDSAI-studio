@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type BrandValue } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { StudioOnly, useStudio } from '../viewMode.js';
 
 /**
  * The brand workspace.
@@ -43,6 +44,11 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
 
   const measured = value.measured;
   const dirty = draft.trim() !== value.value;
+  // The brand system is the client's own, so it is shown to one — as the value
+  // itself. The input, the save and the remove belong to whoever maintains it,
+  // and a swatch that is an editable text box with no way to tell that it is
+  // one is a control a client will try to use.
+  const studio = useStudio();
 
   return (
     <div className="swatch">
@@ -60,14 +66,15 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
         </div>
         {value.role && <p className="role muted">{value.role}</p>}
 
-        <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-          <input
-            className="mono"
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); setNeedsReason(false); }}
-            aria-label={`${value.name} value`}
-            spellCheck={false}
-          />
+        {studio ? (
+          <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+            <input
+              className="mono"
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); setNeedsReason(false); }}
+              aria-label={`${value.name} value`}
+              spellCheck={false}
+            />
 
           {measured?.note && (
             <p className={`measured ${measured.passes === false ? 'err' : 'ok'}`}>
@@ -125,13 +132,27 @@ function Swatch({ value, clientId }: { value: BrandValue; clientId: string }): R
               {remove.isPending ? 'Removing…' : 'Remove'}
             </button>
           </div>
-        </form>
-
-        {value.reason && (
-          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Changed by hand: {value.reason}
-          </p>
+          </form>
+        ) : (
+          <>
+            <p className="mono" style={{ margin: 0 }}>{value.value}</p>
+            {measured?.note && (
+              <p className={`measured ${measured.passes === false ? 'err' : 'ok'}`}>
+                {measured.note}
+              </p>
+            )}
+          </>
         )}
+
+        {/* The reason a value was overridden is the studio's record of its own
+            reasoning, written for whoever maintains the brand next. */}
+        <StudioOnly>
+          {value.reason && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Changed by hand: {value.reason}
+            </p>
+          )}
+        </StudioOnly>
       </div>
     </div>
   );
@@ -264,7 +285,9 @@ export default function Brand({ clientId }: { clientId: string }): ReactElement 
             save, so the numbers a client sees stay true.
           </p>
         </div>
-        <AddValues clientId={clientId} />
+        <StudioOnly>
+          <AddValues clientId={clientId} />
+        </StudioOnly>
       </section>
     );
   }
@@ -314,7 +337,9 @@ export default function Brand({ clientId }: { clientId: string }): ReactElement 
         </>
       )}
 
-      <AddValues clientId={clientId} />
+      <StudioOnly>
+        <AddValues clientId={clientId} />
+      </StudioOnly>
     </section>
   );
 }

@@ -4,7 +4,10 @@ import { FileText, Pencil, Trash2 } from 'lucide-react';
 import { api, type Invoice } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
+import { InvoiceBuilder } from '../components/InvoiceBuilder.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import { formatBasisPoints, formatCents, toCents } from '../money.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * What has been billed, and whether it was paid.
@@ -18,19 +21,12 @@ import OverflowMenu from '../components/OverflowMenu.js';
 
 const STATUS_TONE: Record<Invoice['status'], string> = { paid: 'pass', pending: 'minor', overdue: 'Blocker' };
 
-function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () => void }): ReactElement {
-  const [editing, setEditing] = useState(false);
-  const [description, setDescription] = useState(invoice.description);
-  const [dueDate, setDueDate] = useState(invoice.dueDate);
-
+function InvoiceRow({ invoice, onChanged, onRevised }: {
+  invoice: Invoice; onChanged: () => void; onRevised: (invoice: Invoice) => void;
+}): ReactElement {
   const setPaid = useMutation({
     mutationFn: (paid: boolean) => api.updateInvoice(invoice.id, { paid }),
     onSuccess: onChanged,
-  });
-
-  const save = useMutation({
-    mutationFn: () => api.updateInvoice(invoice.id, { description: description.trim(), dueDate }),
-    onSuccess: () => { setEditing(false); onChanged(); },
   });
 
   const remove = useMutation({
@@ -41,44 +37,46 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
   const onDelete = (): void => {
     void requestConfirmation({
       title: `Remove invoice ${invoice.number}?`,
-      message: 'This removes the invoice record. It cannot be undone.',
+      message: 'This removes the invoice record and its lines. It cannot be undone.',
       confirmLabel: 'Remove invoice',
     }).then((confirmed) => { if (confirmed) remove.mutate(); });
   };
 
-  if (editing) {
-    return (
-      <tr>
-        <td className="mono" data-label="Invoice">{invoice.number}</td>
-        <td data-label="Description"><input value={description} onChange={(e) => setDescription(e.target.value)}
-                   aria-label="Description" /></td>
-        <td data-label="Due"><input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></td>
-        <td className="mono muted" data-label="Amount">{formatCents(invoice.amountCents, invoice.currency)}</td>
-        <td colSpan={2}><div className="row">
-          <button type="button" className="primary" disabled={!description.trim() || save.isPending}
-                  onClick={() => save.mutate()}>Save</button>
-          <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </div></td>
-      </tr>
-    );
-  }
-
   return (
     <tr>
       <td className="mono" data-label="Invoice">{invoice.number}</td>
-      <td data-label="Description">{invoice.description}</td>
+      <td data-label="Description">
+        {invoice.description}
+        {/*
+          The lines, when there are any, said once and quietly. A studio member
+          looking at a total needs to know whether it was derived or typed, and a
+          click-through to the builder for that is one step too many.
+        */}
+        {invoice.lines.length > 0 && (
+          <span className="muted" style={{ fontSize: 12, display: 'block' }}>
+            {invoice.lines.length} line{invoice.lines.length === 1 ? '' : 's'}
+            {invoice.taxBasisPoints > 0 && ` · ${formatBasisPoints(invoice.taxBasisPoints)} tax`}
+            {invoice.terms && ' · terms stated'}
+          </span>
+        )}
+      </td>
       <td className="muted" data-label="Due">{invoice.dueDate}</td>
       <td className="mono" data-label="Amount">{formatCents(invoice.amountCents, invoice.currency)}</td>
       <td data-label="Status"><span className={`pill ${STATUS_TONE[invoice.status]}`}>{invoice.status}</span></td>
       <td className="actions"><div className="row">
-        <button type="button" onClick={() => setPaid.mutate(!invoice.paid)} disabled={setPaid.isPending}>
-          {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
-        </button>
+        {/* "Mark paid" records that money arrived, which is the studio's own
+            bookkeeping to declare — a client marking their own invoice paid
+            would be a client asserting a fact about the studio's account. */}
+        <StudioOnly>
+          <button type="button" onClick={() => setPaid.mutate(!invoice.paid)} disabled={setPaid.isPending}>
+            {invoice.paid ? 'Mark unpaid' : 'Mark paid'}
+          </button>
+        </StudioOnly>
         <OverflowMenu label={`Actions for invoice ${invoice.number}`} items={[
           { label: 'View invoice', icon: FileText,
             onSelect: () => { window.open(api.invoiceDocumentUrl(invoice.id), '_blank', 'noopener'); } },
-          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          { label: 'Revise the invoice', icon: Pencil, studioOnly: true, onSelect: () => onRevised(invoice) },
+          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true, onSelect: onDelete },
         ]} />
       </div></td>
     </tr>
@@ -86,25 +84,14 @@ function InvoiceRow({ invoice, onChanged }: { invoice: Invoice; onChanged: () =>
 }
 
 /** Dollars a person types in, as the integer cents the record actually stores. */
-export function dollarsToCents(input: string): number | undefined {
-  const trimmed = input.trim().replace(/^\$/, '');
-  if (trimmed === '') return undefined;
-  const value = Number.parseFloat(trimmed);
-  if (!Number.isFinite(value) || value < 0) return undefined;
-  return Math.round(value * 100);
-}
+export const dollarsToCents = toCents;
 
-export function formatCents(cents: number, currency = 'USD'): string {
-  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency });
-}
+export { formatCents } from '../money.js';
 
 export default function Invoices({ clientId }: { clientId: string }): ReactElement {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState('');
+  const [revising, setRevising] = useState<Invoice | undefined>();
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ['invoices', clientId], queryFn: () => api.invoices(clientId),
@@ -114,16 +101,8 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
     void queryClient.invalidateQueries({ queryKey: ['invoices', clientId] });
   };
 
-  const cents = dollarsToCents(amount);
-
-  const create = useMutation({
-    mutationFn: () => api.createInvoice(clientId, {
-      description: description.trim(), issueDate, dueDate, amountCents: cents ?? 0,
-    }),
-    onSuccess: () => {
-      setDescription(''); setAmount(''); setDueDate(''); setAdding(false); invalidate();
-    },
-  });
+  const close = (): void => { setAdding(false); setRevising(undefined); };
+  const saved = (): void => { close(); invalidate(); };
 
   const totals = data?.totals;
 
@@ -132,9 +111,15 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
       <div className="row">
         <h3 style={{ margin: 0 }}>Invoices</h3>
         <span className="muted mono">{data?.invoices.length ?? 0}</span>
-        <button type="button" style={{ marginLeft: 'auto' }} onClick={() => setAdding((o) => !o)}>
-          {adding ? 'Cancel' : 'New invoice'}
-        </button>
+        {/* What a client is owed is theirs to read; raising a new one is the
+            studio's. The two sit on the same tab because the client should not
+            have to go looking for what they owe. */}
+        <StudioOnly>
+          <button type="button" style={{ marginLeft: 'auto' }}
+                  onClick={() => { close(); setAdding((o) => !o); }}>
+            {adding ? 'Cancel' : 'New invoice'}
+          </button>
+        </StudioOnly>
       </div>
 
       {totals && totals.count > 0 && (
@@ -150,35 +135,14 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
         </div>
       )}
 
-      {adding && (
-        <form className="card stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <label className="field">
-            <span className="label">Description</span>
-            <input value={description} onChange={(e) => setDescription(e.target.value)}
-                   placeholder="Phase 1 payment — planning & research" required autoFocus />
-          </label>
-          <label className="field">
-            <span className="label">Amount (USD)</span>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)}
-                   placeholder="1500.00" inputMode="decimal" required />
-          </label>
-          <label className="field">
-            <span className="label">Issue date</span>
-            <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} required />
-          </label>
-          <label className="field">
-            <span className="label">Due date</span>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
-          </label>
-          {create.error && <p className="err">{(create.error as Error).message}</p>}
-          <button
-            className="primary" type="submit"
-            disabled={!description.trim() || cents === undefined || !dueDate || create.isPending}
-          >
-            {create.isPending ? 'Adding…' : 'Add invoice'}
-          </button>
-        </form>
-      )}
+      <StudioOnly>
+        {adding && (
+          <InvoiceBuilder clientId={clientId} onSaved={saved} onCancel={close} />
+        )}
+        {revising && (
+          <InvoiceBuilder clientId={clientId} invoice={revising} onSaved={saved} onCancel={close} />
+        )}
+      </StudioOnly>
 
       {isPending && <p className="muted">Loading invoices…</p>}
       {error && (
@@ -200,7 +164,8 @@ export default function Invoices({ clientId }: { clientId: string }): ReactEleme
           </thead>
           <tbody>
             {data.invoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} onChanged={invalidate} />
+              <InvoiceRow key={invoice.id} invoice={invoice} onChanged={invalidate}
+                          onRevised={(target) => { close(); setRevising(target); }} />
             ))}
           </tbody>
         </table>

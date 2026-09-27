@@ -53,21 +53,37 @@ export function activityFrom(
   });
 }
 
+/**
+ * One client's updates, from the runs that client already has.
+ *
+ * The same derivation as the studio-wide feed, with the client's own runs as
+ * the input — so a client's Updates tab cannot report a run that is not theirs,
+ * and the wording is identical to the studio's rather than a second vocabulary
+ * for the same fact. `clients` is left empty because the tab is already scoped
+ * to one client: repeating their name on every line is noise, not context.
+ */
+export function activityForClient(
+  runs: readonly Run[],
+  projects: readonly Project[],
+): ActivityEntry[] {
+  return activityFrom(runs, projects, []);
+}
+
 export default function Activity(): ReactElement {
   const { data: runs, isPending, error, refetch } = useQuery({ queryKey: ['runs'], queryFn: api.runs });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
   const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients });
 
-  if (isPending) return <p className="muted">Loading activity…</p>;
+  if (isPending) return <p className="muted">Loading updates…</p>;
   if (error) {
-    return <ErrorPanel title="Could not load activity" error={error} onRetry={() => { void refetch(); }} />;
+    return <ErrorPanel title="Could not load updates" error={error} onRetry={() => { void refetch(); }} />;
   }
 
   const entries = activityFrom(runs, projects.data ?? [], clients.data ?? []);
 
   return (
     <section className="stack">
-      <h2>Activity</h2>
+      <h2>Updates</h2>
       <p className="muted">
         Current state of every run. There is no event history yet — this reports where things
         stand, not what changed and when.
@@ -76,7 +92,7 @@ export default function Activity(): ReactElement {
       {entries.length === 0 ? (
         <div className="empty">
           <p className="editorial">Nothing has happened yet.</p>
-          <p>Activity appears here once a run is under way.</p>
+          <p>Updates appear here once a run is under way.</p>
         </div>
       ) : (
         <div className="stack">

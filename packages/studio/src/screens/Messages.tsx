@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * The one conversation this client's portal can see.
@@ -68,16 +69,21 @@ export default function Messages({ clientId }: { clientId: string }): ReactEleme
         </div>
       )}
 
-      <form className="row" onSubmit={(e) => { e.preventDefault(); if (body.trim()) send.mutate(); }}>
-        <input
-          value={body} onChange={(e) => setBody(e.target.value)}
-          placeholder="Write a message…" style={{ flex: 1 }} aria-label="Message"
-        />
-        <button className="primary" type="submit" disabled={!body.trim() || send.isPending}>
-          {send.isPending ? 'Sending…' : 'Send'}
-        </button>
-      </form>
-      {send.error && <p className="err">{(send.error as Error).message}</p>}
+      {/* The thread is one conversation the client's own portal can read, so
+          it is theirs to see — but the composing half is the studio's. The
+          client writes to the studio from the portal, not from here. */}
+      <StudioOnly>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); if (body.trim()) send.mutate(); }}>
+          <input
+            value={body} onChange={(e) => setBody(e.target.value)}
+            placeholder="Write a message…" style={{ flex: 1 }} aria-label="Message"
+          />
+          <button className="primary" type="submit" disabled={!body.trim() || send.isPending}>
+            {send.isPending ? 'Sending…' : 'Send'}
+          </button>
+        </form>
+        {send.error && <p className="err">{(send.error as Error).message}</p>}
+      </StudioOnly>
     </section>
   );
 }

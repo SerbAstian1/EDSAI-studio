@@ -43,7 +43,7 @@ export default function ProjectMenu({ project, size }: {
   return (
     <>
       <OverflowMenu label={`Actions for ${project.name}`} size={size ?? 'row'} items={[
-        { label: 'Start a run', icon: Play, onSelect: () => go(`#/new/${project.id}`) },
+        { label: 'Start a run', icon: Play, studioOnly: true, onSelect: () => go(`#/new/${project.id}`) },
         ...(project.runId
           ? [{ label: 'Read the direction', icon: Compass, onSelect: () => go(`#/run/${project.runId}/direction`) }]
           : []),
@@ -51,7 +51,7 @@ export default function ProjectMenu({ project, size }: {
         ...(project.figmaUrl
           ? [{ label: 'Open in Figma', icon: ExternalLink, onSelect: () => openExternal(project.figmaUrl ?? '') }]
           : []),
-        { label: 'Delete project', icon: Trash2, danger: true, disabled: remove.isPending,
+        { label: 'Delete project', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true,
           onSelect: () => {
             void requestConfirmation({
               title: `Delete ${project.name}?`,

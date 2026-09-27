@@ -56,6 +56,19 @@ export class RehearsalClient implements ModelClient {
   async complete(params: ModelRequest): Promise<ModelResponse> {
     await new Promise((resolve) => setTimeout(resolve, this.delayMs));
     const user = lastUserText(params.messages);
+
+    // A document is not a department. A request with nothing to submit is
+    // rehearsal for the strategy path, and it gets answered in prose so the
+    // Markdown, the print route and the studio tab can all be walked without a
+    // key.
+    if (!params.tools.some((tool) => tool.name === SUBMIT_TOOL_NAME)) {
+      return {
+        stopReason: 'end',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        content: [{ type: 'text', text: this.draft(user) }],
+      };
+    }
+
     const departmentId = Number.parseInt(user.match(TURN)?.[1] ?? '', 10);
     const department = this.rubric.departments.find((d) => d.id === departmentId);
     if (!department) {
@@ -73,6 +86,51 @@ export class RehearsalClient implements ModelClient {
         input,
       }],
     };
+  }
+
+  /**
+   * The shape of a strategy document, written from nothing. The headings are
+   * the real ones so the renderer and the print route are exercised; the
+   * content under them says, every time, that no one reasoned.
+   */
+  private draft(user: string): string {
+    const quoted = user
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .slice(0, 2);
+
+    return [
+      '> **Rehearsal.** No model was called for this draft. Nothing below is a reading',
+      '> of the transcript — it is the shape of the document, so the studio can be',
+      '> walked end to end before a key is spent.',
+      '',
+      '## What they said they wanted',
+      '',
+      ...(quoted.length > 0
+        ? quoted.map((line) => `> ${line}`)
+        : ['> Nothing to quote.']),
+      '',
+      '## Where the work actually points',
+      '',
+      '- Rehearsal: a real draft states the tension between what was said and what the',
+      '  money, the deadline and the audience add up to.',
+      '- Rehearsal: no tension was identified.',
+      '',
+      '## What the studio would do about it',
+      '',
+      '- Rehearsal: a real draft proposes the smallest set of moves that closes that gap,',
+      '  and says what each one costs in time.',
+      '',
+      '## What would have to be true',
+      '',
+      '- Rehearsal: the things that have to hold for this to work.',
+      '',
+      '## Open questions',
+      '',
+      '- Rehearsal: what a real draft would go back and ask.',
+      '',
+    ].join('\n');
   }
 
   private submission(departmentId: number, brief: string): Record<string, unknown> {

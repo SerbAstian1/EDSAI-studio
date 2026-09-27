@@ -97,9 +97,9 @@ export default function BrandHubs(): ReactElement {
                   <OverflowMenu label={`Actions for ${hub.clientName}'s Brand Hub`} items={[
                     { label: 'Open Brand Hub', icon: ExternalLink, onSelect: () => go(`#/clients/${hub.clientId}/hub`) },
                     hub.status === 'active'
-                      ? { label: 'Suspend', icon: Pause, disabled: set.isPending,
+                      ? { label: 'Suspend', icon: Pause, disabled: set.isPending, studioOnly: true,
                           onSelect: () => set.mutate({ clientId: hub.clientId, status: 'suspended' }) }
-                      : { label: 'Activate', icon: Play, disabled: set.isPending,
+                      : { label: 'Activate', icon: Play, disabled: set.isPending, studioOnly: true,
                           onSelect: () => set.mutate({ clientId: hub.clientId, status: 'active' }) },
                     { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${hub.clientId}`) },
                   ]} />

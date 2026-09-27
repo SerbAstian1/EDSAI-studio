@@ -13,7 +13,10 @@ import type { Deliverable } from './deliverables.js';
 import type { ClientDocument } from './documents.js';
 import { hubEnabled, type BrandHub, type BrandProject } from './brand-hub.js';
 import type { Milestone } from './milestones.js';
+import type { Event } from './events.js';
+import type { Strategy } from './strategy.js';
 import type { Invoice } from './invoices.js';
+import type { Contract } from './contracts.js';
 import type { Message } from './messages.js';
 import type { Feedback } from './feedback.js';
 import type { SupportNote } from './support.js';
@@ -383,6 +386,82 @@ export class ScopedStore {
     this.store.deleteMilestone(id);
   }
 
+  /* ----------------------------------------------------------------- events */
+
+  /**
+   * The studio's calendar, as this session may see it.
+   *
+   * The one read that is not scoped to a named client, because an event may not
+   * belong to one: the studio's own time is on the same calendar as a client's
+   * kickoff. An event with a client is filtered by that client exactly as a
+   * milestone is; an event without one is the studio's own, and is decided by
+   * the same empty-string trick `support` notes use — a portal principal's scope
+   * is a list of real client ids, so it never matches, and the studio's `'all'`
+   * reaches the ordinary role check untouched.
+   */
+  listEvents(clientId?: string): Event[] {
+    if (clientId !== undefined) {
+      if (!this.mayRead('event', clientId)) return [];
+      return this.store.listEventsForClient(clientId);
+    }
+    return this.store.listEvents().filter((event) => event.clientId === undefined
+      ? this.mayRead('event', '')
+      : this.mayRead('event', event.clientId));
+  }
+
+  getEvent(id: string): Event | undefined {
+    const event = this.store.getEvent(id);
+    if (!event) return undefined;
+    const visible = event.clientId === undefined
+      ? this.mayRead('event', '')
+      : this.mayRead('event', event.clientId);
+    return visible ? event : undefined;
+  }
+
+  saveEvent(event: Event): void {
+    this.mustWrite('event', event.clientId ?? '');
+    this.store.saveEvent(event);
+  }
+
+  deleteEvent(id: string): void {
+    const existing = this.store.getEvent(id);
+    if (!existing) return;
+    this.mustWrite('event', existing.clientId ?? '');
+    this.store.deleteEvent(id);
+  }
+
+  /* -------------------------------------------------------------- strategies */
+
+  listStrategies(clientId: string): Strategy[] {
+    if (!this.mayRead('strategy', clientId)) return [];
+    return this.store.listStrategiesForClient(clientId);
+  }
+
+  getStrategy(id: string): Strategy | undefined {
+    const strategy = this.store.getStrategy(id);
+    if (!strategy) return undefined;
+    return this.mayRead('strategy', strategy.clientId) ? strategy : undefined;
+  }
+
+  /**
+   * Writing one is a studio act: the transcript is the client's words and the
+   * page is the studio's reading of them, and a portal principal has no business
+   * authoring either. The policy makes that explicit rather than relying on the
+   * resource being absent from the client's collection, which is a list that
+   * changes.
+   */
+  saveStrategy(strategy: Strategy): void {
+    this.mustWrite('strategy', strategy.clientId);
+    this.store.saveStrategy(strategy);
+  }
+
+  deleteStrategy(id: string): void {
+    const existing = this.store.getStrategy(id);
+    if (!existing) return;
+    this.mustWrite('strategy', existing.clientId);
+    this.store.deleteStrategy(id);
+  }
+
   /* ---------------------------------------------------------------- invoices */
 
   listInvoices(clientId: string): Invoice[] {
@@ -400,6 +479,31 @@ export class ScopedStore {
     if (!existing) return;
     this.mustWrite('invoice', existing.clientId);
     this.store.deleteInvoice(id);
+  }
+
+  /* --------------------------------------------------------------- contracts */
+
+  listContracts(clientId: string): Contract[] {
+    if (!this.mayRead('contract', clientId)) return [];
+    return this.store.listContracts(clientId);
+  }
+
+  getContract(id: string): Contract | undefined {
+    const existing = this.store.getContract(id);
+    if (!existing || !this.mayRead('contract', existing.clientId)) return undefined;
+    return existing;
+  }
+
+  saveContract(contract: Contract): void {
+    this.mustWrite('contract', contract.clientId);
+    this.store.saveContract(contract);
+  }
+
+  deleteContract(id: string): void {
+    const existing = this.store.getContract(id);
+    if (!existing) return;
+    this.mustWrite('contract', existing.clientId);
+    this.store.deleteContract(id);
   }
 
   /* ---------------------------------------------------------------- messages */

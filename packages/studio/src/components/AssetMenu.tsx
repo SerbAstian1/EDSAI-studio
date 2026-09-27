@@ -26,18 +26,20 @@ export default function AssetMenu({ asset }: { asset: Asset }): ReactElement {
   return (
     <OverflowMenu label={`Actions for ${asset.filename}`} items={[
       asset.approved
-        ? { label: 'Withdraw from portal', icon: EyeOff, disabled: update.isPending,
+        ? { label: 'Withdraw from portal', icon: EyeOff, disabled: update.isPending, studioOnly: true,
             onSelect: () => update.mutate({ approved: false }) }
-        : { label: 'Approve for portal', icon: Check, disabled: update.isPending,
+        : { label: 'Approve for portal', icon: Check, disabled: update.isPending, studioOnly: true,
             onSelect: () => update.mutate({ approved: true }) },
       { label: 'Download', icon: Download, onSelect: () => downloadFile(api.downloadPath(asset.id), asset.filename) },
       asset.kind === 'template'
-        ? { label: 'Unmark as template', icon: LayoutTemplate, disabled: update.isPending,
+        ? { label: 'Unmark as template', icon: LayoutTemplate, disabled: update.isPending, studioOnly: true,
             onSelect: () => update.mutate({ kind: 'other' }) }
-        : { label: 'Mark as template', icon: LayoutTemplate, disabled: update.isPending,
+        : { label: 'Mark as template', icon: LayoutTemplate, disabled: update.isPending, studioOnly: true,
             onSelect: () => update.mutate({ kind: 'template' }) },
-      { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${asset.clientId}/delivery`) },
-      { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending,
+      // The client's Library is where files live; Documents is the shelf the
+      // deliverable is presented on. A file arrives in the former.
+      { label: 'Open client', icon: Users, onSelect: () => go(`#/clients/${asset.clientId}/library`) },
+      { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true,
         onSelect: () => {
           void requestConfirmation({
             title: `Delete ${asset.filename}?`,

@@ -6,6 +6,7 @@ import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import FigmaEmbed, { isFigmaUrl } from '../components/FigmaEmbed.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * What the studio owes this client, one named thing at a time.
@@ -129,8 +130,8 @@ function DeliverableRow({ d, onChanged }: { d: Deliverable; onChanged: () => voi
             </button>
           )}
           <OverflowMenu label={`Actions for ${d.title}`} items={[
-            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+            { label: 'Edit', icon: Pencil, studioOnly: true, onSelect: () => setEditing(true) },
+            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true, onSelect: onDelete },
           ]} />
         </div></td>
       </tr>
@@ -178,42 +179,46 @@ export default function Deliverables({ clientId }: { clientId: string }): ReactE
       <div className="row">
         <h3 style={{ margin: 0 }}>Deliverables</h3>
         <span className="muted mono">{data?.length ?? 0}</span>
-        <button type="button" style={{ marginLeft: 'auto' }} onClick={() => setAdding((o) => !o)}>
-          {adding ? 'Cancel' : 'New deliverable'}
-        </button>
+        <StudioOnly>
+          <button type="button" style={{ marginLeft: 'auto' }} onClick={() => setAdding((o) => !o)}>
+            {adding ? 'Cancel' : 'New deliverable'}
+          </button>
+        </StudioOnly>
       </div>
 
-      {adding && (
-        <form className="card stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <label className="field">
-            <span className="label">Title</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)}
-                   placeholder="Brand guidelines" required autoFocus />
-          </label>
-          <label className="field">
-            <span className="label">Kind</span>
-            <select value={kind} onChange={(e) => setKind(e.target.value as Deliverable['kind'])}>
-              {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span className="label">Due (optional)</span>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </label>
-          <label className="field">
-            <span className="label">Figma file (optional)</span>
-            <input value={figmaUrl} onChange={(e) => setFigmaUrl(e.target.value)}
-                   placeholder="https://www.figma.com/design/…" aria-invalid={!figmaOk} />
-            <span className={figmaOk ? 'muted' : 'err'} style={{ fontSize: 12 }}>
-              {figmaOk ? 'Previews in place, here and in the client’s portal.' : FIGMA_HINT}
-            </span>
-          </label>
-          {create.error && <p className="err">{(create.error as Error).message}</p>}
-          <button className="primary" type="submit" disabled={!title.trim() || !figmaOk || create.isPending}>
-            {create.isPending ? 'Adding…' : 'Add deliverable'}
-          </button>
-        </form>
-      )}
+      <StudioOnly>
+        {adding && (
+          <form className="card stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+            <label className="field">
+              <span className="label">Title</span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)}
+                     placeholder="Brand guidelines" required autoFocus />
+            </label>
+            <label className="field">
+              <span className="label">Kind</span>
+              <select value={kind} onChange={(e) => setKind(e.target.value as Deliverable['kind'])}>
+                {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="label">Due (optional)</span>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="label">Figma file (optional)</span>
+              <input value={figmaUrl} onChange={(e) => setFigmaUrl(e.target.value)}
+                     placeholder="https://www.figma.com/design/…" aria-invalid={!figmaOk} />
+              <span className={figmaOk ? 'muted' : 'err'} style={{ fontSize: 12 }}>
+                {figmaOk ? 'Previews in place, here and in the client’s portal.' : FIGMA_HINT}
+              </span>
+            </label>
+            {create.error && <p className="err">{(create.error as Error).message}</p>}
+            <button className="primary" type="submit" disabled={!title.trim() || !figmaOk || create.isPending}>
+              {create.isPending ? 'Adding…' : 'Add deliverable'}
+            </button>
+          </form>
+        )}
+      </StudioOnly>
 
       {isPending && <p className="muted">Loading deliverables…</p>}
       {error && (

@@ -2,6 +2,7 @@ import {
   useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement,
 } from 'react';
 import { MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { useStudio } from '../viewMode.js';
 
 /**
  * The "⋯" menu: every secondary action on a row, behind one button.
@@ -27,6 +28,14 @@ export interface MenuItem {
   /** Destructive: shown in the error colour, last. */
   danger?: boolean;
   disabled?: boolean;
+  /**
+   * A control the studio owns — anything that writes, starts, stops or
+   * deletes. Declared here rather than wrapped in `<StudioOnly>` at each call
+   * site because a menu is a *list*: a wrapper can hide a block of the list
+   * but not the item inside it, and a preview that quietly left "Delete run"
+   * on screen would be worse than no preview.
+   */
+  studioOnly?: boolean;
 }
 
 export default function OverflowMenu({ label, items, size = 'row' }: {
@@ -35,7 +44,8 @@ export default function OverflowMenu({ label, items, size = 'row' }: {
   items: readonly MenuItem[];
   /** `row` is the compact square that sits in a table; `bar` matches a toolbar's buttons. */
   size?: 'row' | 'bar';
-}): ReactElement {
+}): ReactElement | null {
+  const studio = useStudio();
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
   const [active, setActive] = useState(0);
@@ -44,7 +54,14 @@ export default function OverflowMenu({ label, items, size = 'row' }: {
   const list = useRef<HTMLUListElement>(null);
   const id = useId();
 
-  const enabled = items.map((item, index) => ({ item, index })).filter(({ item }) => !item.disabled);
+  // Filtered before anything indexes into it, so a hidden item cannot leave a
+  // gap in the keyboard order or be reached by arrowing past the ends.
+  const visible = items.filter((item) => studio || !item.studioOnly);
+  const enabled = visible.map((item, index) => ({ item, index })).filter(({ item }) => !item.disabled);
+
+  // A row whose every action is studio-only leaves an empty column otherwise:
+  // a button that opens a menu with nothing in it.
+  if (visible.length === 0) return null;
 
   const close = (refocus = true): void => {
     setOpen(false);
@@ -113,7 +130,7 @@ export default function OverflowMenu({ label, items, size = 'row' }: {
     item.onSelect();
   };
 
-  const ordered = [...items].sort((a, b) => Number(Boolean(a.danger)) - Number(Boolean(b.danger)));
+  const ordered = [...visible].sort((a, b) => Number(Boolean(a.danger)) - Number(Boolean(b.danger)));
 
   return (
     <div className={`overflow${up ? ' up' : ''}`} ref={root}>
@@ -135,7 +152,7 @@ export default function OverflowMenu({ label, items, size = 'row' }: {
       {open && (
         <ul id={id} className="overflow-menu" role="menu" aria-label={label} ref={list} onKeyDown={onMenuKey}>
           {ordered.map((item) => {
-            const index = items.indexOf(item);
+            const index = visible.indexOf(item);
             const Icon = item.icon;
             return (
               <li key={item.label} role="none" className={item.danger ? 'danger' : ''}>

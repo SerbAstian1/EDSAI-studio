@@ -37,10 +37,19 @@ function forRoute(route: Route): Warm[] {
       return [runs];
 
     case 'clients':
+    // The lead board is a filtered read of the same list the Clients screen
+    // shows, so it warms the identical query rather than asking twice.
+    case 'acquisition':
       return [clients];
 
     case 'discovery':
       return [{ queryKey: ['onboardings'], queryFn: api.allOnboardings }];
+
+    // The calendar's window depends on which month is open, and the screen owns
+    // that, so a prefetch here could only ever be for the wrong range. The
+    // client list is warmed because every chip on the grid is named from it.
+    case 'calendar':
+      return [clients];
 
     case 'assets':
     case 'templates':

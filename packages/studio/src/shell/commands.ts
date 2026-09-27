@@ -8,9 +8,12 @@ import { SECTIONS, type Section } from './navigation.js';
  * restated — a section added there appears here without a second edit, which is
  * the same one-source rule the rest of the system holds itself to.
  *
- * A command whose feature does not exist yet is `available: false`. It still
- * appears, because the palette doubles as the product's table of contents, and
- * it says what it is waiting for instead of failing when run.
+ * A command is `available: false` when running it would go nowhere — which now
+ * means a *planned section with no route*, not every planned section. Tasks and
+ * Calendar are marked as arriving in a later phase, but they do have a page, so
+ * they run: the palette is a way of getting to a section, and the one thing
+ * that should not stop you is being told it does not exist yet. The reason it
+ * does not exist is on the page you land on.
  */
 
 export interface Command {
@@ -29,16 +32,20 @@ export interface Command {
 const go = (href: string) => (): void => { location.hash = href; };
 
 function navigationCommands(): Command[] {
-  return SECTIONS.map((section: Section) => ({
-    id: `go:${section.id}`,
-    title: `Go to ${section.label}`,
-    group: 'Navigate',
-    glyph: section.glyph,
-    available: section.status === 'built',
-    ...(section.status === 'planned'
-      ? { unavailable: `${section.label} arrives in ${section.phase}. ${section.intent ?? ''}` }
-      : { run: go(section.href ?? '#/') }),
-  }));
+  return SECTIONS.map((section: Section) => {
+    const runnable = section.status === 'built'
+      || (section.status === 'planned' && section.href !== undefined);
+    return {
+      id: `go:${section.id}`,
+      title: `Go to ${section.label}`,
+      group: 'Navigate',
+      glyph: section.glyph,
+      available: runnable,
+      ...(runnable
+        ? { run: go(section.href ?? '#/') }
+        : { unavailable: `${section.label} arrives in ${section.phase}. ${section.intent ?? ''}` }),
+    };
+  });
 }
 
 /** Actions, in the product's own vocabulary rather than a generic CRUD one. */

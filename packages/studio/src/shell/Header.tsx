@@ -1,18 +1,21 @@
 import { useSyncExternalStore, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Moon, Search, Sun } from 'lucide-react';
+import { Bell, Eye, EyeOff, Moon, Search, Sun } from 'lucide-react';
 import { api } from '../api.js';
 import { currentTheme, setTheme, subscribeToTheme } from '../theme.js';
+import { useViewMode } from '../viewMode.js';
 
 /**
  * The studio's top bar.
  *
- * Three real things, not three decorations: the search opens the same command
+ * Four real things, not four decorations: the search opens the same command
  * palette the sidebar and ⌘K already open — one search, found in three places,
- * rather than a second index to keep in sync with the first. The bell is a
- * link to Activity, because there is no notification feed to invent one for.
- * The name and role come from the session the Gate already resolved; nothing
- * here fetches a second time to learn who is signed in.
+ * rather than a second index to keep in sync with the first. The bell is a link
+ * to Updates, because there is no notification feed to invent one for. The eye
+ * is "view as client", and it is the only control here that changes what the
+ * rest of the shell offers rather than where it goes. The name and role come
+ * from the session the Gate already resolved; nothing here fetches a second time
+ * to learn who is signed in.
  */
 
 const ROLE_LABEL: Record<string, string> = {
@@ -54,6 +57,33 @@ function ThemeToggle(): ReactElement {
   );
 }
 
+/**
+ * "View as client", as a pressed state rather than a menu of audiences.
+ *
+ * `aria-pressed` is the whole contract: a toggle that says what it will do is a
+ * worse toggle than one that says whether it is doing it. The label names the
+ * state it is leaving, which is the question a thumb is asking.
+ */
+function ViewAsClientToggle(): ReactElement {
+  const { clientView, toggle } = useViewMode();
+  const label = clientView ? 'Back to studio view' : 'View as client';
+
+  return (
+    <button
+      type="button"
+      className={`header-icon-button${clientView ? ' on' : ''}`}
+      onClick={toggle}
+      aria-pressed={clientView}
+      aria-label={label}
+      title={label}
+    >
+      {clientView
+        ? <EyeOff size={16} strokeWidth={1.75} aria-hidden="true" />
+        : <Eye size={16} strokeWidth={1.75} aria-hidden="true" />}
+    </button>
+  );
+}
+
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactElement {
   const { data: session } = useQuery({ queryKey: ['session'], queryFn: api.session });
   const principal = session?.principal;
@@ -71,7 +101,9 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactE
 
       <ThemeToggle />
 
-      <a className="header-icon-button" href="#/activity" aria-label="Activity" title="Activity">
+      <ViewAsClientToggle />
+
+      <a className="header-icon-button" href="#/updates" aria-label="Updates" title="Updates">
         <Bell size={16} strokeWidth={1.75} aria-hidden="true" />
       </a>
 

@@ -37,10 +37,13 @@ export function StatusBar(): ReactElement | null {
       )}
 
       <div className="status-bar-actions">
-        <a href="#/clients"><button type="button" className="ghost-light">New client</button></a>
+        <a href="#/acquisition"><button type="button" className="ghost-light">New lead</button></a>
         <a href="#/clients"><button type="button" className="ghost-light">Run discovery</button></a>
         <a href="#/brands" className="status-bar-link">Brands</a>
-        <a href="#/activity" className="status-bar-link">Tasks</a>
+        {/* Points at Tasks, not at Updates. The two were the same link under
+            different names, which meant a person looking for the work owed
+            landed on the run feed and no amount of looking would fix it. */}
+        <a href="#/tasks" className="status-bar-link">Tasks</a>
       </div>
     </div>
   );

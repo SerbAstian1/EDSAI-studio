@@ -172,6 +172,15 @@ const tryParse = (text: string): unknown => {
   try { return JSON.parse(text); } catch { return text; }
 };
 
+/** `?from=…&to=…`, or an empty string when neither end is named. */
+function rangeQuery(range?: { from?: string; to?: string }): string {
+  if (!range) return '';
+  const parts: string[] = [];
+  if (range.from) parts.push(`from=${encodeURIComponent(range.from)}`);
+  if (range.to) parts.push(`to=${encodeURIComponent(range.to)}`);
+  return parts.length === 0 ? '' : `?${parts.join('&')}`;
+}
+
 export interface Principal {
   kind: 'studio' | 'portal';
   userId: string;
@@ -238,7 +247,7 @@ export interface OnboardingSummary {
 export interface DiscoveryQuestion {
   id: string;
   act: string;
-  kind: 'binary' | 'scale' | 'ratio' | 'pick-many' | 'text';
+  kind: 'binary' | 'choice' | 'scale' | 'ratio' | 'pick-many' | 'text';
   prompt: string;
   help?: string;
   options?: { id: string; label: string }[];
@@ -338,11 +347,20 @@ export interface ClientDocument {
 export interface DiscoveryFacts {
   what?: string;
   who?: string;
+  audience?: string;
+  story?: string;
+  priorBrand?: string;
   deliverables: { id: string; label: string }[];
   deadline?: string;
   headline?: string;
   traits: string[];
   worst?: string;
+  competitors?: string;
+  budget?: string;
+  growth?: string;
+  decisionMaker?: string;
+  cadence?: string[];
+  ongoing?: string[];
   decisions: { axis: string; question: string; answer: string }[];
 }
 
@@ -508,6 +526,65 @@ export interface Milestone {
   updatedAt: string;
 }
 
+/**
+ * A calendar entry, as the studio's calendar stores it.
+ *
+ * `date` is a wall-clock `YYYY-MM-DD` and `startTime` a wall-clock `HH:MM`, both
+ * in the studio's own timezone. Neither is an instant, and the client must not
+ * turn one into a `Date` on the way in — that is the step that moves a 9am
+ * meeting to the wrong morning twice a year.
+ */
+export interface StudioEvent {
+  id: string;
+  title: string;
+  /** Whose it is. Absent means the studio's own time rather than a client's. */
+  clientId?: string;
+  projectId?: string;
+  kind: 'meeting' | 'review' | 'deadline' | 'internal';
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  location?: string;
+  notes?: string;
+  url?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What a create or edit may set. `null` clears an optional field. */
+export interface EventInput {
+  title: string;
+  date: string;
+  kind?: StudioEvent['kind'];
+  clientId?: string | null;
+  projectId?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  url?: string | null;
+}
+
+/**
+ * One billed line. `quantityHundredths` is an integer because 7.5 hours at 120
+ * is 900, and 7.5 * 12000 in binary floating point is not. The line's own amount
+ * is never sent: the server derives it so a line cannot disagree with itself.
+ */
+export interface InvoiceLine {
+  id: string;
+  description: string;
+  quantityHundredths: number;
+  unitAmountCents: number;
+  createdAt: string;
+}
+
+/** What the lines come to. Derived server-side, so the client cannot type it. */
+export interface InvoiceAmounts {
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+}
+
 export interface Invoice {
   id: string;
   clientId: string;
@@ -518,11 +595,24 @@ export interface Invoice {
   dueDate: string;
   amountCents: number;
   currency: string;
+  /** What was billed. Empty on the older one-number invoices, which still work. */
+  lines: InvoiceLine[];
+  /** The proposed rate: 2000 is 20%. The amount beside it is derived. */
+  taxBasisPoints: number;
+  terms?: string;
   paid: boolean;
   paidAt?: string;
   status: 'paid' | 'pending' | 'overdue';
+  amounts: InvoiceAmounts;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A line as the builder collects it: no id, no timestamp, and money as typed. */
+export interface InvoiceLineInput {
+  description: string;
+  quantityHundredths: number;
+  unitAmountCents: number;
 }
 
 export interface InvoiceTotals {
@@ -533,6 +623,76 @@ export interface InvoiceTotals {
   count: number;
   pendingCount: number;
   overdueCount: number;
+}
+
+/**
+ * A strategy: a transcript, and the page the studio reads off it.
+ *
+ * `transcript` is here because the draft is not reproducible — read the same
+ * transcript twice and it will not give the same page — so the words have to
+ * stay beside it for anyone checking the page against what was actually said.
+ * `model` is absent when a person wrote the page, and `rehearsal` is a real
+ * value rather than an absence, so a rehearsed page never reads as a real one.
+ */
+export interface Strategy {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  title: string;
+  transcript: string;
+  markdown: string;
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A fee stated in a contract. Integer minor units, and a kind rather than free text. */
+export interface ContractFee {
+  id: string;
+  description: string;
+  amountCents: number;
+  dueDate?: string;
+  kind: 'retainer' | 'deposit' | 'milestone' | 'final' | 'other';
+}
+
+/** One recorded change to the terms, kept so a signed version stays answerable. */
+export interface ContractRevision {
+  at: string;
+  by: string;
+  note: string;
+  markdown: string;
+}
+
+/**
+ * A contract: the only document here that binds anybody, and the only one that is
+ * never generated. `sendable` travels with it so the studio can say why a
+ * button is unavailable instead of only greying it out.
+ */
+export interface Contract {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  number: string;
+  title: string;
+  status: 'draft' | 'sent' | 'signed' | 'declined' | 'void';
+  markdown: string;
+  currency: string;
+  fees: ContractFee[];
+  sentAt?: string;
+  signedAt?: string;
+  signedBy?: string;
+  revisions: ContractRevision[];
+  createdAt: string;
+  updatedAt: string;
+  sendable: { ready: boolean; reason?: string };
+}
+
+/** A fee as the builder collects it: no id, and `kind` from the fixed set. */
+export interface ContractFeeInput {
+  description: string;
+  amountCents: number;
+  kind: ContractFee['kind'];
+  dueDate?: string;
 }
 
 export interface Message {
@@ -842,20 +1002,105 @@ export const api = {
   deleteMilestone: (id: string) =>
     call<{ removed: string }>(`/api/milestones/${id}`, { method: 'DELETE' }),
 
+  /**
+   * The studio's calendar, bounded to the range on screen.
+   *
+   * The window is a query parameter rather than a filter in the client because
+   * paging a month should not pull the studio's whole history over the wire and
+   * then throw most of it away in the browser.
+   */
+  events: (range?: { from?: string; to?: string }) =>
+    call<{ events: StudioEvent[] }>(`/api/events${rangeQuery(range)}`).then((r) => r.events),
+  clientEvents: (clientId: string) =>
+    call<{ events: StudioEvent[] }>(`/api/clients/${clientId}/events`).then((r) => r.events),
+  createEvent: (input: EventInput) =>
+    call<{ event: StudioEvent }>('/api/events', { method: 'POST', body: JSON.stringify(input) })
+      .then((r) => r.event),
+  updateEvent: (id: string, input: Partial<EventInput>) =>
+    call<{ event: StudioEvent }>(`/api/events/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.event),
+  deleteEvent: (id: string) =>
+    call<{ removed: string }>(`/api/events/${id}`, { method: 'DELETE' }),
+
   invoices: (clientId: string) =>
     call<{ invoices: Invoice[]; totals: InvoiceTotals }>(`/api/clients/${clientId}/invoices`),
+  /**
+   * `amountCents` is only required for the one-number shape. With `lines` on it,
+   * the server adds the lines up and refuses the total, because an invoice that
+   * says one number and adds up to another is the thing this whole phase is for.
+   */
   createInvoice: (clientId: string, input: { description: string; issueDate: string;
-    dueDate: string; amountCents: number; currency?: string; projectId?: string; number?: string }) =>
+    dueDate: string; amountCents?: number; currency?: string; projectId?: string; number?: string;
+    lines?: InvoiceLineInput[]; taxBasisPoints?: number; terms?: string }) =>
     call<{ invoice: Invoice }>(`/api/clients/${clientId}/invoices`, {
       method: 'POST', body: JSON.stringify(input),
     }).then((r) => r.invoice),
-  updateInvoice: (id: string, input: { paid?: boolean; description?: string; dueDate?: string }) =>
+  updateInvoice: (id: string, input: { paid?: boolean; description?: string; dueDate?: string;
+    amountCents?: number; lines?: InvoiceLineInput[]; taxBasisPoints?: number; terms?: string | null }) =>
     call<{ invoice: Invoice }>(`/api/invoices/${id}`, {
       method: 'PATCH', body: JSON.stringify(input),
     }).then((r) => r.invoice),
   deleteInvoice: (id: string) =>
     call<{ removed: string }>(`/api/invoices/${id}`, { method: 'DELETE' }),
   invoiceDocumentUrl: (id: string) => `/api/invoices/${id}/document`,
+
+  contracts: (clientId: string) =>
+    call<{ contracts: Contract[] }>(`/api/clients/${clientId}/contracts`)
+      .then((r) => r.contracts),
+  createContract: (clientId: string, input: { title?: string; markdown?: string;
+    projectId?: string; number?: string; currency?: string; fees?: ContractFeeInput[] }) =>
+    call<{ contract: Contract }>(`/api/clients/${clientId}/contracts`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.contract),
+  /**
+   * A revision. `note` is what somebody will read in a year asking why the terms
+   * changed, so it is worth the studio writing it rather than letting a default
+   * stand in. The server refuses the whole call on a signed contract, on a void
+   * one, or on a status it does not have, and the reason arrives as a thrown
+   * `ApiError` — a 409 here is information, not a broken button.
+   */
+  updateContract: (id: string, input: { title?: string; markdown?: string; fees?: ContractFeeInput[];
+    status?: Contract['status']; signedBy?: string; note?: string; by?: string }) =>
+    call<{ contract: Contract }>(`/api/contracts/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.contract),
+  deleteContract: (id: string) =>
+    call<{ removed: string }>(`/api/contracts/${id}`, { method: 'DELETE' }),
+  contractDocumentUrl: (id: string) => `/api/contracts/${id}/document`,
+
+  strategies: (clientId: string) =>
+    call<{ strategies: Strategy[] }>(`/api/clients/${clientId}/strategies`)
+      .then((r) => r.strategies),
+  /**
+   * Drafts a page from a transcript and saves it. Needs a model on the server;
+   * a 503 (`no_executor`) or a 422 (refused) arrives as a thrown `ApiError`
+   * carrying the server's own sentence, so this tab can show it rather than
+   * inventing one.
+   *
+   * `truncated`/`droppedWords` come back because the page is saved either way,
+   * and a page nobody knows was drafted from a part is a page that gets revised
+   * on the assumption it covers the call.
+   */
+  draftStrategy: (clientId: string, input: { transcript: string; title?: string;
+    projectId?: string }) =>
+    call<{ strategy: Strategy; truncated: boolean; droppedWords: number }>(
+      `/api/clients/${clientId}/strategies`, {
+        method: 'POST', body: JSON.stringify(input),
+      }),
+  /** Files a page written by a person, which needs no model. */
+  saveStrategy: (clientId: string, input: { markdown: string; title?: string;
+    transcript?: string; projectId?: string }) =>
+    call<{ strategy: Strategy }>(`/api/clients/${clientId}/strategies`, {
+      method: 'POST', body: JSON.stringify(input),
+    }).then((r) => r.strategy),
+  updateStrategy: (id: string, input: { title?: string; markdown?: string }) =>
+    call<{ strategy: Strategy }>(`/api/strategies/${id}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }).then((r) => r.strategy),
+  deleteStrategy: (id: string) =>
+    call<{ removed: string }>(`/api/strategies/${id}`, { method: 'DELETE' }),
+  strategyDocumentUrl: (id: string) => `/api/strategies/${id}/document`,
 
   messages: (clientId: string) =>
     call<{ messages: Message[] }>(`/api/clients/${clientId}/messages`).then((r) => r.messages),

@@ -5,6 +5,7 @@ import { api, type Milestone } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * The project's own timeline, in the studio's own words.
@@ -79,6 +80,9 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
       </td>
       <td className="muted" data-label="Due">{m.dueDate ?? '—'}</td>
       <td data-label="Status">
+        {/* A client moves their own milestone along. The studio sets the plan;
+            the plan is not a one-directional script, and a status only a
+            studio can change is a status the client stops believing in. */}
         <select
           value={m.status} className={`pill ${STATUS_TONE[m.status]}`}
           onChange={(e) => setStatus.mutate(e.target.value as Milestone['status'])}
@@ -90,10 +94,10 @@ function MilestoneRow({ m, index, count, onChanged, onMove }: {
       </td>
       <td className="actions">
         <OverflowMenu label={`Actions for ${m.title}`} items={[
-          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-          { label: 'Move up', icon: ArrowUp, disabled: index === 0, onSelect: () => onMove(-1) },
-          { label: 'Move down', icon: ArrowDown, disabled: index === count - 1, onSelect: () => onMove(1) },
-          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          { label: 'Edit', icon: Pencil, studioOnly: true, onSelect: () => setEditing(true) },
+          { label: 'Move up', icon: ArrowUp, disabled: index === 0, studioOnly: true, onSelect: () => onMove(-1) },
+          { label: 'Move down', icon: ArrowDown, disabled: index === count - 1, studioOnly: true, onSelect: () => onMove(1) },
+          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true, onSelect: onDelete },
         ]} />
       </td>
     </tr>
@@ -144,33 +148,40 @@ export default function Milestones({ clientId }: { clientId: string }): ReactEle
       <div className="row">
         <h3 style={{ margin: 0 }}>Milestones</h3>
         <span className="muted mono">{data?.length ?? 0}</span>
-        <button type="button" style={{ marginLeft: 'auto' }} onClick={() => setAdding((o) => !o)}>
-          {adding ? 'Cancel' : 'New milestone'}
-        </button>
+        {/* StudioOnly, not hidden by `adding`: laying out the plan is the
+            studio's job, and in client view the toggle that opens this form
+            would be a control with nothing behind it. */}
+        <StudioOnly>
+          <button type="button" style={{ marginLeft: 'auto' }} onClick={() => setAdding((o) => !o)}>
+            {adding ? 'Cancel' : 'New milestone'}
+          </button>
+        </StudioOnly>
       </div>
 
-      {adding && (
-        <form className="card stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <label className="field">
-            <span className="label">Title</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)}
-                   placeholder="Concept Approval" required autoFocus />
-          </label>
-          <label className="field">
-            <span className="label">Description (optional)</span>
-            <input value={description} onChange={(e) => setDescription(e.target.value)}
-                   placeholder="Concepts presented and approved to move forward." />
-          </label>
-          <label className="field">
-            <span className="label">Due (optional)</span>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </label>
-          {create.error && <p className="err">{(create.error as Error).message}</p>}
-          <button className="primary" type="submit" disabled={!title.trim() || create.isPending}>
-            {create.isPending ? 'Adding…' : 'Add milestone'}
-          </button>
-        </form>
-      )}
+      <StudioOnly>
+        {adding && (
+          <form className="card stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+            <label className="field">
+              <span className="label">Title</span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)}
+                     placeholder="Concept Approval" required autoFocus />
+            </label>
+            <label className="field">
+              <span className="label">Description (optional)</span>
+              <input value={description} onChange={(e) => setDescription(e.target.value)}
+                     placeholder="Concepts presented and approved to move forward." />
+            </label>
+            <label className="field">
+              <span className="label">Due (optional)</span>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </label>
+            {create.error && <p className="err">{(create.error as Error).message}</p>}
+            <button className="primary" type="submit" disabled={!title.trim() || create.isPending}>
+              {create.isPending ? 'Adding…' : 'Add milestone'}
+            </button>
+          </form>
+        )}
+      </StudioOnly>
 
       {isPending && <p className="muted">Loading milestones…</p>}
       {error && (

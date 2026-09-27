@@ -51,6 +51,29 @@ export class TurnRefused extends Error {
   }
 }
 
+export interface DraftRequest {
+  /** The standing instruction. Stable across calls, so it caches. */
+  system: string;
+  /** The material to write from: a transcript, a brief, a set of answers. */
+  user: string;
+  maxOutputTokens?: number;
+  signal?: AbortSignal;
+}
+
+export interface DraftResult {
+  text: string;
+  usage: Usage;
+  cost?: number;
+  model: string;
+}
+
+export class DraftRefused extends Error {
+  constructor(readonly reason: string) {
+    super(`The model did not write the draft: ${reason}`);
+    this.name = 'DraftRefused';
+  }
+}
+
 const DEFAULT_MODEL = 'custom';
 const DEFAULT_TOOL_ROUNDS = 12;
 
@@ -185,6 +208,47 @@ export class Executor {
 
   costOf(usage: Usage, model = this.model): number | undefined {
     return this.estimateCost?.(usage, model);
+  }
+
+  /**
+   * One turn, no instruments, no submission: the model writes a document and
+   * the document is the answer.
+   *
+   * A department is a conversation with twenty-four of them — it may ask for a
+   * score, call an instrument, change its mind, and has to end by submitting
+   * something the engine will check. A transcript is not that. It is one
+   * prompt in, one piece of prose out, and the only way it can fail is by
+   * refusing or by writing nothing. So the tool loop is not restarted here
+   * with the tools removed; it is not a loop at all.
+   */
+  async draft(request: DraftRequest): Promise<DraftResult> {
+    const response = await this.client.complete({
+      model: this.model,
+      maxOutputTokens: request.maxOutputTokens ?? this.maxOutputTokens,
+      ...(this.effort ? { effort: this.effort } : {}),
+      ...(request.signal ? { signal: request.signal } : {}),
+      system: [{ type: 'text', text: request.system }],
+      tools: [],
+      messages: [{ role: 'user', content: [{ type: 'text', text: request.user }] }],
+    });
+
+    if (response.stopReason === 'refusal') {
+      throw new DraftRefused(response.refusalReason ?? 'the model declined');
+    }
+
+    const text = response.content
+      .filter((block): block is ModelTextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('')
+      .trim();
+
+    if (!text) {
+      throw new DraftRefused(`stopped with ${response.stopReason ?? 'no reason'} and wrote nothing`);
+    }
+
+    const usage = readUsage(response);
+    const cost = this.costOf(usage);
+    return { text, usage, ...(cost === undefined ? {} : { cost }), model: this.model };
   }
 
   private async send(

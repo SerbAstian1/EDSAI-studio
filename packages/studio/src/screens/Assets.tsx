@@ -5,6 +5,7 @@ import { api, type Asset } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * Files — the studio's side of what a client downloads.
@@ -148,14 +149,19 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
       </td>
       <td className="actions">
         <div className="row">
-          <button
-            type="button"
-            className={asset.approved ? '' : 'primary'}
-            disabled={setApproved.isPending}
-            onClick={() => setApproved.mutate(!asset.approved)}
-          >
-            {asset.approved ? 'Withdraw' : 'Approve'}
-          </button>
+          {/* Publishing is the studio's call: a file is invisible to the client
+              until it is approved, and a client who could approve their own
+              would be publishing work nobody has looked at. */}
+          <StudioOnly>
+            <button
+              type="button"
+              className={asset.approved ? '' : 'primary'}
+              disabled={setApproved.isPending}
+              onClick={() => setApproved.mutate(!asset.approved)}
+            >
+              {asset.approved ? 'Withdraw' : 'Approve'}
+            </button>
+          </StudioOnly>
           <OverflowMenu label={`Actions for ${asset.filename}`} items={[
             { label: 'Download', icon: Download, onSelect: () => {
               const a = document.createElement('a');
@@ -163,8 +169,8 @@ function AssetRow({ asset, onChanged }: { asset: Asset; onChanged: () => void })
               a.download = asset.filename;
               a.click();
             } },
-            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-            { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+            { label: 'Edit', icon: Pencil, studioOnly: true, onSelect: () => setEditing(true) },
+            { label: 'Delete', icon: Trash2, danger: true, disabled: remove.isPending, studioOnly: true, onSelect: onDelete },
           ]} />
         </div>
       </td>
@@ -234,33 +240,39 @@ export default function Assets({ clientId }: { clientId: string }): ReactElement
           : `${approved} of ${assets.length} ${approved === 1 ? 'file is' : 'files are'} in the client's portal. The rest are yours alone.`}
       </p>
 
-      <div
-        className={`dropzone${dragging ? ' over' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); take(e.dataTransfer.files); }}
-      >
-        <p className="editorial" style={{ margin: 0 }}>Drop files here</p>
-        <p className="muted" style={{ margin: 0 }}>
-          Or <button className="link" type="button" onClick={() => input.current?.click()}>
-            choose them
-          </button>. Up to 25 MB each.
-        </p>
-        <input
-          ref={input} type="file" multiple hidden
-          onChange={(e) => { take(e.target.files); e.target.value = ''; }}
-        />
-        <label className="field" style={{ maxWidth: 320, margin: '0 auto' }}>
-          <span className="label">Put them in</span>
+      {/* The upload target. Approving a file is what publishes it, so the whole
+          panel is studio-side: a client has nothing to add to their own
+          library, and a dropzone they can use but not see the result of is
+          worse than none. */}
+      <StudioOnly>
+        <div
+          className={`dropzone${dragging ? ' over' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); take(e.dataTransfer.files); }}
+        >
+          <p className="editorial" style={{ margin: 0 }}>Drop files here</p>
+          <p className="muted" style={{ margin: 0 }}>
+            Or <button className="link" type="button" onClick={() => input.current?.click()}>
+              choose them
+            </button>. Up to 25 MB each.
+          </p>
           <input
-            value={collection} placeholder="Logos, Summer campaign…"
-            onChange={(e) => setCollection(e.target.value)}
+            ref={input} type="file" multiple hidden
+            onChange={(e) => { take(e.target.files); e.target.value = ''; }}
           />
-        </label>
-      </div>
+          <label className="field" style={{ maxWidth: 320, margin: '0 auto' }}>
+            <span className="label">Put them in</span>
+            <input
+              value={collection} placeholder="Logos, Summer campaign…"
+              onChange={(e) => setCollection(e.target.value)}
+            />
+          </label>
+        </div>
 
-      {upload.isPending && <p className="muted">Uploading…</p>}
-      {upload.error && <p className="err">{(upload.error as Error).message}</p>}
+        {upload.isPending && <p className="muted">Uploading…</p>}
+        {upload.error && <p className="err">{(upload.error as Error).message}</p>}
+      </StudioOnly>
 
       {assets.length === 0 ? (
         <div className="empty">

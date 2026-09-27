@@ -98,6 +98,26 @@ export function DiscoveryQuestions({ data, onAnswer, onSubmit, saving, saveError
             </div>
           )}
 
+          {/*
+            One of several. `binary` above is the two-option case of this and
+            stays its own kind in the catalog, but a four-option question is a
+            different shape on screen: a grid the eye can scan, rather than two
+            sentences stacked as though either might be right. It commits on the
+            click, so there is no confirm button to press and no half-made
+            choice sitting in the form.
+          */}
+          {current.kind === 'choice' && (
+            <div className="choices" role="group" aria-label={current.prompt}>
+              {(current.options ?? []).map((option) => (
+                <button key={option.id} onClick={() => commit(option.id)}
+                        aria-pressed={existing === option.id}
+                        className={existing === option.id ? 'choice chosen' : 'choice'}>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {current.kind === 'scale' && (
             <div className="scale">
               <div className="scale-ends">

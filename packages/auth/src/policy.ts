@@ -18,6 +18,19 @@ export type Action = typeof ACTIONS[number];
 export const RESOURCES = [
   'client', 'contact', 'project', 'run', 'brand', 'asset', 'portal',
   'deliverable', 'document', 'milestone', 'invoice', 'message', 'feedback', 'support', 'process',
+  // The studio's calendar. An event may name no client at all, and passes an
+  // empty string in that case — the same thing `support` does, and for the same
+  // reason: a portal scope is a list of real client ids and never matches it.
+  'event',
+  // A strategy is the studio's reading of a transcript. The client reads the
+  // finished page and may comment on it in a message, but the page is written
+  // and revised on the studio's side of the line.
+  'strategy',
+  // A contract is binding in a way nothing else here is. A client reads the
+  // terms they were sent and may record that they signed, but the studio
+  // writes them: no portal session may create, revise, send or void a
+  // contract, whatever role it holds.
+  'contract',
   // The hub's own switch and tool list are the studio's; the designs a
   // client makes inside it are the client's, written like a message is.
   'brand-hub', 'brand-project',
@@ -27,7 +40,15 @@ export type ResourceKind = typeof RESOURCES[number];
 /** Studio-only writes: a client portal reads its own status, never sets it. */
 const STUDIO_MANAGED: readonly ResourceKind[] = [
   'deliverable', 'document', 'milestone', 'invoice', 'contact', 'project', 'run', 'brand-hub',
+  // A client can see the meeting they are in; the studio is what puts it there.
+  'event',
+  // A client can read the strategy written about them. Only the studio writes
+  // it: the transcript is the studio's to hold and the reading of it is theirs.
+  'strategy',
+  // Studio-managed for the same reason and harder: the client is a party to it.
+  'contract',
 ];
+
 
 export interface Resource {
   kind: ResourceKind;

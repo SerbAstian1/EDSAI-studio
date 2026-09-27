@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * What a client said about how the project is going, outside a run's own
@@ -79,7 +80,13 @@ export default function FeedbackPanel({ clientId }: { clientId: string }): React
                   <strong>You replied:</strong> {entry.response}
                 </div>
               ) : (
-                <ReplyForm feedbackId={entry.id} onSent={invalidate} />
+                // Replying is the studio answering; the client reads the answer
+                // in their portal, where they left it. A preview that left an
+                // empty Reply box on every unanswered note would be showing
+                // the studio's half of a conversation, not the client's.
+                <StudioOnly>
+                  <ReplyForm feedbackId={entry.id} onSent={invalidate} />
+                </StudioOnly>
               )}
             </div>
           ))}

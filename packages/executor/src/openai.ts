@@ -56,12 +56,14 @@ export class OpenAIModelClient implements ModelClient {
   async complete(request: ModelRequest): Promise<ModelResponse> {
     const explicitCache = supportsExplicitPromptCaching(request.model)
       && request.system.some((block) => block.cache);
+    // A request with no tools is a request for prose, not a turn. OpenAI treats
+    // `tool_choice: 'required'` on an empty tool list as an error, so both go
+    // together and only when there is something to call.
+    const tools = request.tools.map(responseTool);
     const response = await this.responses.create({
       model: request.model,
       input: responseInput(request, explicitCache),
-      tools: request.tools.map(responseTool),
-      tool_choice: 'required',
-      parallel_tool_calls: true,
+      ...(tools.length > 0 ? { tools, tool_choice: 'required' as const, parallel_tool_calls: true } : {}),
       max_output_tokens: request.maxOutputTokens,
       store: false,
       include: ['reasoning.encrypted_content'],

@@ -62,6 +62,84 @@ describe('the catalog follows its own rules', () => {
   });
 });
 
+describe('the commercial round', () => {
+  it('asks twenty-four questions, and resolves no axis the eight did not', () => {
+    expect(QUESTIONS).toHaveLength(24);
+    // A budget is not a design decision, so the round adds no axis: the flow
+    // still settles eight of eleven, and the three the studio drafts are still
+    // the only ones it owes.
+    expect(QUESTIONS.filter((q) => q.axis?.startsWith('E'))).toHaveLength(8);
+    expect(QUESTIONS.filter((q) => q.axis?.startsWith('E') && q.act === 'commercial')).toEqual([]);
+  });
+
+  it('covers the nine things a kickoff is asked and week three asks again', () => {
+    const byId = new Map(QUESTIONS.map((q) => [q.id, q]));
+    for (const id of ['f-audience', 'f-story', 'f-prior-brand', 'd-competitors',
+      'c-budget', 'c-growth', 'c-decision', 'c-comms', 'c-content']) {
+      expect(byId.get(id), id).toBeDefined();
+    }
+    // The money and the sign-off are decisions, so they are required; how they
+    // like to be worked with and what recurs are preferences and are not.
+    expect(byId.get('c-budget')?.required).toBe(true);
+    expect(byId.get('c-decision')?.required).toBe(true);
+    expect(byId.get('c-comms')?.required).toBe(false);
+    expect(byId.get('c-content')?.required).toBe(false);
+  });
+
+  it('takes one answer for a choice, and refuses two or none', () => {
+    expect(answerIsValid('c-growth', 'new-customers')).toBe(true);
+    expect(answerIsValid('c-growth', 'more-of-the-same')).toBe(true);
+    expect(answerIsValid('c-growth', 'everything-above')).toBe(false);
+    // A `choice` is not a `pick-many` that happens to allow one: a list is a
+    // refusal, not a partial answer.
+    expect(answerIsValid('c-growth', ['new-customers'])).toBe(false);
+    expect(answerIsValid('c-budget', 25_000)).toBe(false);
+  });
+
+  it('keeps the budget a band rather than a figure the client never typed', () => {
+    const { facts, markdown } = discoveryBrief([
+      answer('c-budget', '25-60'),
+      answer('c-growth', 'new-customers'),
+      answer('c-decision', 'me-and-one'),
+      answer('c-comms', ['async', 'shared-board']),
+      answer('c-content', ['packaging', 'social']),
+    ]);
+    expect(facts.budget).toBe('25,000 to 60,000');
+    expect(facts.growth).toBe('A different kind of customer entirely');
+    expect(facts.decisionMaker).toBe('Me and one other person');
+    expect(facts.cadence).toEqual([
+      'Written updates I read when I have a minute',
+      'One shared board I can see',
+    ]);
+    expect(facts.ongoing).toEqual(['Packaging or labels', 'Social posts, every week']);
+    expect(markdown).toContain('**Budget band.** 25,000 to 60,000.');
+    expect(markdown).toContain('**Who signs it off.** Me and one other person.');
+    // The ids never reach a reader: everything is the sentence on the button.
+    expect(markdown).not.toContain('25-60');
+  });
+
+  it('drops a commercial answer that does not fit its question', () => {
+    const { facts } = discoveryBrief([
+      answer('c-budget', 'a-fortune'),
+      answer('c-comms', ['telepathy']),
+    ]);
+    expect(facts.budget).toBeUndefined();
+    expect(facts.cadence).toBeUndefined();
+  });
+
+  it('carries the band and the sign-off into the project it becomes', () => {
+    const project = deriveProject('Disan', [
+      answer('f-deliverables', ['identity']),
+      answer('c-budget', '60-120'),
+      answer('c-decision', 'committee'),
+      answer('c-growth', 'steadier'),
+    ]);
+    expect(project.notes).toContain('**Budget band:** 60,000 to 120,000.');
+    expect(project.notes).toContain('**Signs off:** A committee or a board.');
+    expect(project.notes).toContain('**In a year, what has to have changed:** More of the same, steadier.');
+  });
+});
+
 describe('answer validation', () => {
   it('refuses an answer to a question that does not exist', () => {
     expect(answerIsValid('nope', 'anything')).toBe(false);
@@ -150,7 +228,8 @@ describe('progress', () => {
         case 'text': return answer(q.id, 'An answer.');
         case 'scale': return answer(q.id, 3);
         case 'ratio': return answer(q.id, { side: 'a', strength: 'clearly' });
-        case 'binary': return answer(q.id, q.options?.[0]?.id);
+        case 'binary':
+        case 'choice': return answer(q.id, q.options?.[0]?.id);
         default: return answer(q.id, q.take
           ? (q.options ?? []).slice(0, q.take).map((o) => o.id)
           : [q.options?.[0]?.id]);

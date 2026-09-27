@@ -12,6 +12,8 @@ import { Header } from './shell/Header.js';
 import { StatusBar } from './shell/StatusBar.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
+import { PLANNED_ROUTES } from './shell/navigation.js';
+import { ViewModeProvider, useViewMode } from './viewMode.js';
 import { AppErrorBoundary } from './components/AppErrorBoundary.js';
 import { ConfirmationDialog } from './components/ConfirmDialog.js';
 import { FailureBanner } from './components/FailureBanner.js';
@@ -64,6 +66,8 @@ const LOADERS = {
   campaigns: () => import('./screens/Campaigns.js'),
   processBuilder: () => import('./screens/ProcessBuilder.js'),
   activity: () => import('./screens/Activity.js'),
+  acquisition: () => import('./screens/Acquisition.js'),
+  calendar: () => import('./screens/Calendar.js'),
   settings: () => import('./screens/Settings.js'),
   support: () => import('./screens/Support.js'),
   planned: () => import('./screens/Planned.js'),
@@ -91,6 +95,8 @@ const Templates = lazy(LOADERS.templates);
 const Campaigns = lazy(LOADERS.campaigns);
 const ProcessBuilder = lazy(LOADERS.processBuilder);
 const Activity = lazy(LOADERS.activity);
+const Acquisition = lazy(LOADERS.acquisition);
+const Calendar = lazy(LOADERS.calendar);
 const Settings = lazy(LOADERS.settings);
 const Support = lazy(LOADERS.support);
 const Planned = lazy(LOADERS.planned);
@@ -98,7 +104,8 @@ const NotFound = lazy(LOADERS.notFound);
 
 export type Screen =
   | 'workspace' | 'intake' | 'run' | 'direction' | 'scorecard' | 'review' | 'finalize'
-  | 'runs' | 'brands' | 'brandHubs' | 'portals' | 'assets' | 'activity' | 'settings' | 'support' | 'planned'
+  | 'runs' | 'brands' | 'brandHubs' | 'portals' | 'assets' | 'activity' | 'acquisition'
+  | 'calendar' | 'settings' | 'support' | 'planned'
   | 'clients' | 'client' | 'onboard' | 'projects' | 'discovery' | 'templates' | 'campaigns'
   | 'processBuilder' | 'clientPortal' | 'notFound';
 
@@ -130,7 +137,13 @@ const SECTION_SCREENS: Record<string, Screen> = {
   'brand-hub': 'brandHubs',
   portals: 'portals',
   assets: 'assets',
+  updates: 'activity',
+  // The section was Activity before the rail called it Updates. Both open the
+  // same screen; the old link is kept because it is in the address bar of
+  // anything saved or bookmarked before the rename.
   activity: 'activity',
+  acquisition: 'acquisition',
+  calendar: 'calendar',
   settings: 'settings',
   support: 'support',
   templates: 'templates',
@@ -154,6 +167,10 @@ export function parseRoute(hash: string): Route {
     return { screen: 'client', clientId: path[1], ...(path[2] ? { tab: path[2] } : {}) };
   }
   if (path[0] === 'section' && path[1]) return { screen: 'planned', sectionId: path[1] };
+  // A section that exists and is not built yet — Tasks. The route is its own,
+  // and it opens the page that says what is missing rather than a 404.
+  const planned = path[0] ? PLANNED_ROUTES[path[0]] : undefined;
+  if (planned) return { screen: 'planned', sectionId: planned };
   const section = path[0] ? SECTION_SCREENS[path[0]] : undefined;
   if (section) return { screen: section };
   return path.length === 0 ? { screen: 'workspace' } : { screen: 'notFound' };
@@ -164,9 +181,12 @@ export function activeSection(route: Route): string {
   if (route.screen === 'planned') return route.sectionId ?? '';
   if (route.screen === 'workspace') return 'overview';
   if (route.screen === 'notFound') return '';
-  if (route.screen === 'client') return 'clients';
+  // A client page is reached from that client's own entry in the rail, so no
+  // single section owns it — the rail answers it, and the section is left blank.
+  if (route.screen === 'client') return '';
   if (route.screen === 'processBuilder') return 'process-builder';
   if (route.screen === 'brandHubs') return 'brand-hub';
+  if (route.screen === 'activity') return 'updates';
   if (route.screen === 'intake' || route.screen === 'run' || route.screen === 'scorecard'
     || route.screen === 'direction' || route.screen === 'review' || route.screen === 'finalize'
     || route.screen === 'runs') return 'runs';
@@ -263,7 +283,7 @@ function useRoute(): Route {
 /* -------------------------------------------------------------------- shell */
 
 const TITLES: Record<Screen, string> = {
-  workspace: 'Overview',
+  workspace: 'Home',
   runs: 'Pipeline',
   clients: 'Clients',
   client: 'Client',
@@ -281,7 +301,9 @@ const TITLES: Record<Screen, string> = {
   brandHubs: 'Brand Hub',
   portals: 'Portals',
   assets: 'Files',
-  activity: 'Activity',
+  activity: 'Updates',
+  acquisition: 'Client Acquisition',
+  calendar: 'Calendar',
   settings: 'Settings',
   support: 'Support',
   templates: 'Templates',
@@ -294,6 +316,7 @@ const TITLES: Record<Screen, string> = {
 function Shell(): ReactElement {
   const route = useRoute();
   const palette = useCommandPalette();
+  const { clientView } = useViewMode();
   useRunStream(route.runId);
 
   const tabs = route.runId
@@ -304,8 +327,12 @@ function Shell(): ReactElement {
     : [];
 
   return (
-    <div className="shell">
-      <Sidebar current={activeSection(route)} onOpenPalette={() => palette.setOpen(true)} />
+    <div className="shell" data-view={clientView ? 'client' : 'studio'}>
+      <Sidebar
+        current={activeSection(route)}
+        currentClientId={route.clientId}
+        onOpenPalette={() => palette.setOpen(true)}
+      />
 
       <div className="main">
         <Header onOpenPalette={() => palette.setOpen(true)} />
@@ -350,6 +377,8 @@ function Shell(): ReactElement {
             {route.screen === 'campaigns' && <Campaigns />}
             {route.screen === 'processBuilder' && <ProcessBuilder />}
             {route.screen === 'activity' && <Activity />}
+            {route.screen === 'acquisition' && <Acquisition />}
+            {route.screen === 'calendar' && <Calendar />}
             {route.screen === 'settings' && <Settings />}
             {route.screen === 'support' && <Support />}
             {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
@@ -426,5 +455,7 @@ function Entry(): ReactElement {
       </Suspense>
     );
   }
-  return <Gate><Shell /></Gate>;
+  // Inside the Gate, so the flag belongs to the studio session and a sign-out
+  // cannot leave a previous person's preview mode standing.
+  return <Gate><ViewModeProvider><Shell /></ViewModeProvider></Gate>;
 }

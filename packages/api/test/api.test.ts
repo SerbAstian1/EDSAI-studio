@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import { RunStore } from '@edsai/engine';
 import { digestToken, SignInAttempts } from '@edsai/auth';
+import { Executor, REHEARSAL_MODEL, RehearsalClient, type ModelClient } from '@edsai/executor';
 import { ApiServer, newId } from '../src/server.js';
+
 
 /**
  * Exercised over real HTTP against a listening server rather than by calling
@@ -974,7 +976,7 @@ describe('onboarding', () => {
       const value = q.kind === 'text' ? 'An answer that means something.'
         : q.kind === 'scale' ? 3
           : q.kind === 'ratio' ? { side: 'a', strength: 'clearly' }
-            : q.kind === 'binary' ? q.options?.[0]?.id
+            : q.kind === 'binary' || q.kind === 'choice' ? q.options?.[0]?.id
               : (q.options ?? []).slice(0, q.take || 1).map((o) => o.id);
       await json(`/api/onboard/${token}`, {
         method: 'POST', body: JSON.stringify({ questionId: q.id, value }),
@@ -1200,7 +1202,7 @@ describe('an onboarding closes when it is submitted', () => {
       const value = q.kind === 'text' ? 'The answer the studio will read.'
         : q.kind === 'scale' ? 3
           : q.kind === 'ratio' ? { side: 'a', strength: 'clearly' }
-            : q.kind === 'binary' ? q.options?.[0]?.id
+            : q.kind === 'binary' || q.kind === 'choice' ? q.options?.[0]?.id
               : (q.options ?? []).slice(0, q.take || 1).map((o) => o.id);
       await json(`/api/onboard/${token}`, {
         method: 'POST', body: JSON.stringify({ questionId: q.id, value }),
@@ -2619,5 +2621,1043 @@ describe('the Brand Hub, over the wire', () => {
     });
     expect(refused.status).toBe(404);
     cookie = saved;
+  });
+});
+
+describe('a strategy from a transcript', () => {
+  const transcript = 'Founder: we get plenty of walk-ins but nobody remembers us. '
+    + 'I want people to take us seriously as a workshop, not a shop.';
+
+  /**
+   * A server with a model behind it, and its own store and its own session.
+   *
+   * It cannot be the shared server, because that one has no executor — which is
+   * the point of it, and is why the "no model" cases below are also written
+   * against it rather than skipped.
+   */
+  const withModel = async (model: ModelClient, name = 'test-model') => {
+    const fresh = new RunStore();
+    const modelled = new ApiServer({
+      store: fresh, rubric, scopeId: 'no-motion-authoring', insecureCookies: true,
+      executor: new Executor({ model: name, client: model }),
+    });
+    const ownBase = `http://localhost:${await modelled.listen(0)}`;
+    const setup = await fetch(`${ownBase}/api/setup`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'A', email: 'a@b.c', password: 'a-long-enough-password' }),
+    });
+    const ownCookie = (setup.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const now = new Date().toISOString();
+    const post = async (path: string, body: unknown) => {
+      const res = await fetch(ownBase + path, {
+        method: 'POST', headers: { 'content-type': 'application/json', cookie: ownCookie },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, body: await res.json() as Record<string, never> };
+    };
+    return {
+      fresh, modelled, ownBase, ownCookie, post,
+      /** Seeded straight into the store: the id only has to exist before the route reads it. */
+      seed: (id: string, clientName: string): string => {
+        fresh.saveClient({
+          id, name: clientName, slug: id, status: 'active', createdAt: now, updatedAt: now,
+        });
+        return id;
+      },
+    };
+  };
+
+  const newClient = async () => {
+    const { body } = await json('/api/clients', { method: 'POST', body: JSON.stringify({ name: 'Disan Footwear' }) });
+    return body['id'] as unknown as string;
+  };
+
+  it('drafts a page, keeps the transcript beside it, and names the model', async () => {
+    const prose: ModelClient = {
+      complete: async () => ({
+        stopReason: 'end',
+        content: [{ type: 'text', text: '## What they said they wanted\n\n> nobody remembers us' }],
+      }),
+    };
+    const { fresh, modelled, post, seed } = await withModel(prose);
+    const clientId = seed('disan', 'Disan Footwear');
+
+    const { status, body } = await post(`/api/clients/${clientId}/strategies`, { transcript });
+    const strategy = body['strategy'] as unknown as
+      { markdown: string; transcript: string; model: string; title: string };
+
+    expect(status).toBe(201);
+    expect(strategy.markdown).toContain('nobody remembers us');
+    // The words the page came from survive it: a draft that cannot be checked
+    // against the transcript has to be believed instead.
+    expect(strategy.transcript).toBe(transcript);
+    expect(strategy.model).toBe('test-model');
+    expect(strategy.title).toBe('Strategy — Disan Footwear');
+    expect(fresh.listStrategiesForClient(clientId)).toHaveLength(1);
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('rehearses into a page that admits no one reasoned about it', async () => {
+    const { fresh, modelled, post, seed } = await withModel(
+      new RehearsalClient({ rubric, delayMs: 0 }), REHEARSAL_MODEL,
+    );
+    const clientId = seed('disan', 'Disan Footwear');
+
+    const { status, body } = await post(`/api/clients/${clientId}/strategies`, { transcript });
+    const strategy = body['strategy'] as unknown as { markdown: string; model: string };
+    // `rehearsal` is a recorded model, not a missing one, so a rehearsed page
+    // can never read afterwards as a real finding.
+    expect(status).toBe(201);
+    expect(strategy.model).toBe('rehearsal');
+    expect(strategy.markdown).toMatch(/^> \*\*Rehearsal\.\*\*/);
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('tells a refusal from a fault, because they need different answers', async () => {
+    const refusing: ModelClient = {
+      complete: async () => ({ stopReason: 'refusal', refusalReason: 'the transcript names a person' }),
+    };
+    const { fresh, modelled, post, seed } = await withModel(refusing);
+    const clientId = seed('disan', 'Disan Footwear');
+
+    const { status, body } = await post(`/api/clients/${clientId}/strategies`, { transcript });
+    expect(status).toBe(422);
+    expect(body['error']).toBe('refused');
+    // Nothing was saved: a refusal is not a first draft.
+    expect(fresh.listStrategiesForClient(clientId)).toEqual([]);
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('reports a model that fell over as a fault, not as a refusal', async () => {
+    const broken: ModelClient = { complete: async () => { throw new Error('the socket closed'); } };
+    const { fresh, modelled, post, seed } = await withModel(broken);
+    const { status, body } = await post(`/api/clients/${seed('disan', 'Disan')}/strategies`, { transcript });
+    expect(status).toBe(502);
+    expect(body['error']).toBe('draft_failed');
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('refuses to draft at all on a server with no model, and says what to do', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST', body: JSON.stringify({ transcript }),
+    });
+    expect(status).toBe(503);
+    expect(body['error']).toBe('no_executor');
+    expect(body['message']).toMatch(/markdown/);
+  });
+
+  it('accepts a page a person wrote, on a server with no model at all', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST',
+      body: JSON.stringify({ markdown: '## Open questions\n\n- Who signs this off?' }),
+    });
+    const strategy = body['strategy'] as unknown as { markdown: string; model?: string };
+    expect(status).toBe(201);
+    // No model, and no pretending: a hand-written page is recorded as one.
+    expect(strategy.model).toBeUndefined();
+    expect(strategy.markdown).toContain('Who signs this off?');
+  });
+
+  it('takes markdown as the page when both arrive, and drafts nothing', async () => {
+    const prose: ModelClient = {
+      complete: async () => { throw new Error('the model should not have been called'); },
+    };
+    const { fresh, modelled, post, seed } = await withModel(prose);
+    const clientId = seed('disan', 'Disan Footwear');
+
+    const { status, body } = await post(`/api/clients/${clientId}/strategies`, {
+      transcript, markdown: '## What they said\n\n> quoted',
+    });
+    const strategy = body['strategy'] as unknown as { markdown: string; model?: string };
+    expect(status).toBe(201);
+    expect(strategy.markdown).toContain('> quoted');
+    expect(strategy.model).toBeUndefined();
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('wants either a transcript or a page, not neither', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST', body: JSON.stringify({ title: 'Strategy' }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toMatch(/transcript/);
+  });
+
+  it('reports a cut to the studio, not only to the model that read it', async () => {
+    let read = '';
+    const reader: ModelClient = {
+      complete: async (request) => {
+        read = request.messages.map((m) => m.content.map((c) => ('text' in c ? c.text : '')).join('')).join('\n');
+        return { stopReason: 'end', content: [{ type: 'text', text: '## Open questions\n\n- tail?' }] };
+      },
+    };
+    const { fresh, modelled, post, seed } = await withModel(reader);
+    const clientId = seed('disan', 'Disan Footwear');
+
+    // Long enough to be cut, and made of whole lines so the cut lands on one.
+    const long = Array.from({ length: 4000 }, (_, i) => `Line ${i} of the call.`).join('\n');
+    const { status, body } = await post(`/api/clients/${clientId}/strategies`, { transcript: long });
+
+    expect(status).toBe(201);
+    expect(body['truncated']).toBe(true);
+    expect(body['droppedWords']).toBeGreaterThan(0);
+    // The stored transcript is the whole call, not the part that was read: the
+    // page has to stay checkable against all of it.
+    expect((body['strategy'] as unknown as { transcript: string }).transcript).toBe(long);
+    // The model is told in the prompt what it did not get.
+    expect(read).toMatch(/END OF TRANSCRIPT/);
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('says nothing was cut when the whole transcript was read', async () => {
+    const prose: ModelClient = {
+      complete: async () => ({ stopReason: 'end', content: [{ type: 'text', text: '## Open questions\n\n- none' }] }),
+    };
+    const { fresh, modelled, post, seed } = await withModel(prose);
+    const { status, body } = await post(`/api/clients/${seed('disan', 'Disan')}/strategies`, { transcript });
+    expect(status).toBe(201);
+    expect(body['truncated']).toBe(false);
+    expect(body['droppedWords']).toBe(0);
+    await modelled.close();
+    fresh.close();
+  });
+
+  it('revises in place, and will not be emptied', async () => {
+    const clientId = await newClient();
+    const { body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST', body: JSON.stringify({ markdown: '## What they said\n\n> first' }),
+    });
+    const id = (body['strategy'] as unknown as { id: string }).id;
+
+    const edited = await json(`/api/strategies/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: '## What they said\n\n> second' }),
+    });
+    expect(edited.status).toBe(200);
+    expect((edited.body['strategy'] as unknown as { markdown: string }).markdown).toContain('> second');
+
+    expect((await json(`/api/strategies/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: '   ' }),
+    })).status).toBe(400);
+    expect(store.getStrategy(id)?.markdown).toContain('> second');
+  });
+
+  it('prints the page, and does not turn a transcript into script', async () => {
+    const clientId = await newClient();
+    const { body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST',
+      body: JSON.stringify({ markdown: '# Heading\n\n> a quote\n\n- one\n\n<img src=x onerror=alert(1)>' }),
+    });
+    const id = (body['strategy'] as unknown as { id: string }).id;
+
+    const res = await fetch(`${base}/api/strategies/${id}/document`, { headers: { cookie } });
+    const page = await res.text();
+    expect(res.status).toBe(200);
+    expect(page).toContain('<h1>Heading</h1>');
+    expect(page).toContain('<blockquote>');
+    expect(page).toContain('<li>one</li>');
+    expect(page).toContain('written by the studio');
+    // A page is HTML built from markdown that may have come from a model or
+    // from a client's own paste, and the one place markup could get in is the
+    // renderer's own tokens — so a tag in the source has to arrive as text.
+    expect(page).not.toContain('<img');
+    expect(page).toContain('&lt;img');
+  });
+
+  it('refuses to let a client write one, and cannot see another client’s', async () => {
+    const mine = await newClient();
+    const theirs = await newClient();
+    const { body } = await json(`/api/clients/${theirs}/strategies`, {
+      method: 'POST', body: JSON.stringify({ markdown: '## Their page' }),
+    });
+    const id = (body['strategy'] as unknown as { id: string }).id;
+    const { body: key } = await json(`/api/clients/${mine}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', role: 'owner' }),
+    });
+    const token = (key['link'] as unknown as { token: string }).token;
+    const session = await fetch(`${base}/api/portal/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    });
+    const saved = cookie;
+    cookie = (session.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+    // Not a 403: from a portal session, another client's page does not exist.
+    expect((await json(`/api/strategies/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: 'edited by the client' }),
+    })).status).toBe(404);
+    expect((await json(`/api/clients/${theirs}/strategies`)).status).toBe(404);
+    const printed = await fetch(`${base}/api/strategies/${id}/document`, { headers: { cookie } });
+    expect(printed.status).toBe(404);
+    expect(store.getStrategy(id)?.markdown).not.toContain('edited by the client');
+    cookie = saved;
+  });
+
+  it('will not let a client edit their own page, and says that rather than vanishing', async () => {
+    const clientId = await newClient();
+    const { body } = await json(`/api/clients/${clientId}/strategies`, {
+      method: 'POST', body: JSON.stringify({ markdown: '## Their page' }),
+    });
+    const id = (body['strategy'] as unknown as { id: string }).id;
+    const { body: key } = await json(`/api/clients/${clientId}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', role: 'owner' }),
+    });
+    const token = (key['link'] as unknown as { token: string }).token;
+    const session = await fetch(`${base}/api/portal/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    });
+    const saved = cookie;
+    cookie = (session.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+    // Reading is fine: it is their page.
+    expect((await json(`/api/clients/${clientId}/strategies`)).status).toBe(200);
+    // Writing is not, and the answer names the reason rather than pretending
+    // the page is gone — a client who is told "not found" for something they
+    // were just reading has no idea what to do next.
+    const refused = await json(`/api/strategies/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: 'edited by the client' }),
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.body['message']).toMatch(/set by the studio/);
+    cookie = saved;
+  });
+});
+
+describe('the calendar', () => {
+  const newClient = async (name: string) => {
+    const { body } = await json('/api/clients', { method: 'POST', body: JSON.stringify({ name }) });
+    return body['id'] as unknown as string;
+  };
+  const addEvent = async (body: Record<string, unknown>) => {
+    const res = await json('/api/events', { method: 'POST', body: JSON.stringify(body) });
+    return res.body as unknown as { event: Record<string, never> };
+  };
+  const dates = (body: Record<string, never>): string[] =>
+    (body['events'] as unknown as { date: string }[]).map((e) => e.date);
+
+  it('books a meeting, and gives back a day rather than an instant', async () => {
+    const { body } = await json('/api/events', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Kickoff', date: '2026-03-04', startTime: '09:00', endTime: '10:30',
+        kind: 'meeting', location: 'The studio',
+      }),
+    });
+    const event = body['event'] as unknown as { id: string; date: string; startTime: string };
+    expect(event.date).toBe('2026-03-04');
+    // A studio's 9am is the studio's 9am. If the server handed back an instant
+    // the client would draw the meeting on a different morning for half the year,
+    // so the day and the time carry no offset and no Z — while `createdAt`, which
+    // is a fact about the server rather than about a day, is an instant.
+    expect(event.startTime).toBe('09:00');
+    expect(event.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(event.startTime).toMatch(/^\d{2}:\d{2}$/);
+    expect((body['event'] as unknown as { createdAt: string }).createdAt).toMatch(/Z$/);
+  });
+
+  it('will not book a day that does not exist', async () => {
+    // `Date.parse` accepts this format and quietly rolls it forward to 3 March,
+    // which would file the meeting three days after it was booked.
+    const { status } = await json('/api/events', {
+      method: 'POST', body: JSON.stringify({ title: 'Impossible', date: '2026-02-31' }),
+    });
+    expect(status).toBe(400);
+    for (const bad of ['2026-13-01', '2026-01-00', '2026-4-1', '4 April 2026', '']) {
+      const res = await json('/api/events', { method: 'POST', body: JSON.stringify({ title: 'X', date: bad }) });
+      expect(res.status, bad).toBe(400);
+    }
+  });
+
+  it('needs somewhere to put the entry, and a title somebody can read', async () => {
+    expect((await json('/api/events', { method: 'POST', body: JSON.stringify({ date: '2026-03-04' }) })).status).toBe(400);
+    expect((await json('/api/events', { method: 'POST', body: JSON.stringify({ title: '   ', date: '2026-03-04' }) })).status).toBe(400);
+  });
+
+  it('refuses a kind it has never heard of, and keeps the four it has', async () => {
+    const bad = await json('/api/events', {
+      method: 'POST', body: JSON.stringify({ title: 'X', date: '2026-03-04', kind: 'birthday' }),
+    });
+    expect(bad.status).toBe(400);
+    for (const kind of ['meeting', 'review', 'deadline', 'internal']) {
+      const { event } = await addEvent({ title: kind, date: '2026-03-04', kind });
+      expect((event as unknown as { kind: string }).kind).toBe(kind);
+    }
+    // A booking that says nothing about what it is is a meeting, not an error.
+    const { event } = await addEvent({ title: 'Unlabelled', date: '2026-03-04' });
+    expect((event as unknown as { kind: string }).kind).toBe('meeting');
+  });
+
+  it('keeps the studio’s own time off any client', async () => {
+    const { event } = await addEvent({ title: 'Dentist', date: '2026-03-05', startTime: '08:00' });
+    // No client is not the same as a client whose id is missing: it is a third
+    // case, and the calendar draws it differently.
+    expect('clientId' in event).toBe(false);
+  });
+
+  it('will not attach an entry to a client the session cannot see', async () => {
+    const res = await json('/api/events', {
+      method: 'POST', body: JSON.stringify({ title: 'X', date: '2026-03-04', clientId: 'no-such-client' }),
+    });
+    // A 404 rather than a 403: a 403 would confirm the id exists elsewhere.
+    expect(res.status).toBe(404);
+  });
+
+  it('reads the window on screen rather than the studio’s whole history', async () => {
+    const id = await newClient('Windowed Co');
+    await addEvent({ title: 'Before', date: '2026-02-27', clientId: id });
+    await addEvent({ title: 'Inside', date: '2026-03-04', clientId: id });
+    await addEvent({ title: 'After', date: '2026-04-06', clientId: id });
+    // 23 February to 5 April is a whole March grid, leading and trailing days
+    // included, so paging a month pulls the month and nothing more.
+    const { body } = await json('/api/events?from=2026-02-23&to=2026-04-05');
+    expect(dates(body)).toEqual(['2026-02-27', '2026-03-04']);
+    const all = await json('/api/events');
+    expect((all.body['events'] as unknown as unknown[]).length).toBe(3);
+  });
+
+  it('takes the range bounds as given, so one end may be left off', async () => {
+    const id = await newClient('One End Co');
+    await addEvent({ title: 'March', date: '2026-03-04', clientId: id });
+    await addEvent({ title: 'May', date: '2026-05-04', clientId: id });
+    expect(dates((await json('/api/events?from=2026-04-01')).body)).toEqual(['2026-05-04']);
+    expect(dates((await json('/api/events?to=2026-04-01')).body)).toEqual(['2026-03-04']);
+  });
+
+  it('lists one client’s entries, and 404s a client it does not have', async () => {
+    const mine = await newClient('Mine Co');
+    const theirs = await newClient('Theirs Co');
+    await addEvent({ title: 'Mine', date: '2026-03-04', clientId: mine });
+    await addEvent({ title: 'Theirs', date: '2026-03-04', clientId: theirs });
+    const { body } = await json(`/api/clients/${mine}/events`);
+    expect(dates(body)).toEqual(['2026-03-04']);
+    expect(JSON.stringify(body)).not.toContain('Theirs');
+    expect((await json('/api/clients/no-such-client/events')).status).toBe(404);
+  });
+
+  it('edits an entry, and leaves the fields it was not told about alone', async () => {
+    const id = await newClient('Edited Co');
+    const { event } = await addEvent({
+      title: 'Kickoff', date: '2026-03-04', startTime: '09:00', clientId: id, location: 'The studio',
+    });
+    const eventId = (event as unknown as { id: string }).id;
+    const moved = await json(`/api/events/${eventId}`, {
+      method: 'PATCH', body: JSON.stringify({ startTime: '14:00', location: 'Client site' }),
+    });
+    const after = moved.body['event'] as unknown as Record<string, unknown>;
+    expect(after['startTime']).toBe('14:00');
+    expect(after['location']).toBe('Client site');
+    expect(after['title']).toBe('Kickoff');
+    expect(after['clientId']).toBe(id);
+    expect(after['date']).toBe('2026-03-04');
+  });
+
+  it('clears a field on null rather than on an absent key', async () => {
+    const id = await newClient('Cleared Co');
+    const { event } = await addEvent({ title: 'Old', date: '2026-03-04', clientId: id, location: 'Somewhere' });
+    const eventId = (event as unknown as { id: string }).id;
+    // Patching the time and nothing else must not wipe the location: the modal
+    // sends the fields it knows about, and a client is cleared deliberately.
+    const kept = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ startTime: '10:00' }) });
+    expect((kept.body['event'] as unknown as { location: string }).location).toBe('Somewhere');
+    const unlinked = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ clientId: null }) });
+    expect('clientId' in (unlinked.body['event'] as unknown as object)).toBe(false);
+    const untimed = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ startTime: null }) });
+    expect('startTime' in (untimed.body['event'] as unknown as object)).toBe(false);
+  });
+
+  it('moves an entry to a different client, and refuses one out of reach', async () => {
+    const from = await newClient('From Co');
+    const to = await newClient('To Co');
+    const { event } = await addEvent({ title: 'Moving', date: '2026-03-04', clientId: from });
+    const eventId = (event as unknown as { id: string }).id;
+    const ok = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ clientId: to }) });
+    expect((ok.body['event'] as unknown as { clientId: string }).clientId).toBe(to);
+    const refused = await json(`/api/events/${eventId}`, {
+      method: 'PATCH', body: JSON.stringify({ clientId: 'no-such-client' }),
+    });
+    expect(refused.status).toBe(404);
+    // The refused move must not have half-applied. There is no route for a
+    // single event, and there need not be one: the studio already holds the
+    // entry it is editing, and reading it back off the grid is how a refresh
+    // proves the write landed.
+    const after = store.getEvent(eventId);
+    expect(after?.clientId).toBe(to);
+    expect(after?.title).toBe('Moving');
+  });
+
+  it('refuses a day or a time that is not one', async () => {
+    const { event } = await addEvent({ title: 'X', date: '2026-03-04', startTime: '09:00' });
+    const eventId = (event as unknown as { id: string }).id;
+    for (const date of ['2026-02-31', '2026-13-01', 'Thursday', '04/03/2026']) {
+      const res = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ date }) });
+      expect(res.status, date).toBe(400);
+    }
+    for (const time of ['9:00', '24:00', '09:60', 'lunchtime', '09:00:00']) {
+      const res = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ startTime: time }) });
+      expect(res.status, time).toBe(400);
+    }
+    // An emptied time field means all day, not a refusal: the modal sends the
+    // field as it stands, and blanking it is how an entry goes back to all-day.
+    const cleared = await json(`/api/events/${eventId}`, { method: 'PATCH', body: JSON.stringify({ startTime: '' }) });
+    expect(cleared.status).toBe(200);
+    expect('startTime' in (cleared.body['event'] as unknown as object)).toBe(false);
+  });
+
+  it('removes an entry, and 404s one that has already gone', async () => {
+    const { event } = await addEvent({ title: 'Doomed', date: '2026-03-04' });
+    const eventId = (event as unknown as { id: string }).id;
+    expect((await json(`/api/events/${eventId}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await json(`/api/events/${eventId}`, { method: 'DELETE' })).status).toBe(404);
+    expect((await json(`/api/events/${eventId}`, { method: 'PATCH', body: '{}' })).status).toBe(404);
+  });
+
+  it('keeps a client that still has meetings on the calendar', async () => {
+    const id = await newClient('Busy Co');
+    const { event } = await addEvent({ title: 'Kickoff', date: '2026-03-04', clientId: id });
+    const eventId = (event as unknown as { id: string }).id;
+    // Deleting a client with entries on the calendar would silently delete the
+    // record that they were ever expected in the room. The blocker is reported
+    // the same way as every other kind under a client, so the client's delete
+    // button reads the same whichever one it is.
+    const blocked = await json(`/api/clients/${id}`, { method: 'DELETE' });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body['reasons']).toContain('a meeting');
+    await json(`/api/events/${eventId}`, { method: 'DELETE' });
+    // And it is the linked entries that block, not the studio's own time: a
+    // client with nothing booked cannot be stopped by an afternoon the studio
+    // marked for itself.
+    await addEvent({ title: 'The studio’s own afternoon', date: '2026-03-04' });
+    expect((await json(`/api/clients/${id}`, { method: 'DELETE' })).status).toBe(200);
+  });
+
+  it('refuses a session that has not signed in', async () => {
+    const saved = cookie;
+    cookie = '';
+    const res = await json('/api/events', {
+      method: 'POST', body: JSON.stringify({ title: 'X', date: '2026-03-04' }),
+    });
+    expect(res.status).toBe(401);
+    cookie = saved;
+  });
+
+  it('shows a client their own entries and nobody else’s', async () => {
+    const mine = await newClient('Portal Mine Co');
+    const theirs = await newClient('Portal Theirs Co');
+    await addEvent({ title: 'My kickoff', date: '2026-03-04', clientId: mine });
+    await addEvent({ title: 'Their kickoff', date: '2026-03-04', clientId: theirs });
+    await addEvent({ title: 'The studio’s own afternoon', date: '2026-03-04' });
+    const { body } = await json(`/api/clients/${mine}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', role: 'viewer' }),
+    });
+    const token = (body['link'] as unknown as { token: string }).token;
+    const session = await fetch(`${base}/api/portal/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    });
+    cookie = (session.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const seen = await json(`/api/clients/${mine}/events`);
+    expect(seen.status).toBe(200);
+    expect(dates(seen.body)).toEqual(['2026-03-04']);
+    expect(JSON.stringify(seen.body)).not.toContain('Their kickoff');
+    // The studio's own time is not a client's business, and an unlinked entry
+    // must never leak into a portal through a filter that forgot to exclude it.
+    expect(JSON.stringify(seen.body)).not.toContain('The studio');
+    // The studio-wide grid is a studio screen, but the read is scope-filtered
+    // rather than refused, so this is the assertion that matters: a client
+    // walking the calendar one month at a time must never see another client's
+    // meetings, or the studio's own afternoon, through this route.
+    const grid = await json('/api/events');
+    expect(grid.status).toBe(200);
+    expect(JSON.stringify(grid.body)).toContain('My kickoff');
+    expect(JSON.stringify(grid.body)).not.toContain('Their kickoff');
+    expect(JSON.stringify(grid.body)).not.toContain('The studio');
+  });
+
+  it('will not let a client book, move or delete anything', async () => {
+    const id = await newClient('Portal Writer Co');
+    const { event } = await addEvent({ title: 'Kickoff', date: '2026-03-04', clientId: id });
+    const eventId = (event as unknown as { id: string }).id;
+    const { body } = await json(`/api/clients/${id}/portal-keys`, {
+      method: 'POST', body: JSON.stringify({ label: 'Ada', role: 'editor' }),
+    });
+    const token = (body['link'] as unknown as { token: string }).token;
+    const session = await fetch(`${base}/api/portal/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    });
+    const saved = cookie;
+    cookie = (session.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    for (const init of [
+      { method: 'POST', body: JSON.stringify({ title: 'X', date: '2026-03-04' }) },
+      { method: 'PATCH', body: JSON.stringify({ title: 'Mine now' }) },
+      { method: 'DELETE' as const },
+    ]) {
+      const res = await json(`/api/events${init.method === 'POST' ? '' : `/${eventId}`}`, init);
+      expect(res.status, init.method).toBe(403);
+    }
+    cookie = saved;
+    // And the entry is exactly as it was left.
+    const after = await json('/api/events');
+    expect(JSON.stringify(after.body)).toContain('Kickoff');
+    expect(JSON.stringify(after.body)).not.toContain('Mine now');
+  });
+
+  it('survives a restart, because a booking is not a thing that evaporates', async () => {
+    const id = await newClient('Durable Co');
+    const { event } = await addEvent({
+      title: 'Kickoff', date: '2026-03-04', startTime: '09:00', endTime: '10:00', clientId: id,
+    });
+    const saved = store.getEvent((event as unknown as { id: string }).id);
+    expect(saved).toBeDefined();
+    expect(saved?.date).toBe('2026-03-04');
+    expect(saved?.startTime).toBe('09:00');
+    expect(saved?.clientId).toBe(id);
+    expect(saved?.kind).toBe('meeting');
+    expect(saved?.createdAt).toBe(saved?.updatedAt);
+  });
+
+  it('keeps a deleted project from pointing at nothing', async () => {
+    const id = await newClient('Repointed Co');
+    const created = await json(`/api/clients/${id}/projects`, {
+      method: 'POST', body: JSON.stringify({ name: 'Shoot', kind: 'brand-identity' }),
+    });
+    expect(created.status).toBe(201);
+    const projectId = (created.body as unknown as { id: string }).id;
+    const { event } = await addEvent({ title: 'Shoot day', date: '2026-03-04', clientId: id });
+    const eventId = (event as unknown as { id: string }).id;
+    const linked = await json(`/api/events/${eventId}`, {
+      method: 'PATCH', body: JSON.stringify({ projectId }),
+    });
+    expect((linked.body['event'] as unknown as { projectId: string }).projectId).toBe(projectId);
+    expect((await json(`/api/projects/${projectId}`, { method: 'DELETE' })).status).toBe(200);
+    const after = store.getEvent(eventId);
+    // The booking stands; only the project it referenced is gone. An event is a
+    // fact about a day, and deleting a project is not a claim that the day is
+    // free — nor should it be a foreign-key error that loses the booking.
+    expect(after?.projectId).toBeUndefined();
+    expect(after?.title).toBe('Shoot day');
+    expect(after?.clientId).toBe(id);
+  });
+});
+
+
+describe('an invoice with line items on it', () => {
+  const newClient = async (): Promise<string> => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Disan Footwear' }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const invoiceWith = async (clientId: string, extra: Record<string, unknown>) => {
+    const { status, body } = await json(`/api/clients/${clientId}/invoices`, {
+      method: 'POST',
+      body: JSON.stringify({
+        description: 'Identity work', issueDate: '2026-09-01', dueDate: '2026-09-15',
+        ...extra,
+      }),
+    });
+    return { status, invoice: body['invoice'] as unknown as {
+      id: string; amountCents: number; lines: { description: string }[];
+      taxBasisPoints: number; terms?: string;
+      amounts: { subtotalCents: number; taxCents: number; totalCents: number };
+    } };
+  };
+
+  it('adds the lines up on the server rather than trusting a total sent in', async () => {
+    const clientId = await newClient();
+    // A total of 1 is sent deliberately: the server's arithmetic has to win, or
+    // the arithmetic is decoration.
+    const { status, invoice } = await invoiceWith(clientId, {
+      amountCents: 1,
+      lines: [
+        { description: 'Discovery workshop', quantityHundredths: 100, unitAmountCents: 120000 },
+        { description: 'Identity system', quantityHundredths: 250, unitAmountCents: 60000 },
+      ],
+    });
+    expect(status).toBe(201);
+    expect(invoice.amounts).toEqual({
+      subtotalCents: 270000, taxCents: 0, totalCents: 270000,
+    });
+    expect(invoice.amountCents).toBe(270000);
+    expect(invoice.lines).toHaveLength(2);
+  });
+
+  it('proposes tax as a rate and derives the amount, so the two cannot disagree', async () => {
+    const clientId = await newClient();
+    const { invoice } = await invoiceWith(clientId, {
+      lines: [{ description: 'System', quantityHundredths: 100, unitAmountCents: 100000 }],
+      taxBasisPoints: 2000,
+    });
+    expect(invoice.taxBasisPoints).toBe(2000);
+    expect(invoice.amounts).toEqual({
+      subtotalCents: 100000, taxCents: 20000, totalCents: 120000,
+    });
+  });
+
+  it('still takes a one-number invoice, because years of them are exactly that', async () => {
+    const clientId = await newClient();
+    const { status, invoice } = await invoiceWith(clientId, { amountCents: 45000 });
+    expect(status).toBe(201);
+    expect(invoice.lines).toEqual([]);
+    expect(invoice.amounts.totalCents).toBe(45000);
+  });
+
+  it('refuses a line it cannot add up, and says which line', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/invoices`, {
+      method: 'POST',
+      body: JSON.stringify({
+        description: 'x', issueDate: '2026-09-01', dueDate: '2026-09-15',
+        lines: [
+          { description: 'Fine', quantityHundredths: 100, unitAmountCents: 1000 },
+          { description: '', quantityHundredths: 100, unitAmountCents: 1000 },
+        ],
+      }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toMatch(/Line 2/);
+  });
+
+  it('refuses a fractional quantity, because hundredths are the unit', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/invoices`, {
+      method: 'POST',
+      body: JSON.stringify({
+        description: 'x', issueDate: '2026-09-01', dueDate: '2026-09-15',
+        lines: [{ description: 'Hours', quantityHundredths: 7.5, unitAmountCents: 12000 }],
+      }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toMatch(/750/);
+  });
+
+  it('refuses a tax rate that is not a rate', async () => {
+    const clientId = await newClient();
+    const { status, body } = await json(`/api/clients/${clientId}/invoices`, {
+      method: 'POST',
+      body: JSON.stringify({
+        description: 'x', issueDate: '2026-09-01', dueDate: '2026-09-15', amountCents: 1000,
+        // 20 basis points is a rate — 0.2% — so the refusal is about the fraction.
+        taxBasisPoints: 20.5,
+      }),
+    });
+    expect(status).toBe(400);
+    expect(body['message']).toMatch(/basis points/);
+  });
+
+  it('recalculates when a line is revised, and when one is removed', async () => {
+    const clientId = await newClient();
+    const { invoice } = await invoiceWith(clientId, {
+      lines: [
+        { description: 'One', quantityHundredths: 100, unitAmountCents: 10000 },
+        { description: 'Two', quantityHundredths: 100, unitAmountCents: 20000 },
+      ],
+      taxBasisPoints: 1000,
+    });
+    const dropped = await json(`/api/invoices/${invoice.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lines: [{ description: 'One', quantityHundredths: 100, unitAmountCents: 10000 }] }),
+    });
+    const after = dropped.body['invoice'] as unknown as {
+      amountCents: number; amounts: { subtotalCents: number; taxCents: number; totalCents: number };
+    };
+    expect(after.amounts).toEqual({ subtotalCents: 10000, taxCents: 1000, totalCents: 11000 });
+    expect(after.amountCents).toBe(11000);
+    // The removed line is gone from the record, not just from the sum.
+    expect(store.getInvoice(invoice.id)?.lines).toHaveLength(1);
+  });
+
+  it('keeps the terms, and clears them on request', async () => {
+    const clientId = await newClient();
+    const { invoice } = await invoiceWith(clientId, {
+      amountCents: 1000, terms: 'Net 14. Transfer to the studio account.',
+    });
+    expect(invoice.terms).toBe('Net 14. Transfer to the studio account.');
+    const cleared = await json(`/api/invoices/${invoice.id}`, {
+      method: 'PATCH', body: JSON.stringify({ terms: null }),
+    });
+    expect((cleared.body['invoice'] as unknown as { terms?: string }).terms).toBeUndefined();
+  });
+
+  it('prints the lines, the subtotal and the tax, and escapes what came off the wire', async () => {
+    const clientId = await newClient();
+    const { invoice } = await invoiceWith(clientId, {
+      lines: [{ description: 'Workshop <script>', quantityHundredths: 150, unitAmountCents: 10000 }],
+      taxBasisPoints: 2000, terms: 'Net 14.',
+    });
+    const res = await fetch(`${base}/api/invoices/${invoice.id}/document`, { headers: { cookie } });
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(html).toContain('1.5');
+    expect(html).toContain('150.00'); // 1.5 x 100.00
+    expect(html).toContain('100.00'); // the unit price
+    expect(html).toContain('30.00');  // 20% of 150.00
+    expect(html).toContain('180.00'); // the total
+    expect(html).toContain('Net 14.');
+    // The description came off the wire and is not trusted as markup.
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>');
+  });
+});
+
+describe('a contract, which is the only binding document here', () => {
+  const TERMS = '## What we will do\n\nA brand system for Disan, over six weeks.';
+  const FEES = [{ description: 'Deposit', amountCents: 480000, kind: 'deposit' }];
+
+  const newClient = async (): Promise<string> => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name: 'Disan Footwear' }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const draft = async (clientId: string, extra: Record<string, unknown> = {}) => {
+    const { status, body } = await json(`/api/clients/${clientId}/contracts`, {
+      method: 'POST', body: JSON.stringify({ markdown: TERMS, fees: FEES, ...extra }),
+    });
+    return { status, contract: body['contract'] as unknown as {
+      id: string; number: string; title: string; status: string;
+      signedBy?: string; signedAt?: string; revisions: { note: string; markdown: string }[];
+      fees: { id: string; amountCents: number; kind: string; dueDate?: string }[];
+      sendable: { ready: boolean; reason?: string };
+    } };
+  };
+
+  it('names it after the client, and numbers it', async () => {
+    const clientId = await newClient();
+    const { status, contract } = await draft(clientId);
+    expect(status).toBe(201);
+    expect(contract.number).toBe('CON-0001');
+    expect(contract.title).toBe('Agreement — Disan Footwear');
+    expect(contract.status).toBe('draft');
+    expect(contract.sendable).toEqual({ ready: true });
+  });
+
+  it('will not call an empty contract sendable, and says what is missing', async () => {
+    const clientId = await newClient();
+    const { body } = await json(`/api/clients/${clientId}/contracts`, {
+      method: 'POST', body: JSON.stringify({ title: 'Early idea' }),
+    });
+    const contract = body['contract'] as unknown as { sendable: { ready: boolean; reason: string } };
+    expect(contract.sendable.ready).toBe(false);
+    expect(contract.sendable.reason).toMatch(/terms are empty/);
+  });
+
+  it('records a signature as three facts, and requires the name', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    const unsigned = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed' }),
+    });
+    expect(unsigned.status).toBe(400);
+    expect(unsigned.body['message']).toMatch(/name/);
+
+    const signed = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'sent' }),
+    });
+    expect((signed.body['contract'] as unknown as { sentAt?: string }).sentAt).toBeDefined();
+
+    const done = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed', signedBy: 'Ruth Disan' }),
+    });
+    const record = done.body['contract'] as unknown as { signedBy: string; signedAt: string };
+    expect(record.signedBy).toBe('Ruth Disan');
+    // The date is the server's, so a contract cannot be signed retroactively.
+    expect(Date.parse(record.signedAt)).toBeGreaterThan(Date.parse('2020-01-01T00:00:00.000Z'));
+  });
+
+  it('keeps a revision rather than overwriting terms somebody may have agreed to', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    const revised = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        markdown: `${TERMS}\n\nTwo rounds of revisions are included.`,
+        note: 'Added the revision rounds', by: 'Jane',
+      }),
+    });
+    const record = revised.body['contract'] as unknown as {
+      markdown: string; revisions: { note: string; by: string; markdown: string }[];
+    };
+    expect(record.markdown).toContain('Two rounds');
+    expect(record.revisions).toHaveLength(1);
+    expect(record.revisions[0]?.note).toBe('Added the revision rounds');
+    expect(record.revisions[0]?.by).toBe('Jane');
+    expect(record.revisions[0]?.markdown).toContain('Two rounds');
+  });
+
+  it('does not record a revision when the terms did not change', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    const same = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: TERMS }),
+    });
+    expect((same.body['contract'] as unknown as { revisions: unknown[] }).revisions).toEqual([]);
+  });
+
+  it('will not delete a signed contract, because a signature stays on the record', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed', signedBy: 'Ruth Disan' }),
+    });
+    const removed = await json(`/api/contracts/${contract.id}`, { method: 'DELETE' });
+    expect(removed.status).toBe(409);
+    expect(removed.body['message']).toMatch(/Void it/);
+    expect(store.getContract(contract.id)?.signedBy).toBe('Ruth Disan');
+  });
+
+  it('keeps the signature when a signed contract is voided, and cannot then be deleted', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed', signedBy: 'Ruth Disan' }),
+    });
+    const voided = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'void' }),
+    });
+    const record = voided.body['contract'] as unknown as { status: string; signedBy?: string };
+    expect(record.status).toBe('void');
+    // A signature is a fact about what was agreed. Voiding the contract does not
+    // un-agree it, and it is what stops a voided contract being deleted.
+    expect(record.signedBy).toBe('Ruth Disan');
+    expect((await json(`/api/contracts/${contract.id}`, { method: 'DELETE' })).status).toBe(409);
+    expect(store.getContract(contract.id)?.signedAt).toBeDefined();
+  });
+
+  it('will not rewrite the terms of a contract somebody has signed', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed', signedBy: 'Ruth Disan' }),
+    });
+    const rewritten = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ markdown: `${TERMS}\n\nAnd you get nothing.` }),
+    });
+    expect(rewritten.status).toBe(409);
+    expect(rewritten.body['message']).toMatch(/cannot be rewritten in place/);
+    expect(store.getContract(contract.id)?.markdown).toBe(TERMS);
+    // Nor by another status change that would un-sign it quietly.
+    const unsaid = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'draft' }),
+    });
+    expect(unsaid.status).toBe(409);
+    expect(store.getContract(contract.id)?.status).toBe('signed');
+  });
+
+  it('will not reopen a voided contract, because voiding is the alternative to deleting', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'void' }),
+    });
+    const revived = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'draft', markdown: 'New terms entirely.' }),
+    });
+    expect(revived.status).toBe(409);
+    expect(store.getContract(contract.id)?.status).toBe('void');
+    expect(store.getContract(contract.id)?.markdown).toBe(TERMS);
+  });
+
+  it('will not send a contract whose terms are still empty', async () => {
+    const clientId = await newClient();
+    const { body } = await json(`/api/clients/${clientId}/contracts`, {
+      method: 'POST', body: JSON.stringify({ title: 'Early idea' }),
+    });
+    const contract = body['contract'] as unknown as { id: string };
+    const res = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'sent' }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body['message']).toMatch(/terms are empty/);
+    expect(store.getContract(contract.id)?.status).toBe('draft');
+    // The button in the list view was greyed out for the same reason.
+    expect(store.getContract(contract.id)?.sentAt).toBeUndefined();
+  });
+
+  it('withdraws the signature on a decline, because nobody agreed after all', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'signed', signedBy: 'Ruth Disan' }),
+    });
+    const declined = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'declined' }),
+    });
+    const record = declined.body['contract'] as unknown as { status: string; signedBy?: string };
+    expect(record.status).toBe('declined');
+    expect(record.signedBy).toBeUndefined();
+  });
+
+
+  it('refuses a status it does not have', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    const res = await json(`/api/contracts/${contract.id}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'agreed' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a negative fee', async () => {
+    const clientId = await newClient();
+    const res = await json(`/api/clients/${clientId}/contracts`, {
+      method: 'POST',
+      body: JSON.stringify({ markdown: TERMS, fees: [{ description: 'Credit', amountCents: -1 }] }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body['message']).toMatch(/Fee 1/);
+  });
+
+  it('prints the terms, the fees and a blank signature line', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId, {
+      markdown: '## Terms\n\nPayable within 14 days.',
+    });
+    const res = await fetch(`${base}/api/contracts/${contract.id}/document`, { headers: { cookie } });
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(html).toContain('Disan Footwear');
+    expect(html).toContain('Payable within 14 days.');
+    expect(html).toContain('Deposit');
+    expect(html).toContain('4,800.00');
+    expect(html).toContain('Unsigned');
+    expect(html).toContain('Signed for the studio');
+  });
+
+  it('prints the fees in the currency the contract was written in', async () => {
+    const clientId = await newClient();
+    const { contract } = await draft(clientId, { currency: 'gbp' });
+    expect((contract as unknown as { currency: string }).currency).toBe('GBP');
+    const res = await fetch(`${base}/api/contracts/${contract.id}/document`, { headers: { cookie } });
+    const html = await res.text();
+    // £4,800.00, not $4,800.00: a fee schedule in the wrong currency is a
+    // promise nobody made.
+    expect(html).toContain('£4,800.00');
+    expect(html).not.toContain('$4,800.00');
+  });
+
+  it('refuses a currency that is not a currency', async () => {
+    const clientId = await newClient();
+    const res = await json(`/api/clients/${clientId}/contracts`, {
+      method: 'POST', body: JSON.stringify({ markdown: TERMS, currency: 'pounds' }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body['message']).toMatch(/three letters/);
+  });
+
+  it('never drafts one, because a clause a machine wrote is not a term', async () => {
+    // The only way to prove there is no generation path is to look: nothing in
+    // the executor is reachable from these routes, so a contract's markdown can
+    // only be what a person typed into this request.
+    const clientId = await newClient();
+    const { contract } = await draft(clientId);
+    expect(store.getContract(contract.id)?.markdown).toBe(TERMS);
   });
 });

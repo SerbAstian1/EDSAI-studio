@@ -123,6 +123,29 @@ describe('the limited role', () => {
   });
 });
 
+describe('a strategy belongs to the studio to write', () => {
+  it('lets a client read the page written about them', () => {
+    expect(can(portal('acme'), 'read', res('acme', 'strategy')).allowed).toBe(true);
+  });
+
+  it('refuses a client every write to it, at every role a portal can hold', () => {
+    for (const role of ['viewer', 'editor', 'brand_manager', 'owner'] as const) {
+      const decision = can(portal('acme', role), 'write', res('acme', 'strategy'));
+      expect(decision.allowed, role).toBe(false);
+      expect(decision.reason).toContain('set by the studio');
+    }
+  });
+
+  it('refuses a client publishing it as firmly as it refuses writing it', () => {
+    expect(can(portal('acme', 'owner'), 'publish', res('acme', 'strategy')).allowed).toBe(false);
+  });
+
+  it('lets the studio write and revise it, like any other record', () => {
+    expect(can(studio('editor'), 'write', res('acme', 'strategy')).allowed).toBe(true);
+    expect(can(studio('viewer'), 'write', res('acme', 'strategy')).allowed).toBe(false);
+  });
+});
+
 describe('role thresholds', () => {
   it('orders roles weakest to strongest', () => {
     expect(atLeast('owner', 'viewer')).toBe(true);

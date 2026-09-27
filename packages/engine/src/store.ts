@@ -17,7 +17,10 @@ import {
   type BrandHub as BrandHubType, type BrandProject as BrandProjectType,
 } from './brand-hub.js';
 import { Milestone, type Milestone as MilestoneType } from './milestones.js';
-import { Invoice, type Invoice as InvoiceType } from './invoices.js';
+import { Event, type Event as EventType } from './events.js';
+import { Strategy, type Strategy as StrategyType } from './strategy.js';
+import { Invoice, InvoiceLine, invoiceAmounts, type Invoice as InvoiceType, type InvoiceLine as InvoiceLineType } from './invoices.js';
+import { Contract, type Contract as ContractType } from './contracts.js';
 import { Message, type Message as MessageType } from './messages.js';
 import { Feedback, type Feedback as FeedbackType } from './feedback.js';
 import { SupportNote, type SupportNote as SupportNoteType } from './support.js';
@@ -336,6 +339,47 @@ CREATE TABLE IF NOT EXISTS milestones (
 
 CREATE INDEX IF NOT EXISTS milestones_by_client ON milestones (client_id);
 
+-- The studio's calendar. client_id is nullable on purpose: an entry with no
+-- client is the studio's own time, and the calendar draws those differently
+-- rather than inventing a client for them.
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  client_id TEXT,
+  project_id TEXT,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'meeting',
+  date TEXT NOT NULL,
+  start_time TEXT,
+  end_time TEXT,
+  location TEXT,
+  notes TEXT,
+  url TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS events_by_date ON events (date);
+CREATE INDEX IF NOT EXISTS events_by_client ON events (client_id);
+
+-- A strategy is a document, not a measurement, so it has no scores and no
+-- columns for anything derived: the transcript is kept because a draft cannot
+-- be reproduced, and the markdown is the draft as it stands after the studio's
+-- edits. model is null when a person wrote it, and 'rehearsal' is a real value
+-- rather than an absence, so a rehearsed page never reads as a real one.
+CREATE TABLE IF NOT EXISTS strategies (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  title TEXT NOT NULL,
+  transcript TEXT NOT NULL,
+  markdown TEXT NOT NULL,
+  model TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS strategies_by_client ON strategies (client_id, updated_at);
+
 CREATE TABLE IF NOT EXISTS invoices (
   id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL,
@@ -353,6 +397,42 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 
 CREATE INDEX IF NOT EXISTS invoices_by_client ON invoices (client_id);
+
+CREATE TABLE IF NOT EXISTS invoice_lines (
+  invoice_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  quantity_hundredths INTEGER NOT NULL,
+  unit_amount_cents INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (invoice_id, id)
+);
+
+-- A contract is the one binding document here, so it is kept apart from
+-- documents and invoices: it has a lifecycle (draft -> sent -> signed), a
+-- signature, and a revision history whose last entry is the live text. Fees and
+-- revisions are JSON columns because both are read whole, written whole, and
+-- never queried by their contents — a table each would be a join that buys
+-- nothing and a migration that costs something.
+CREATE TABLE IF NOT EXISTS contracts (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  project_id TEXT,
+  number TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  markdown TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT 'USD',
+  fees TEXT NOT NULL DEFAULT '[]',
+  sent_at TEXT,
+  signed_at TEXT,
+  signed_by TEXT,
+  revisions TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS contracts_by_client ON contracts (client_id, updated_at);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
@@ -508,6 +588,15 @@ export class RunStore {
       this.db.exec('ALTER TABLE comparators ADD COLUMN run_id TEXT');
       this.db.exec('ALTER TABLE comparators ADD COLUMN department_id INTEGER');
     }
+    // An invoice recorded as one number now carries lines, a proposed tax rate
+    // and terms. Old rows read as no lines, no tax and no terms, which is
+    // exactly what they are — the fallback in `invoiceAmounts` keeps them
+    // totalling the amount they were created with.
+    if (!columns('invoices').includes('tax_basis_points')) {
+      this.db.exec('ALTER TABLE invoices ADD COLUMN tax_basis_points INTEGER NOT NULL DEFAULT 0');
+      this.db.exec('ALTER TABLE invoices ADD COLUMN terms TEXT');
+    }
+
     this.attachOrphanedRuns();
   }
 
@@ -651,9 +740,10 @@ export class RunStore {
       const runs = this.db.prepare('SELECT id FROM runs WHERE project_id = ?').all(id) as
         { id: string }[];
       for (const run of runs) this.deleteRunRecords(run.id);
-      for (const table of ['deliverables', 'milestones', 'invoices', 'feedback', 'onboardings']) {
+      for (const table of ['deliverables', 'milestones', 'invoices', 'feedback', 'onboardings', 'events', 'strategies', 'contracts']) {
         this.db.prepare(`UPDATE ${table} SET project_id = NULL WHERE project_id = ?`).run(id);
       }
+
       this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
       this.db.exec('COMMIT');
     } catch (error) {
@@ -665,7 +755,10 @@ export class RunStore {
   /* ---------------------------------------------------------------- projects */
 
   saveProject(project: ProjectType): void {
-    Project.parse(project);
+    // Parsed, not just validated: a project saved without a `phase` relies on
+    // the schema's default, and passing the caller's object straight through
+    // would hand that default-less object to SQLite as an unbound parameter.
+    const row = Project.parse(project);
     this.db.prepare(`
       INSERT INTO projects (id, client_id, name, kind, phase, deadline, notes, figma_url,
                             created_at, updated_at)
@@ -675,9 +768,9 @@ export class RunStore {
         deadline = excluded.deadline, notes = excluded.notes, figma_url = excluded.figma_url,
         updated_at = excluded.updated_at
     `).run(
-      project.id, project.clientId, project.name, project.kind, project.phase,
-      project.deadline ?? null, project.notes ?? null, project.figmaUrl ?? null,
-      project.createdAt, project.updatedAt,
+      row.id, row.clientId, row.name, row.kind, row.phase,
+      row.deadline ?? null, row.notes ?? null, row.figmaUrl ?? null,
+      row.createdAt, row.updatedAt,
     );
   }
 
@@ -875,40 +968,207 @@ export class RunStore {
     this.db.prepare('DELETE FROM milestones WHERE id = ?').run(id);
   }
 
+  /* ----------------------------------------------------------------- events */
+
+  saveEvent(event: EventType): void {
+    Event.parse(event);
+    this.db.prepare(`
+      INSERT INTO events (id, client_id, project_id, title, kind, date, start_time,
+                          end_time, location, notes, url, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        client_id = excluded.client_id, project_id = excluded.project_id,
+        title = excluded.title, kind = excluded.kind, date = excluded.date,
+        start_time = excluded.start_time, end_time = excluded.end_time,
+        location = excluded.location, notes = excluded.notes, url = excluded.url,
+        updated_at = excluded.updated_at
+    `).run(event.id, event.clientId ?? null, event.projectId ?? null, event.title,
+      event.kind, event.date, event.startTime ?? null, event.endTime ?? null,
+      event.location ?? null, event.notes ?? null, event.url ?? null,
+      event.createdAt, event.updatedAt);
+  }
+
+  /** Every event, earliest first. A window is applied by the caller, not here,
+   * so a range is one index scan rather than a string comparison per row. */
+  listEvents(): EventType[] {
+    return (this.db.prepare('SELECT * FROM events ORDER BY date, start_time, title')
+      .all() as Record<string, unknown>[]).map(hydrateEvent);
+  }
+
+  listEventsForClient(clientId: string): EventType[] {
+    return (this.db.prepare('SELECT * FROM events WHERE client_id = ? ORDER BY date, start_time, title')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateEvent);
+  }
+
+  getEvent(id: string): EventType | undefined {
+    const row = this.db.prepare('SELECT * FROM events WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateEvent(row) : undefined;
+  }
+
+  deleteEvent(id: string): void {
+    this.db.prepare('DELETE FROM events WHERE id = ?').run(id);
+  }
+
+  /* -------------------------------------------------------------- strategies */
+
+  saveStrategy(strategy: StrategyType): void {
+    Strategy.parse(strategy);
+    this.db.prepare(`
+      INSERT INTO strategies (id, client_id, project_id, title, transcript, markdown,
+                              model, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id, title = excluded.title,
+        transcript = excluded.transcript, markdown = excluded.markdown,
+        model = excluded.model, updated_at = excluded.updated_at
+    `).run(strategy.id, strategy.clientId, strategy.projectId ?? null, strategy.title,
+      strategy.transcript, strategy.markdown, strategy.model ?? null,
+      strategy.createdAt, strategy.updatedAt);
+  }
+
+  /** Newest first: the page being worked on is the one just written or edited. */
+  listStrategiesForClient(clientId: string): StrategyType[] {
+    return (this.db.prepare(
+      'SELECT * FROM strategies WHERE client_id = ? ORDER BY updated_at DESC, created_at DESC',
+    ).all(clientId) as Record<string, unknown>[]).map(hydrateStrategy);
+  }
+
+  getStrategy(id: string): StrategyType | undefined {
+    const row = this.db.prepare('SELECT * FROM strategies WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateStrategy(row) : undefined;
+  }
+
+  deleteStrategy(id: string): void {
+    this.db.prepare('DELETE FROM strategies WHERE id = ?').run(id);
+  }
+
   /* ---------------------------------------------------------------- invoices */
 
   saveInvoice(invoice: InvoiceType): void {
-    Invoice.parse(invoice);
+    // The *parsed* invoice is what gets written, not the object handed in. A
+    // caller that omits `lines` or `taxBasisPoints` gets the defaults applied
+    // here rather than an unbound `undefined` reaching SQLite — and the row
+    // stores exactly what the schema says an invoice is.
+    const parsed = Invoice.parse(invoice);
+    /*
+     * When an invoice has lines, the total is derived here rather than taken
+     * from the caller. Deriving it in the route is not enough: seeds, tests and
+     * any future writer reach the store directly, and a stored total that
+     * disagrees with the lines under it is a document that goes out saying one
+     * number and adding up to another. An invoice with no lines keeps the
+     * number it was created with — that is the legacy shape, and it is still
+     * the only total those records have.
+     */
+    const row = parsed.lines.length > 0
+      ? { ...parsed, amountCents: invoiceAmounts(parsed).totalCents }
+      : parsed;
     this.db.prepare(`
       INSERT INTO invoices (id, client_id, project_id, number, description, issue_date,
-                            due_date, amount_cents, currency, paid, paid_at,
-                            created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            due_date, amount_cents, currency, tax_basis_points, terms,
+                            paid, paid_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id, number = excluded.number,
         description = excluded.description, issue_date = excluded.issue_date,
         due_date = excluded.due_date, amount_cents = excluded.amount_cents,
-        currency = excluded.currency, paid = excluded.paid, paid_at = excluded.paid_at,
+        currency = excluded.currency, tax_basis_points = excluded.tax_basis_points,
+        terms = excluded.terms,
+        paid = excluded.paid, paid_at = excluded.paid_at,
         updated_at = excluded.updated_at
-    `).run(invoice.id, invoice.clientId, invoice.projectId ?? null, invoice.number,
-      invoice.description, invoice.issueDate, invoice.dueDate, invoice.amountCents,
-      invoice.currency, invoice.paid ? 1 : 0, invoice.paidAt ?? null,
-      invoice.createdAt, invoice.updatedAt);
+    `).run(row.id, row.clientId, row.projectId ?? null, row.number,
+      row.description, row.issueDate, row.dueDate, row.amountCents,
+      row.currency, row.taxBasisPoints, row.terms ?? null,
+      row.paid ? 1 : 0, row.paidAt ?? null,
+      row.createdAt, row.updatedAt);
+
+    /*
+     * Lines are replaced wholesale rather than diffed. An invoice is a document
+     * a person is editing in one sitting, its line count is small, and a delete
+     * that quietly misses a line leaves a total nobody can explain — whereas
+     * rewriting the set is exactly right and cannot drift from the total that
+     * was just stored above it.
+     */
+    this.db.prepare('DELETE FROM invoice_lines WHERE invoice_id = ?').run(row.id);
+    const insertLine = this.db.prepare(`
+      INSERT INTO invoice_lines (invoice_id, id, description, quantity_hundredths,
+                                 unit_amount_cents, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const line of row.lines) {
+      insertLine.run(row.id, line.id, line.description, line.quantityHundredths,
+        line.unitAmountCents, line.createdAt);
+    }
   }
 
   listInvoices(clientId: string): InvoiceType[] {
     return (this.db.prepare('SELECT * FROM invoices WHERE client_id = ? ORDER BY issue_date DESC')
-      .all(clientId) as Record<string, unknown>[]).map(hydrateInvoice);
+      .all(clientId) as Record<string, unknown>[])
+      .map((row) => hydrateInvoice(row, this.invoiceLines(String(row['id']))));
   }
 
   getInvoice(id: string): InvoiceType | undefined {
     const row = this.db.prepare('SELECT * FROM invoices WHERE id = ?')
       .get(id) as Record<string, unknown> | undefined;
-    return row ? hydrateInvoice(row) : undefined;
+    return row ? hydrateInvoice(row, this.invoiceLines(id)) : undefined;
+  }
+
+  /** Lines in the order they were filed, which is the order they are read in. */
+  private invoiceLines(invoiceId: string): InvoiceLineType[] {
+    return (this.db.prepare(`
+        SELECT id, description, quantity_hundredths, unit_amount_cents, created_at
+        FROM invoice_lines WHERE invoice_id = ? ORDER BY rowid
+      `).all(invoiceId) as Record<string, unknown>[]).map((line) => InvoiceLine.parse({
+        id: line['id'], description: line['description'],
+        quantityHundredths: line['quantity_hundredths'],
+        unitAmountCents: line['unit_amount_cents'], createdAt: line['created_at'],
+      }));
   }
 
   deleteInvoice(id: string): void {
+    // The lines go with it. Nothing here cascades, so the orphan is removed
+    // here — an invoice's lines are meaningless without the invoice.
+    this.db.prepare('DELETE FROM invoice_lines WHERE invoice_id = ?').run(id);
     this.db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+  }
+
+  /* --------------------------------------------------------------- contracts */
+
+  saveContract(contract: ContractType): void {
+    const row = Contract.parse(contract);
+    this.db.prepare(`
+      INSERT INTO contracts (id, client_id, project_id, number, title, status, markdown,
+                             currency, fees, sent_at, signed_at, signed_by, revisions,
+                             created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id, number = excluded.number,
+        title = excluded.title, status = excluded.status, markdown = excluded.markdown,
+        currency = excluded.currency, fees = excluded.fees,
+        sent_at = excluded.sent_at, signed_at = excluded.signed_at,
+        signed_by = excluded.signed_by, revisions = excluded.revisions,
+        updated_at = excluded.updated_at
+    `).run(row.id, row.clientId, row.projectId ?? null, row.number,
+      row.title, row.status, row.markdown, row.currency,
+      JSON.stringify(row.fees), row.sentAt ?? null, row.signedAt ?? null,
+      row.signedBy ?? null, JSON.stringify(row.revisions),
+      row.createdAt, row.updatedAt);
+  }
+
+  listContracts(clientId: string): ContractType[] {
+    return (this.db.prepare('SELECT * FROM contracts WHERE client_id = ? ORDER BY updated_at DESC')
+      .all(clientId) as Record<string, unknown>[]).map(hydrateContract);
+  }
+
+  getContract(id: string): ContractType | undefined {
+    const row = this.db.prepare('SELECT * FROM contracts WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? hydrateContract(row) : undefined;
+  }
+
+  deleteContract(id: string): void {
+    this.db.prepare('DELETE FROM contracts WHERE id = ?').run(id);
   }
 
   /* ---------------------------------------------------------------- messages */
@@ -1801,17 +2061,85 @@ function hydrateMilestone(row: Record<string, unknown>): MilestoneType {
   });
 }
 
-function hydrateInvoice(row: Record<string, unknown>): InvoiceType {
+function hydrateStrategy(row: Record<string, unknown>): StrategyType {
+  return Strategy.parse({
+    id: row['id'],
+    clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    title: row['title'],
+    transcript: row['transcript'],
+    markdown: row['markdown'],
+    ...(row['model'] ? { model: row['model'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateEvent(row: Record<string, unknown>): EventType {
+  return Event.parse({
+    id: row['id'],
+    ...(row['client_id'] ? { clientId: row['client_id'] } : {}),
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    title: row['title'],
+    kind: row['kind'],
+    date: row['date'],
+    ...(row['start_time'] ? { startTime: row['start_time'] } : {}),
+    ...(row['end_time'] ? { endTime: row['end_time'] } : {}),
+    ...(row['location'] ? { location: row['location'] } : {}),
+    ...(row['notes'] ? { notes: row['notes'] } : {}),
+    ...(row['url'] ? { url: row['url'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function hydrateInvoice(
+  row: Record<string, unknown>,
+  lines: readonly InvoiceLineType[],
+): InvoiceType {
   return Invoice.parse({
     id: row['id'], clientId: row['client_id'],
     ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
     number: row['number'], description: row['description'],
     issueDate: row['issue_date'], dueDate: row['due_date'],
     amountCents: row['amount_cents'], currency: row['currency'],
+    lines: [...lines],
+    taxBasisPoints: row['tax_basis_points'] ?? 0,
+    ...(row['terms'] ? { terms: row['terms'] } : {}),
     paid: row['paid'] === 1,
     ...(row['paid_at'] ? { paidAt: row['paid_at'] } : {}),
     createdAt: row['created_at'], updatedAt: row['updated_at'],
   });
+}
+
+function hydrateContract(row: Record<string, unknown>): ContractType {
+  return Contract.parse({
+    id: row['id'], clientId: row['client_id'],
+    ...(row['project_id'] ? { projectId: row['project_id'] } : {}),
+    number: row['number'], title: row['title'],
+    status: row['status'], markdown: row['markdown'],
+    // A row written before contracts carried a currency has none, and the
+    // schema's default is the honest fallback for it.
+    currency: row['currency'],
+    // Both are stored as JSON, so a row written by an older build — or by a
+    // hand-edited database — has to survive being read as a broken array rather
+    // than taking the whole contract down with it.
+    fees: jsonArray(row['fees']),
+    revisions: jsonArray(row['revisions']),
+    ...(row['sent_at'] ? { sentAt: row['sent_at'] } : {}),
+    ...(row['signed_at'] ? { signedAt: row['signed_at'] } : {}),
+    ...(row['signed_by'] ? { signedBy: row['signed_by'] } : {}),
+    createdAt: row['created_at'], updatedAt: row['updated_at'],
+  });
+}
+
+function jsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || value === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function hydrateMessage(row: Record<string, unknown>): MessageType {

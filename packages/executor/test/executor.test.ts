@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildRubric } from '@edsai/rubric';
 import type { PreparedTurn } from '@edsai/engine';
-import { Executor, TurnRefused } from '../src/executor.js';
+import { DraftRefused, Executor, TurnRefused } from '../src/executor.js';
 import { departmentModelSelector, lowEffortForGpt6 } from '../src/configuration.js';
 import { diagnose } from '../src/failure.js';
 import type {
@@ -298,6 +298,58 @@ describe('reading the submission', () => {
     expect(result.targets?.[0]).not.toHaveProperty('actual');
     expect(result.targets?.[0]).not.toHaveProperty('pass');
     expect(result.compositions?.[0]).not.toHaveProperty('family');
+  });
+});
+
+describe('drafting a document', () => {
+  it('sends no tools at all, so the model cannot submit instead of writing', async () => {
+    const { client, sent } = fakeClient([
+      response({ content: [{ type: 'text', text: '## What they said\n\nThey want to be taken seriously.' }] }),
+    ]);
+    const draft = await new Executor({ client, model: 'gpt-6-sol' }).draft({
+      system: 'You write strategies.',
+      user: 'Transcript: a founder talking about their week.',
+    });
+
+    expect(sent).toHaveLength(1);
+    // A turn with `tools: []` and `tool_choice: required` is an error at the
+    // provider, and a turn that can call `submit` will call `submit`.
+    expect(sent[0]?.tools).toEqual([]);
+    expect(draft.text).toContain('They want to be taken seriously.');
+    expect(draft.model).toBe('gpt-6-sol');
+    expect(draft.usage).toEqual(usage());
+  });
+
+  it('joins the prose and drops the reasoning that came with it', async () => {
+    const { client } = fakeClient([
+      response({ content: [
+        { type: 'text', text: '## Open questions' },
+        { type: 'text', text: '\n\n- Who signs this off?' },
+      ] }),
+    ]);
+    const draft = await new Executor({ client }).draft({ system: 's', user: 'u' });
+    expect(draft.text).toBe('## Open questions\n\n- Who signs this off?');
+  });
+
+  it('treats a refusal as a refusal, not as an empty document', async () => {
+    const { client } = fakeClient([
+      response({ stopReason: 'refusal', refusalReason: 'the transcript named a person' }),
+    ]);
+    await expect(new Executor({ client }).draft({ system: 's', user: 'u' }))
+      .rejects.toBeInstanceOf(DraftRefused);
+  });
+
+  it('refuses a model that stopped without writing anything', async () => {
+    const { client } = fakeClient([response({ stopReason: 'max-tokens' })]);
+    await expect(new Executor({ client }).draft({ system: 's', user: 'u' }))
+      .rejects.toThrow(/max-tokens/);
+  });
+
+  it('reports a cost only when one is knowable', async () => {
+    const { client } = fakeClient([response({ content: [{ type: 'text', text: 'body' }] })]);
+    expect(await new Executor({ client }).draft({ system: 's', user: 'u' })).not.toHaveProperty('cost');
+    const priced = await new Executor({ client, estimateCost: () => 0.42 }).draft({ system: 's', user: 'u' });
+    expect(priced.cost).toBe(0.42);
   });
 });
 

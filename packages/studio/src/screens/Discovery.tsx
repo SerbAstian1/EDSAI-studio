@@ -48,16 +48,18 @@ export default function Discovery(): ReactElement {
   const outstanding = onboardings.filter((o) => o.status !== 'accepted').length;
 
   const itemsFor = (o: OnboardingSummary): MenuItem[] => {
+    // Discovery is the client's own answers, so it opens on the tab that shows
+    // them rather than the dashboard they are summarised on.
     const open: MenuItem & { icon: LucideIcon } = {
-      label: 'Open discovery', icon: Compass, onSelect: () => go(`#/clients/${o.clientId}/discovery`),
+      label: 'Open discovery', icon: Compass, onSelect: () => go(`#/clients/${o.clientId}/strategy`),
     };
     if (o.status === 'submitted') {
-      return [open, { label: 'Turn into a project', icon: FolderPlus, disabled: accept.isPending,
+      return [open, { label: 'Turn into a project', icon: FolderPlus, disabled: accept.isPending, studioOnly: true,
         onSelect: () => accept.mutate(o.id) }];
     }
     if (o.status === 'accepted' && o.projectId) {
       const projectId = o.projectId;
-      return [open, { label: 'Start a run from these answers', icon: Play,
+      return [open, { label: 'Start a run from these answers', icon: Play, studioOnly: true,
         onSelect: () => go(`#/new/${projectId}`) }];
     }
     return [open];

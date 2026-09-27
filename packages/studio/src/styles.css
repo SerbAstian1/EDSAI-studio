@@ -264,6 +264,20 @@ h3 {
 }
 
 .muted { color: var(--text-muted); }
+
+/* For text a screen reader needs and an eye does not: the full weekday behind
+   a one-letter column heading, the name of a day behind its number. Clipped to a
+   pixel rather than `display: none`, which would remove it from the
+   accessibility tree along with everything else. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* — controls ———————————————————————————————————————————————————— */
@@ -1135,6 +1149,108 @@ button.choice.chosen {
 }
 .nav-item-button:hover:not([disabled]) { border-color: transparent; }
 
+/* — sidebar blocks ——————————————————————————————————————————————————— */
+
+/* The rail is a stack of blocks, not one long list: the destinations you go
+   to, the clients you are working with, the studio's own machinery. A rule
+   between them does the grouping that ten headings would, and a heading costs
+   more vertical space than a list of clients does. */
+.nav-block { display: block; }
+.nav-rule {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: calc(var(--step) * 3) 0;
+}
+.nav-note {
+  margin: calc(var(--step) * 1.5) 0 calc(var(--step) * 0.5);
+  padding: 0 calc(var(--step) * 2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* One client in the rail. The avatar is small and the name truncates, because
+   the rail is narrow and a name that wraps into three lines is three lines of
+   a person's attention spent on nothing. */
+.nav-client { gap: calc(var(--step) * 2.5); }
+.nav-client-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.nav-avatar {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex: none;
+}
+.nav-client[aria-current="page"] .nav-avatar {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+}
+.nav-more-link { color: var(--text-muted); font-size: 13px; }
+
+/* The account footer is pinned to the bottom of the rail by the shell's grid,
+   and separated by the same rule the blocks use — it is the last block. */
+.nav-account {
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding-top: calc(var(--step) * 3);
+}
+.nav-account-identity {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2.5);
+  padding: 0 calc(var(--step) * 2) calc(var(--step) * 2);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* "More" is a disclosure, not a destination. A summary that reads as a nav
+   item is the cheapest way to keep twenty sections reachable without a rail
+   twenty items long. */
+.nav-more { margin-top: calc(var(--step) * 1); }
+.nav-more-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 2) calc(var(--step) * 2);
+  font-size: 12px;
+  color: var(--text-muted);
+  user-select: none;
+}
+.nav-more-summary::-webkit-details-marker { display: none; }
+.nav-more-summary:hover { color: var(--text-primary); }
+.nav-more[open] > .nav-more-summary { color: var(--text-primary); }
+.nav-more[open] > .nav-more-summary .nav-more-chevron { transform: rotate(90deg); }
+.nav-more-chevron { transition: transform var(--transition); }
+.nav-more > .nav-group { padding-left: calc(var(--step) * 2); }
+
+/* — client view ——————————————————————————————————————————————————————— */
+
+/* The toggle does not restyle the page; the components that are studio-only
+   are simply not rendered, and these are the two leftovers that a screen
+   chooses for itself rather than wrapping. Client view is a question of what
+   is present, not what is dimmed. */
+[data-view="client"] .status-bar { display: none; }
+
+/* The rail's own studio sections, for the same reason: a client has no Home,
+   no pipeline, no calendar and no leads, so a preview that kept them was not a
+   preview. Each block draws its own leading rule, so hiding the block takes
+   the rule with it — otherwise a line is drawn above nothing. */
+[data-view="client"] .nav-block[data-studio-only] { display: none; }
+
 /* — tabs ————————————————————————————————————————————————————————— */
 
 .tabs {
@@ -1340,6 +1456,137 @@ button.choice.chosen {
 .markdown hr { border: 0; border-top: 1px solid var(--border); margin: calc(var(--step) * 4) 0; }
 .markdown a { color: var(--accent); }
 
+/* — strategy page (a transcript, and the page read off it) ———————— */
+
+/* A page is read, not skimmed, so it runs wider than a department's output and
+   its own headings get more air above them than they would inside a run. The
+   transcript underneath is the opposite case — it is looked up in, and a
+   quotation has to be findable in it, so it stays monospaced and its lines are
+   preserved exactly as they were pasted. */
+.markdown.strategy-page { max-width: 68ch; }
+.markdown.strategy-page h1 { font-size: var(--text-lg); }
+.markdown.strategy-page h2 {
+  font-size: var(--text-base);
+  padding-bottom: calc(var(--step) * 1.5);
+  border-bottom: 1px solid var(--border);
+}
+.strategy-transcript {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin: calc(var(--step) * 3) 0 0;
+  padding: calc(var(--step) * 3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+/* A cut is a fact about the page, not an error, so it is ruled off the same way
+   a quotation is rather than coloured like a failure. */
+.strategy-cut {
+  margin: calc(var(--step) * 3) 0 0;
+  padding: calc(var(--step) * 2) calc(var(--step) * 3.5);
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* — the invoice builder ——————————————————————————————————————
+   A line is read left to right as an arithmetic sentence: what,
+   how many times, at what price, and what that comes to. The
+   computed amount is set apart from the inputs because it is not
+   an input — nobody types it, and the server re-derives it. */
+
+.invoice-line {
+  gap: var(--step);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.invoice-line input,
+.invoice-line select {
+  min-width: 0;
+}
+.invoice-line-desc { flex: 3 1 14rem; }
+.invoice-line-qty { flex: 0 1 5.5rem; }
+.invoice-line-price { flex: 0 1 7rem; }
+.invoice-line-kind { flex: 0 1 8rem; }
+.invoice-line input[type='date'] { flex: 0 1 9.5rem; }
+.invoice-line-amount {
+  flex: 1 1 6rem;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.invoice-line .icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.invoice-line .icon:hover { border-color: var(--border); color: var(--text); }
+.invoice-line .icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (pointer: coarse) { .invoice-line .icon { width: 44px; height: 44px; } }
+
+.invoice-totals {
+  margin-top: var(--step);
+  padding: calc(var(--step) * 2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: calc(var(--step) * 0.5);
+}
+.invoice-totals .row { display: flex; justify-content: space-between; gap: var(--step); }
+.invoice-total {
+  margin-top: var(--step);
+  padding-top: calc(var(--step) * 1.5);
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .invoice-line-desc { flex-basis: 100%; }
+  .invoice-line-amount { text-align: right !important; }
+}
+
+/* — contracts ————————————————————————————————————————————————
+   The terms get a reading column rather than the full width of a
+   card: a clause is prose, and prose set at 900px is prose
+   nobody finishes. */
+
+.contract-terms {
+  margin-top: calc(var(--step) * 2);
+  max-width: 68ch;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.contract-terms h2 { font-size: var(--text-base); margin: calc(var(--step) * 3) 0 var(--step); }
+.contract-terms h2:first-child { margin-top: 0; }
+.contract-terms p, .contract-terms li { color: var(--text-secondary); }
+
+/* A signature on the record is the one thing here that is not
+   editable, so it is set as a statement and not as a form. */
+.contract-signed {
+  margin: calc(var(--step) * 2) 0 0;
+  padding: calc(var(--step) * 2) calc(var(--step) * 3);
+  border-left: 2px solid var(--success);
+  background: var(--surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+}
+.contract-sign { flex: 1 1 18rem; }
+.contract-sign input { flex: 1 1 12rem; }
+.num { text-align: right; }
+
 /* — facts (scope, tone, audience — the client's own answers) —————— */
 
 .facts {
@@ -1375,10 +1622,10 @@ button.choice.chosen {
 /* — document shelf ———————————————————————————————————————————————— */
 
 /* Large tiles, because these are the eight things a client comes back
-   for. A tile is a button first: it rests at the card tier, lifts on
-   hover, and the open one carries the accent rule so the viewer under the
-   shelf reads as belonging to it. Empty tiles are dashed, like the drop
-   zone — the shape of a thing that is not here yet. */
+   for. A tile is a button first: a linked one is filled and carries the
+   document's weight, an empty one is a dashed outline like a drop zone,
+   the shape of a thing that is not here yet. The open tile carries the
+   accent rule so the panel below its row reads as belonging to it. */
 .shelf-group { display: grid; gap: calc(var(--step) * 2); }
 .shelf-tiles {
   display: grid;
@@ -1401,13 +1648,35 @@ button.choice.chosen {
   transition: box-shadow var(--transition), border-color var(--transition), transform var(--transition);
 }
 .shelf-tile:hover:not([disabled]) { box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+
+/* Linked reads as held, and a hair of accent on the left edge says which
+   side of the engagement it came from. The hue is a tint of the studio's
+   own accent rather than a second colour, so a shelf of eight documents is
+   one set rather than eight. */
+.shelf-tile.linked {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-1), inset 3px 0 0 var(--accent);
+  background: var(--surface-elevated);
+}
 .shelf-tile.open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-2); }
-.shelf-tile.empty { border-style: dashed; background: var(--surface); box-shadow: none; }
+.shelf-tile.empty {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+}
 .shelf-tile.empty .shelf-icon { color: var(--text-muted); }
 .shelf-tile[disabled] { opacity: 0.55; cursor: default; }
 .shelf-icon { color: var(--accent); }
 .shelf-label { font-size: var(--text-base); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
 .shelf-meta { font-size: var(--text-xs); color: var(--text-muted); margin-top: auto; }
+
+/* A panel is a grid item like any other, so it has to be told to take the
+   whole row: a grid child cannot sit under its own tile at the tile's own
+   width. Spanning is what puts it directly below the tile that opened it. */
+.shelf-tiles > .shelf-viewer,
+.shelf-tiles > .shelf-form { grid-column: 1 / -1; }
+.shelf-tiles > .shelf-viewer { margin-top: calc(var(--step) * -1); }
 
 .shelf-form {
   border: 1px solid var(--border);
@@ -2374,3 +2643,262 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .sidebar-menu.open, .portal-sidebar-menu.open { max-height: calc(100dvh - 52px); }
   .palette-scrim { padding-top: calc(var(--step) * 3); }
 }
+
+/* ===========================================================================
+   The calendar
+   ---------------------------------------------------------------------------
+   One hour is 52px. That number is the grid's unit of currency — a timed entry
+   is `top: hours × 52px` — so it lives in a single custom property and the
+   arithmetic happens in the component. Everything else about the day and week
+   views is derived from it.
+
+   The eight client tones are a hue and a saturation, not eight finished
+   colours. A chip is a 14% tint of `hsl(hue 62% 46%)` over whatever surface it
+   lands on, plus a 3px rule at full strength — which means one block of eight
+   numbers works unchanged in both themes: on a light ground the tint is a wash,
+   on a dark one it is a glow, and neither needs a second set. The studio's own
+   time is the same rule with the saturation at zero, so it reads as grey rather
+   than as a ninth client.
+
+   **The colour is never the only channel.** Every chip carries the client's name
+   as text, and the legend above the grid is a list, not a swatch row. Eight
+   tints cannot separate twenty clients, and a calendar that needs the legend
+   held in the head fails for a colour-blind reader and for anyone on a
+   projector.
+   ======================================================================== */
+
+:root { --cal-hour-h: 52px; }
+
+/* Hue and saturation per client, assigned by hashing the client id rather than
+   by listing clients — see `toneFor` in CalendarView. Held at one lightness so
+   no client's meetings read as louder than another's. */
+.cal-tone-0 { --cal-h: 18;  --cal-s: 62%; }
+.cal-tone-1 { --cal-h: 44;  --cal-s: 58%; }
+.cal-tone-2 { --cal-h: 74;  --cal-s: 52%; }
+.cal-tone-3 { --cal-h: 108; --cal-s: 48%; }
+.cal-tone-4 { --cal-h: 146; --cal-s: 46%; }
+.cal-tone-5 { --cal-h: 188; --cal-s: 52%; }
+.cal-tone-6 { --cal-h: 224; --cal-s: 52%; }
+.cal-tone-7 { --cal-h: 290; --cal-s: 46%; }
+/* The studio's own time: no hue, so it never reads as a client's. */
+.cal-internal { --cal-h: 0; --cal-s: 0%; }
+
+.cal-toolbar { gap: var(--space-block); }
+.cal-range { margin: 0; font-size: var(--text-lg); }
+.cal-range::before { content: '← '; color: var(--text-muted); font-weight: 400; }
+
+.cal-legend { gap: calc(var(--step) * 2); }
+
+.cal-key {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.cal-key:hover:not([disabled]) { color: var(--text-primary); border-color: var(--border-strong); }
+.cal-key.on {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.cal-key-swatch {
+  width: 9px; height: 9px; flex: none;
+  border-radius: 2px;
+  background: hsl(var(--cal-h) var(--cal-s) 46%);
+}
+
+/* A chip: one tinted pill with a full-strength rule down its leading edge. */
+.cal-chip {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--step) * 1.5);
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px 2px 5px;
+  border: 1px solid var(--border);
+  border-left: 3px solid hsl(var(--cal-h) var(--cal-s) 46%);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, hsl(var(--cal-h) var(--cal-s) 46%) 15%, var(--surface-elevated));
+  color: var(--text-primary);
+  text-align: left;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  overflow: hidden;
+}
+.cal-chip:hover:not([disabled]) { border-color: var(--border-strong); box-shadow: var(--shadow-1); }
+.cal-chip-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-chip-whose { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+.cal-more {
+  padding: 1px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: left;
+}
+.cal-more:hover:not([disabled]) { color: var(--text-primary); text-decoration: underline; }
+
+/* -- month ---------------------------------------------------------------- */
+
+.cal-month {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.cal-month th {
+  padding: calc(var(--step) * 2);
+  font-size: 11px;
+  text-align: left;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.cal-month td {
+  vertical-align: top;
+  padding: calc(var(--step) * 1.5);
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+}
+.cal-month td:first-child { border-left: 0; }
+.cal-month tr:first-child td { border-top: 0; }
+.cal-month td[data-outside] { background: var(--surface); }
+.cal-month td[data-outside] .cal-day-number { color: var(--text-muted); }
+.cal-month td[data-today] { background: color-mix(in srgb, var(--accent) 7%, var(--surface-elevated)); }
+
+.cal-day-head { display: flex; justify-content: flex-end; margin-bottom: 2px; }
+.cal-day-number {
+  min-width: 24px;
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+.cal-day-number:hover:not([disabled]) { background: var(--surface); color: var(--text-primary); }
+.cal-month td[data-today] .cal-day-number {
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 500;
+}
+.cal-month td .cal-chip { margin-bottom: 2px; }
+
+/* -- week and day --------------------------------------------------------- */
+
+/* The three rows of a day/week grid — the day headings, the all-day strip and
+   the hours — share one column template, so a heading cannot drift off the
+   column it labels. `--cal-days` is the number of columns the component is
+   actually drawing: seven for a week, one for a day. */
+.cal-time {
+  overflow-x: auto;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.cal-time-head, .cal-allday, .cal-time-body {
+  display: grid;
+  grid-template-columns: 52px repeat(var(--cal-days, 7), minmax(88px, 1fr));
+  min-width: calc(52px + var(--cal-days, 7) * 88px);
+}
+.cal-time-head { border-bottom: 1px solid var(--border); }
+.cal-time-day {
+  display: grid;
+  gap: 1px;
+  padding: calc(var(--step) * 2);
+  text-align: center;
+  border-left: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+.cal-time-day .label { margin: 0; }
+.cal-time-day strong { font-family: var(--font-display); font-size: var(--text-base); }
+.cal-time-day[data-today] strong { color: var(--accent-ink); }
+
+.cal-allday { border-bottom: 1px solid var(--border); }
+.cal-allday-col { padding: calc(var(--step) * 1.5); border-left: 1px solid var(--border); }
+.cal-allday-col .cal-chip { margin-bottom: 2px; }
+
+.cal-gutter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: calc(var(--step) * 1) calc(var(--step) * 1.5);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.cal-time-body { position: relative; }
+.cal-hours { flex-direction: column; align-items: flex-end; }
+.cal-hours span { height: var(--cal-hour-h); transform: translateY(-0.55em); }
+
+.cal-time-col { position: relative; border-left: 1px solid var(--border); }
+.cal-slot {
+  display: block;
+  width: 100%;
+  height: var(--cal-hour-h);
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+}
+.cal-slot:hover:not([disabled]) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.cal-placed { position: absolute; display: block; overflow: hidden; }
+.cal-chip-timed { height: 100%; align-items: flex-start; flex-direction: column; gap: 0; }
+.cal-chip-time { display: none; color: var(--text-muted); font-size: 10px; }
+.cal-placed:hover .cal-chip-time,
+.cal-placed:focus-within .cal-chip-time { display: block; }
+
+/* -- the entry dialog ----------------------------------------------------- */
+
+.event-dialog {
+  width: min(100%, 560px);
+  max-height: calc(100dvh - var(--space-page) * 2);
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-block);
+  padding: calc(var(--step) * 5);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+.event-dialog h2 { margin: 0; font-size: var(--text-lg); }
+.event-dialog textarea { min-height: 4.5em; }
+.event-dialog .choice-set {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: calc(var(--step) * 2);
+  margin: 0;
+  padding: calc(var(--step) * 3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.event-dialog .choice-set legend { padding: 0 calc(var(--step) * 1.5); }
+
+@media (max-width: 900px) {
+  /* A month survives a phone because its cells hold a number and a line of
+     text; a week does not, so the day and week views scroll sideways rather
+     than compressing seven days into seven slivers. The month drops the client
+     name from each chip and keeps the title — on a narrow cell the title is
+     what identifies the entry, and the colour still says whose it is. */
+  .cal-month { font-size: 11px; }
+  .cal-month td { padding: 2px; }
+  .cal-month .cal-chip-whose { display: none; }
+  .cal-month .cal-chip { padding: 1px 3px; }
+  .cal-toolbar .cal-range { order: 3; width: 100%; }
+  .cal-legend { overflow-x: auto; }
+  .event-dialog { padding: calc(var(--step) * 4); }
+}
+

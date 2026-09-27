@@ -11,6 +11,7 @@ import {
 import { renderPortal, escapeHtml, STYLE } from '@edsai/hub';
 import { REHEARSAL_MODEL, type Executor } from '@edsai/executor';
 import { runPipeline } from './pipeline.js';
+import { renderMarkdown } from './markdown.js';
 import { StaticApp } from './static.js';
 import { RunEvents } from './events.js';
 import {
@@ -20,7 +21,11 @@ import {
   MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
-  orderMilestones, invoiceStatus, invoiceTotals, isFigmaUrl,
+  orderMilestones, invoiceStatus, invoiceTotals, invoiceAmounts, lineAmountCents,
+  InvoiceLine, isFigmaUrl,
+  Contract, ContractFee, contractFees, contractReadyToSend, type Contract as ContractType,
+  type Event, type EventKind,
+  STRATEGY_SYSTEM, strategyUser, cutTranscript, type Strategy, type TranscriptCut,
   DOCUMENT_SLOTS, isDocumentSlot, type ClientDocument,
   BRAND_TOOLS, BrandHubStatus, assetsInConfiguration, hubEnabled, isBrandToolId,
   type BrandHub, type BrandProject, type BrandToolId,
@@ -2213,6 +2218,361 @@ export class ApiServer {
         },
       },
 
+      /* ---------------------------------------------------------------- events */
+
+      /**
+       * The studio's calendar.
+       *
+       * Studio-wide rather than per client, because an event does not have to
+       * belong to one — the studio's own time sits on the same grid as a
+       * client's kickoff. `?from` and `?to` bound the read to the range on
+       * screen, so paging a month does not pull the studio's whole history; both
+       * are inclusive `YYYY-MM-DD` days and either may be left off.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/events$/,
+        run: ({ res, scoped, url }) => {
+          if (!scoped) return;
+          const from = url.searchParams.get('from');
+          const to = url.searchParams.get('to');
+          const events = scoped.listEvents().filter((event) =>
+            (from === null || event.date >= from) && (to === null || event.date <= to));
+          send(res, 200, { events });
+        },
+      },
+
+      /** One client's own entries, for the calendar's client filter. */
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/events$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { events: scoped.listEvents(clientId) });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/events$/,
+        run: ({ res, body, scoped }) => {
+          if (!scoped) return;
+          const input = body as { title?: string; date?: string; clientId?: string;
+            projectId?: string; kind?: string; startTime?: string; endTime?: string;
+            location?: string; notes?: string; url?: string };
+          if (!input?.title?.trim() || !isCalendarDate(input.date)) {
+            send(res, 400, { error: 'bad_request', message: 'An event needs a title and a date.' });
+            return;
+          }
+          // A client that is not in this session is a 404 rather than a 403: the
+          // refusal itself would confirm a client id the session cannot see.
+          const clientId = input.clientId?.trim();
+          if (clientId && !scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const kind = eventKindOf(input.kind);
+          if (kind === undefined) {
+            send(res, 400, { error: 'bad_request', message: 'That is not a kind of event.' });
+            return;
+          }
+          const now = new Date().toISOString();
+          const event: Event = {
+            id: newId('event'), title: input.title.trim(), date: input.date!, kind,
+            createdAt: now, updatedAt: now,
+            ...(clientId ? { clientId } : {}),
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+            ...(isClockTime(input.startTime) ? { startTime: input.startTime } : {}),
+            ...(isClockTime(input.endTime) ? { endTime: input.endTime } : {}),
+            ...(input.location?.trim() ? { location: input.location.trim() } : {}),
+            ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+            ...(input.url?.trim() ? { url: input.url.trim() } : {}),
+          };
+          scoped.saveEvent(event);
+          send(res, 201, { event });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/events\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getEvent(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such event for this session.' });
+            return;
+          }
+          const input = body as { title?: string; date?: string; clientId?: string | null;
+            projectId?: string | null; kind?: string; startTime?: string | null;
+            endTime?: string | null; location?: string | null; notes?: string | null;
+            url?: string | null };
+          if (input?.date !== undefined && !isCalendarDate(input.date)) {
+            send(res, 400, { error: 'bad_request', message: 'A date is YYYY-MM-DD.' });
+            return;
+          }
+          const kind = eventKindOf(input?.kind);
+          if (kind === undefined) {
+            send(res, 400, { error: 'bad_request', message: 'That is not a kind of event.' });
+            return;
+          }
+          // Moving an event onto a client this session cannot see is the same
+          // answer as naming one that does not exist.
+          if (typeof input?.clientId === 'string' && input.clientId.trim()
+            && !scoped.getClient(input.clientId.trim())) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const event: Event = {
+            ...existing,
+            ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
+            ...(input?.date !== undefined ? { date: input.date } : {}),
+            ...(kind ? { kind } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          // Clearing a field is `null`, not an absent key: the same reason the
+          // invoice route deletes rather than assigns.
+          if (input?.clientId !== undefined) {
+            const next = input.clientId?.trim();
+            if (next) event.clientId = next; else delete event.clientId;
+          }
+          for (const key of ['projectId', 'location', 'notes', 'url'] as const) {
+            if (input?.[key] !== undefined) {
+              const value = input[key]?.trim();
+              if (value) event[key] = value; else delete event[key];
+            }
+          }
+          for (const key of ['startTime', 'endTime'] as const) {
+            if (input?.[key] !== undefined) {
+              if (input[key] === null || input[key] === '') delete event[key];
+              else if (isClockTime(input[key])) event[key] = input[key] as string;
+              else {
+                send(res, 400, { error: 'bad_request', message: 'A time is HH:MM.' });
+                return;
+              }
+            }
+          }
+          scoped.saveEvent(event);
+          send(res, 200, { event });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/events\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          if (!scoped.getEvent(id)) {
+            send(res, 404, { error: 'not_found', message: 'No such event for this session.' });
+            return;
+          }
+          scoped.deleteEvent(id);
+          send(res, 200, { removed: id });
+        },
+      },
+
+      /* ---------------------------------------------------------- strategies */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/strategies$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          send(res, 200, { strategies: scoped.listStrategies(clientId) });
+        },
+      },
+
+      /**
+       * A strategy page, drafted from a transcript or written by hand.
+       *
+       * Two branches, one route, because they are the same record and the
+       * difference is only who held the pen: a draft needs a model, and a page
+       * a person wrote does not — so a studio without a key configured can
+       * still file a page, and the answer says which it was, because `model`
+       * is absent on a hand-written one and `rehearsal` is a real value on a
+       * rehearsed one.
+       *
+       * The draft is saved whether or not it is good. It is a first page, it
+       * is revised in place, and a studio that has to ask the model twice to
+       * keep a draft that then gets thrown away has been charged twice for a
+       * lesson it already learned.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/strategies$/,
+        run: async ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { transcript?: string; markdown?: string; title?: string;
+            projectId?: string };
+          const transcript = input?.transcript?.trim() ?? '';
+          const handwritten = input?.markdown?.trim() ?? '';
+
+          if (!transcript && !handwritten) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A strategy is drafted from a transcript, or written out and sent as one.',
+            });
+            return;
+          }
+
+          const client = scoped.getClient(clientId);
+          const title = input?.title?.trim()
+            || (transcript ? defaultStrategyTitle(client?.name) : 'Strategy');
+          const now = new Date().toISOString();
+          const strategy: Strategy = {
+            id: newId('strategy'), clientId, title,
+            // A hand-written page keeps whatever was pasted in as its
+            // transcript, and a drafted one keeps the words it read. Neither
+            // keeps nothing: `transcript` is what makes the page checkable.
+            transcript: transcript || handwritten,
+            markdown: handwritten || '',
+            createdAt: now, updatedAt: now,
+            ...(input?.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+          };
+
+          // Markdown sent alongside a transcript wins: that is the studio
+          // pasting in a page it already has, and it needs no model. Only a
+          // transcript on its own is a request to draft.
+          let drafted: { text: string; model: string } | undefined;
+          let cut: TranscriptCut | undefined;
+          if (transcript && !handwritten) {
+            cut = cutTranscript(transcript);
+            if (!cut.text) {
+              send(res, 400, { error: 'bad_request', message: 'That transcript is empty.' });
+              return;
+            }
+            if (!this.executor) {
+              send(res, 503, {
+                error: 'no_executor',
+                message: 'Drafting needs a model, and none is configured on this server. Send '
+                  + 'the page as markdown instead, or set OPENAI_API_KEY, or enable rehearsal '
+                  + 'mode for marked placeholders.',
+              });
+              return;
+            }
+            const { answers, answersFrom } = this.latestDiscovery(scoped, clientId);
+            try {
+              const draft = await this.executor.draft({
+                system: STRATEGY_SYSTEM,
+                user: strategyUser({
+                  transcript: cut.text,
+                  ...(client?.name ? { clientName: client.name } : {}),
+                  ...(answersFrom === 'none' ? {} : { discovery: discoveryBrief(answers).markdown }),
+                  dropped: cut.dropped,
+                }),
+              });
+              drafted = { text: draft.text, model: draft.model };
+            } catch (error) {
+              // A refusal is the client or the model declining, not a server
+              // fault, and it is worth saying which it was: a transcript naming
+              // a person and a 500 both look the same to a studio otherwise.
+              const refused = error instanceof Error && error.name === 'DraftRefused';
+              send(res, refused ? 422 : 502, {
+                error: refused ? 'refused' : 'draft_failed',
+                message: error instanceof Error ? error.message : 'The draft did not come back.',
+              });
+              return;
+            }
+          }
+          if (drafted) {
+            strategy.markdown = drafted.text;
+            strategy.model = drafted.model;
+          }
+
+          scoped.saveStrategy(strategy);
+          /*
+           * The cut is reported back rather than left in the prompt. The model
+           * is told it read a part; the studio has to be told the same number,
+           * because the page they are about to revise will otherwise look like
+           * a reading of the whole call and quietly be a reading of the first
+           * fifty-nine thousand characters of it.
+           */
+          send(res, 201, {
+            strategy,
+            truncated: cut?.truncated ?? false,
+            droppedWords: cut?.dropped ?? 0,
+          });
+        },
+      },
+
+      {
+        method: 'PATCH', pattern: /^\/api\/strategies\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const existing = scoped.getStrategy(params['id'] ?? '');
+          if (!existing) {
+            send(res, 404, { error: 'not_found', message: 'No such strategy for this session.' });
+            return;
+          }
+          const input = body as { title?: string; markdown?: string };
+          if (input?.markdown !== undefined && !input.markdown.trim()) {
+            send(res, 400, { error: 'bad_request', message: 'A strategy cannot be emptied.' });
+            return;
+          }
+          const strategy: Strategy = {
+            ...existing,
+            ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
+            ...(input?.markdown !== undefined ? { markdown: input.markdown } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+          scoped.saveStrategy(strategy);
+          send(res, 200, { strategy });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/strategies\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          if (!scoped.getStrategy(id)) {
+            send(res, 404, { error: 'not_found', message: 'No such strategy for this session.' });
+            return;
+          }
+          scoped.deleteStrategy(id);
+          send(res, 200, { removed: id });
+        },
+      },
+
+      /**
+       * The page as it will be read on paper, which is where a client signs it.
+       *
+       * The markdown is rendered by the same small renderer the studio uses,
+       * because a page that looks one way on screen and another in the client's
+       * PDF is a page nobody will sign.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/strategies\/(?<id>[\w-]+)\/document$/, html: true,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const strategy = scoped.getStrategy(params['id'] ?? '');
+          if (!strategy) {
+            sendHtml(res, 404, '<p>No such strategy.</p>');
+            return;
+          }
+          const client = scoped.getClient(strategy.clientId);
+          sendHtml(res, 200, `<!doctype html><html><head><meta charset="utf-8">
+<title>${escapeHtml(strategy.title)}</title><style>${STYLE}
+body { max-width: 640px; margin: 48px auto; }
+blockquote { border-left: 2px solid #ddd; margin: 8px 0; padding-left: 12px; }
+</style></head><body>
+<h1>${escapeHtml(strategy.title)}</h1>
+<p class="muted">${escapeHtml(client?.name ?? strategy.clientId)}${strategy.model
+  ? ` — drafted by ${escapeHtml(strategy.model)}` : ' — written by the studio'}</p>
+${renderMarkdown(strategy.markdown)}
+</body></html>`);
+        },
+      },
+
       /* ------------------------------------------------------------ invoices */
 
       {
@@ -2226,7 +2586,11 @@ export class ApiServer {
           }
           const invoices = scoped.listInvoices(clientId);
           send(res, 200, {
-            invoices: invoices.map((invoice) => ({ ...invoice, status: invoiceStatus(invoice) })),
+            // `amounts` is computed on the way out rather than stored, so a
+            // subtotal can never disagree with the lines it came from.
+            invoices: invoices.map((invoice) => ({
+              ...invoice, status: invoiceStatus(invoice), amounts: invoiceAmounts(invoice),
+            })),
             totals: invoiceTotals(invoices),
           });
         },
@@ -2242,28 +2606,52 @@ export class ApiServer {
             return;
           }
           const input = body as { description?: string; issueDate?: string; dueDate?: string;
-            amountCents?: number; currency?: string; projectId?: string; number?: string };
+            amountCents?: number; currency?: string; projectId?: string; number?: string;
+            lines?: unknown; taxBasisPoints?: unknown; terms?: string };
+          const now = new Date().toISOString();
+          const read = readLines(input?.lines, now);
+          if (read.error) {
+            send(res, 400, { error: 'bad_request', message: read.error });
+            return;
+          }
+          const tax = readTax(input?.taxBasisPoints);
+          if (tax.error) {
+            send(res, 400, { error: 'bad_request', message: tax.error });
+            return;
+          }
+          const lines = read.lines ?? [];
+          const taxBasisPoints = tax.taxBasisPoints ?? 0;
+          // With lines, the total is the arithmetic's to produce. Without them
+          // the amount is still typed, because years of invoices are one number
+          // and refusing to edit them would be a worse answer than accepting it.
+          const amountCents = lines.length > 0
+            ? invoiceAmounts({ lines, taxBasisPoints, amountCents: 0 }).totalCents
+            : input.amountCents;
           if (!input?.description?.trim() || !input?.issueDate || !input?.dueDate
-            || typeof input.amountCents !== 'number' || input.amountCents < 0) {
+            || typeof amountCents !== 'number' || amountCents < 0) {
             send(res, 400, {
               error: 'bad_request',
-              message: 'An invoice needs a description, an issue date, a due date and an amount.',
+              message: 'An invoice needs a description, an issue date, a due date and either '
+                + 'line items or an amount.',
             });
             return;
           }
-          const now = new Date().toISOString();
           const existing = scoped.listInvoices(clientId);
           const invoice: Invoice = {
             id: newId('invoice'), clientId,
             number: input.number?.trim() || `INV-${String(existing.length + 1).padStart(4, '0')}`,
             description: input.description.trim(), issueDate: input.issueDate,
-            dueDate: input.dueDate, amountCents: Math.round(input.amountCents),
-            currency: input.currency?.trim() || 'USD', paid: false,
+            dueDate: input.dueDate, amountCents: Math.round(amountCents),
+            currency: input.currency?.trim() || 'USD', lines, taxBasisPoints,
+            ...(input.terms?.trim() ? { terms: input.terms.trim() } : {}),
+            paid: false,
             createdAt: now, updatedAt: now,
             ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
           };
           scoped.saveInvoice(invoice);
-          send(res, 201, { invoice: { ...invoice, status: invoiceStatus(invoice) } });
+          send(res, 201, {
+            invoice: { ...invoice, status: invoiceStatus(invoice), amounts: invoiceAmounts(invoice) },
+          });
         },
       },
 
@@ -2276,21 +2664,49 @@ export class ApiServer {
             send(res, 404, { error: 'not_found', message: 'No such invoice for this session.' });
             return;
           }
-          const input = body as { paid?: boolean; description?: string; dueDate?: string };
+          const input = body as { paid?: boolean; description?: string; dueDate?: string;
+            amountCents?: number; lines?: unknown; taxBasisPoints?: unknown;
+            terms?: string | null };
+          const now = new Date().toISOString();
+          const read = readLines(input?.lines, now);
+          if (read.error) {
+            send(res, 400, { error: 'bad_request', message: read.error });
+            return;
+          }
+          const tax = readTax(input?.taxBasisPoints);
+          if (tax.error) {
+            send(res, 400, { error: 'bad_request', message: tax.error });
+            return;
+          }
+          const lines = read.lines ?? existing.lines;
+          const taxBasisPoints = tax.taxBasisPoints ?? existing.taxBasisPoints;
           const invoice: Invoice = {
             ...existing,
             ...(input?.description?.trim() ? { description: input.description.trim() } : {}),
             ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
             ...(typeof input?.paid === 'boolean' ? { paid: input.paid } : {}),
-            updatedAt: new Date().toISOString(),
+            lines, taxBasisPoints,
+            updatedAt: now,
           };
+          if (input?.terms === null) delete invoice.terms;
+          else if (input?.terms?.trim()) invoice.terms = input.terms.trim();
+          // The total follows the lines and the rate. An invoice whose subtotal
+          // was typed by hand and whose lines were just added is the exact
+          // record that has to stop being possible.
+          invoice.amountCents = lines.length > 0
+            ? invoiceAmounts(invoice).totalCents
+            : input.amountCents !== undefined
+              ? Math.round(input.amountCents)
+              : invoice.amountCents;
           // Setting the key to `undefined` is not the same as leaving it out
           // under this project's strict optional types, so clearing it on
           // "mark unpaid" is a real delete rather than an assignment.
-          if (input?.paid === true && !existing.paidAt) invoice.paidAt = new Date().toISOString();
+          if (input?.paid === true && !existing.paidAt) invoice.paidAt = now;
           if (input?.paid === false) delete invoice.paidAt;
           scoped.saveInvoice(invoice);
-          send(res, 200, { invoice: { ...invoice, status: invoiceStatus(invoice) } });
+          send(res, 200, {
+            invoice: { ...invoice, status: invoiceStatus(invoice), amounts: invoiceAmounts(invoice) },
+          });
         },
       },
 
@@ -2318,22 +2734,329 @@ export class ApiServer {
             return;
           }
           const client = scoped.getClient(invoice.clientId);
-          const amount = (invoice.amountCents / 100).toLocaleString('en-US', {
+          const money = (cents: number): string => (cents / 100).toLocaleString('en-US', {
             style: 'currency', currency: invoice.currency,
           });
+          const amounts = invoiceAmounts(invoice);
+          /*
+           * The line table is the invoice. What was billed, at what price, how
+           * many, is the thing a client checks and the thing a studio argues
+           * about — so it is printed in full, and the summary below it is
+           * arithmetic on those lines rather than a number typed beside them.
+           */
+          const lineRows = invoice.lines.map((line) => {
+            const quantity = line.quantityHundredths % 100 === 0
+              ? String(line.quantityHundredths / 100)
+              : (line.quantityHundredths / 100).toFixed(2).replace(/0$/, '');
+            return `<tr><td>${escapeHtml(line.description)}</td>`
+              + `<td class="num">${escapeHtml(quantity)}</td>`
+              + `<td class="num">${escapeHtml(money(line.unitAmountCents))}</td>`
+              + `<td class="num">${escapeHtml(money(lineAmountCents(line)))}</td></tr>`;
+          }).join('');
+          const summary = invoice.lines.length > 0
+            ? `<tr><td colspan="3">Subtotal</td><td class="num">${escapeHtml(money(amounts.subtotalCents))}</td></tr>`
+              + (invoice.taxBasisPoints > 0
+                ? `<tr><td colspan="3">Tax at ${(invoice.taxBasisPoints / 100).toFixed(2)}%`
+                  + ` <span class="muted">(proposed)</span></td>`
+                  + `<td class="num">${escapeHtml(money(amounts.taxCents))}</td></tr>`
+                : '')
+            : '';
           sendHtml(res, 200, `<!doctype html><html><head><meta charset="utf-8">
 <title>${escapeHtml(invoice.number)}</title><style>${STYLE}
 body { max-width: 640px; margin: 48px auto; }
+table { width: 100%; border-collapse: collapse; margin: 24px 0 0; }
+th { text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.08em;
+     color: #666; border-bottom: 1px solid #ddd; padding: 0 0 6px; }
+td { padding: 6px 0; border-bottom: 1px solid #eee; vertical-align: top; }
+.num { text-align: right; white-space: nowrap; }
 .row { display: flex; justify-content: space-between; margin: 4px 0; }
 .total { font-size: 1.4em; font-weight: 600; margin-top: 24px; }
+.terms { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; white-space: pre-wrap; }
 </style></head><body>
 <h1>${escapeHtml(invoice.number)}</h1>
 <p class="muted">${escapeHtml(client?.name ?? invoice.clientId)}</p>
-<div class="row"><span>${escapeHtml(invoice.description)}</span><span>${amount}</span></div>
+${invoice.lines.length > 0
+  ? `<table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th>
+<th class="num">Amount</th></tr></thead><tbody>${lineRows}${summary}</tbody></table>`
+  : `<div class="row"><span>${escapeHtml(invoice.description)}</span>`
+    + `<span>${escapeHtml(money(amounts.subtotalCents))}</span></div>`}
 <div class="row"><span>Issued</span><span>${escapeHtml(invoice.issueDate.slice(0, 10))}</span></div>
 <div class="row"><span>Due</span><span>${escapeHtml(invoice.dueDate.slice(0, 10))}</span></div>
 <div class="row"><span>Status</span><span>${invoiceStatus(invoice)}</span></div>
-<div class="row total"><span>Total</span><span>${amount}</span></div>
+<div class="row total"><span>Total</span><span>${escapeHtml(money(amounts.totalCents))}</span></div>
+${invoice.terms ? `<p class="terms">${escapeHtml(invoice.terms)}</p>` : ''}
+</body></html>`);
+        },
+      },
+
+      /* ------------------------------------------------------------ contracts */
+
+      {
+        method: 'GET', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/contracts$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.inScope(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const contracts = scoped.listContracts(clientId);
+          // The send check travels with the contract so the studio can grey out
+          // the button and say why, without re-deriving the rules in the client.
+          send(res, 200, {
+            contracts: contracts.map((contract) => ({ ...contract, sendable: contractReadyToSend(contract) })),
+          });
+        },
+      },
+
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/contracts$/,
+        run: ({ res, params, body, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          if (!scoped.getClient(clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          const input = body as { title?: string; markdown?: string; projectId?: string;
+            number?: string; fees?: unknown; currency?: string };
+          const now = new Date().toISOString();
+          const read = readFees(input?.fees);
+          if (read.error) {
+            send(res, 400, { error: 'bad_request', message: read.error });
+            return;
+          }
+          if (input?.currency !== undefined && !/^[A-Za-z]{3}$/.test(input.currency)) {
+            send(res, 400, {
+              error: 'bad_request',
+              message: 'A currency is three letters, as in USD or GBP.',
+            });
+            return;
+          }
+          const client = scoped.getClient(clientId);
+          const contract: Contract = {
+            id: newId('contract'), clientId,
+            number: input.number?.trim()
+              || `CON-${String(scoped.listContracts(clientId).length + 1).padStart(4, '0')}`,
+            // A contract always has a name. The terms can still be empty — that
+            // is a draft — but "Contract" with no client in it is not a document.
+            title: input.title?.trim() || `Agreement — ${client?.name ?? clientId}`,
+            status: 'draft', markdown: input.markdown ?? '', fees: read.fees ?? [],
+            currency: input.currency?.toUpperCase() ?? 'USD',
+            revisions: [],
+            createdAt: now, updatedAt: now,
+            ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+          };
+          scoped.saveContract(contract);
+          send(res, 201, { contract: { ...contract, sendable: contractReadyToSend(contract) } });
+        },
+      },
+
+      /**
+       * Revising a contract. A change of terms is a revision, recorded, rather
+       * than an overwrite: somebody may already have agreed to the text being
+       * replaced, and "which version did they sign" has to stay answerable.
+       */
+      {
+        method: 'PATCH', pattern: /^\/api\/contracts\/(?<id>[\w-]+)$/,
+        run: ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
+          const existing = this.store.getContract(params['id'] ?? '');
+          if (!existing || !scoped.inScope(existing.clientId)) {
+            send(res, 404, { error: 'not_found', message: 'No such contract for this session.' });
+            return;
+          }
+          const input = body as { title?: string; markdown?: string; projectId?: string;
+            status?: string; fees?: unknown; signedBy?: string; note?: string; by?: string };
+          const now = new Date().toISOString();
+          const read = readFees(input?.fees);
+          if (read.error) {
+            send(res, 400, { error: 'bad_request', message: read.error });
+            return;
+          }
+          const statuses = ['draft', 'sent', 'signed', 'declined', 'void'] as const;
+          const wanted = statuses.find((s) => s === input?.status);
+          if (input?.status !== undefined && !wanted) {
+            send(res, 400, { error: 'bad_request', message: 'A contract is a draft, sent, signed, declined or void.' });
+            return;
+          }
+
+          /*
+           * Lifecycle, enforced here rather than trusted. A voided contract is
+           * a closed record — voiding is what a studio does instead of deleting,
+           * so reopening one quietly would undo the only thing voiding meant. A
+           * signed one has terms somebody already agreed to, and rewriting those
+           * terms in place is the exact failure the revision list exists to
+           * prevent: the signature would end up describing prose it never saw.
+           * Voiding is left open, because that is the exit a signed contract has.
+           */
+          if (existing.status === 'void') {
+            send(res, 409, {
+              error: 'conflict',
+              message: 'This one is void. Voiding is how a contract is closed rather than deleted, '
+                + 'so it stays as it is — start a new contract instead.',
+            });
+            return;
+          }
+          if (existing.status === 'signed') {
+            const rewritesTerms = input?.markdown !== undefined || read.fees !== undefined
+              || input?.title !== undefined;
+            if (rewritesTerms) {
+              send(res, 409, {
+                error: 'conflict',
+                message: 'This one is signed. The terms somebody agreed to cannot be rewritten in place — '
+                  + 'void it and send a new contract, so it stays answerable which version they signed.',
+              });
+              return;
+            }
+            if (wanted && wanted !== 'void' && wanted !== 'declined') {
+              send(res, 409, {
+                error: 'conflict',
+                message: 'This one is signed, so it is either left alone, declined or voided. '
+                  + 'Anything else would misdescribe a signature that is already on the record.',
+              });
+              return;
+            }
+          }
+
+          // Sending runs the same readiness check the list view shows, so the
+          // button that greyed out cannot be reached by calling the route
+          // directly. The check is on the *candidate*, not the current row.
+          if (wanted === 'sent') {
+            const check = contractReadyToSend({ ...existing, status: 'sent' });
+            if (!check.ready) {
+              send(res, 400, { error: 'bad_request', message: check.reason });
+              return;
+            }
+          }
+
+          const contract: Contract = {
+            ...existing,
+            ...(input?.title?.trim() ? { title: input.title.trim() } : {}),
+            ...(input?.markdown !== undefined ? { markdown: input.markdown } : {}),
+            ...(read.fees ? { fees: read.fees } : {}),
+            ...(wanted ? { status: wanted } : {}),
+            updatedAt: now,
+          };
+
+          // Signing records three facts at once, and requires a name. A
+          // signature with nobody's name on it is not a signature, and the
+          // date is the server's rather than the studio's so a contract cannot
+          // be backdated to before the terms existed.
+          if (wanted === 'signed') {
+            const signedBy = input?.signedBy?.trim();
+            if (!signedBy) {
+              send(res, 400, {
+                error: 'bad_request',
+                message: 'Recording a signature needs the name that goes on the line.',
+              });
+              return;
+            }
+            contract.signedBy = signedBy;
+            contract.signedAt = now;
+            if (!contract.sentAt) contract.sentAt = existing.sentAt ?? now;
+          }
+          if (wanted === 'sent' && !existing.sentAt) contract.sentAt = now;
+          /*
+           * Declining withdraws the claim, so the signature comes off. Voiding
+           * does not: a signature is a fact about what was agreed, and it
+           * outlives the agreement being cancelled — which is also why DELETE
+           * below refuses anything that has one. Clearing it on void would make
+           * a signed contract deletable the moment it was voided, quietly
+           * throwing away the evidence that it had ever been signed at all.
+           */
+          if (wanted === 'declined' && existing.signedAt) {
+            delete contract.signedAt;
+            delete contract.signedBy;
+          }
+
+          if (input?.markdown !== undefined && input.markdown !== existing.markdown) {
+            const by = input.by?.trim() || (principal.kind === 'studio' ? 'the studio' : 'a portal session');
+            contract.revisions = [...existing.revisions, {
+              at: now, by,
+              note: input.note?.trim() || 'Terms revised.',
+              markdown: input.markdown,
+            }];
+          }
+
+          scoped.saveContract(contract);
+          send(res, 200, { contract: { ...contract, sendable: contractReadyToSend(contract) } });
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/contracts\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const id = params['id'] ?? '';
+          const existing = this.store.getContract(id);
+          // A signed contract is not deleted, because somebody agreed to it.
+          // It is voided, which keeps the record and the signature together.
+          if (existing?.signedAt) {
+            send(res, 409, {
+              error: 'conflict',
+              message: 'This one is signed. Void it instead — a signature has to stay on the '
+                + 'record of what was agreed.',
+            });
+            return;
+          }
+          scoped.deleteContract(id);
+          send(res, 200, { removed: id });
+        },
+      },
+
+      /**
+       * The contract as a document, for sending. This is the one printable page
+       * in the system a client is expected to sign, so it states the parties,
+       * the date, the fees and the signature line — and the signature line is
+       * blank, because the server does not sign for anybody.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/contracts\/(?<id>[\w-]+)\/document$/, html: true,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const contract = this.store.getContract(params['id'] ?? '');
+          if (!contract || !scoped.inScope(contract.clientId)) {
+            sendHtml(res, 404, '<p>No such contract.</p>');
+            return;
+          }
+          const client = scoped.getClient(contract.clientId);
+          const fees = contractFees(contract);
+          const money = (cents: number): string => (cents / 100).toLocaleString('en-US', {
+            style: 'currency', currency: contract.currency,
+          });
+          const feeRows = contract.fees.map((fee) => `<tr><td>${escapeHtml(fee.description)}</td>`
+            + `<td>${escapeHtml(fee.dueDate ?? '')}</td>`
+            + `<td class="num">${escapeHtml(money(fee.amountCents))}</td></tr>`).join('');
+          sendHtml(res, 200, `<!doctype html><html><head><meta charset="utf-8">
+<title>${escapeHtml(contract.number)} — ${escapeHtml(contract.title)}</title><style>${STYLE}
+body { max-width: 680px; margin: 48px auto; }
+table { width: 100%; border-collapse: collapse; margin: 24px 0 0; }
+th { text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.08em;
+     color: #666; border-bottom: 1px solid #ddd; padding: 0 0 6px; }
+td { padding: 6px 0; border-bottom: 1px solid #eee; vertical-align: top; }
+.num { text-align: right; white-space: nowrap; }
+.terms { margin-top: 24px; line-height: 1.6; }
+.sign { margin-top: 48px; display: flex; gap: 48px; }
+.sign div { flex: 1; border-top: 1px solid #333; padding-top: 6px; font-size: 0.85em; }
+</style></head><body>
+<h1>${escapeHtml(contract.title)}</h1>
+<p class="muted">${escapeHtml(contract.number)} · Between the studio and
+${escapeHtml(client?.name ?? contract.clientId)}</p>
+${feeRows
+  ? `<table><thead><tr><th>Item</th><th>Due</th><th class="num">Amount</th></tr></thead>
+<tbody>${feeRows}<tr><td colspan="2">Total stated</td>
+<td class="num">${escapeHtml(money(fees.totalCents))}</td></tr></tbody></table>`
+  : ''}
+<div class="terms">${renderMarkdown(contract.markdown)}</div>
+<div class="sign">
+  <div>Signed for the studio</div>
+  <div>Signed for ${escapeHtml(client?.name ?? contract.clientId)}</div>
+</div>
+${contract.signedAt
+  ? `<p class="muted">Recorded as signed by ${escapeHtml(contract.signedBy ?? 'nobody recorded')}
+on ${escapeHtml(contract.signedAt.slice(0, 10))}.</p>`
+  : '<p class="muted">Unsigned. Print, sign, and record the signature here.</p>'}
 </body></html>`);
         },
       },
@@ -3047,6 +3770,7 @@ body { max-width: 640px; margin: 48px auto; }
           if (scoped.listAssets(clientId).length > 0) blockers.push('a file');
           if (scoped.listDeliverables(clientId).length > 0) blockers.push('a deliverable');
           if (scoped.listMilestones(clientId).length > 0) blockers.push('a milestone');
+          if (scoped.listEvents(clientId).length > 0) blockers.push('a meeting');
           if (scoped.listInvoices(clientId).length > 0) blockers.push('an invoice');
           if (scoped.listMessages(clientId).length > 0) blockers.push('a message');
           if (scoped.listFeedback(clientId).length > 0) blockers.push('feedback');
@@ -3747,6 +4471,132 @@ function sendText(res: ServerResponse, status: number, body: string): void {
  */
 export function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
+}
+
+/* --------------------------------------------------------------- calendar */
+
+/**
+ * The two shapes a calendar value can take, checked before they reach Zod.
+ *
+ * The engine's schema would refuse both, and it would refuse them by throwing —
+ * which the request wrapper turns into a 500. A client that posted
+ * `date: "next tuesday"` has made a mistake, not broken the server, so the
+ * shape is checked here and answered with a 400 that says what was expected.
+ */
+/**
+ * A real day, as `YYYY-MM-DD`.
+ *
+ * The round trip is the point. `Date.parse` accepts the format and quietly rolls
+ * `2026-02-31` forward to 3 March, so a regex plus a NaN check would accept a
+ * date that does not exist and store the event three days after it was booked.
+ * Re-formatting the parsed instant and comparing catches the overflow — and the
+ * UTC construction keeps the check from being wrong by a day near midnight.
+ */
+function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed.toISOString().slice(0, 10) === value;
+}
+
+function isClockTime(value: unknown): value is string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+/** `undefined` for a kind that does not exist, so a caller can refuse it. */
+function eventKindOf(value: unknown): EventKind | undefined {
+  if (value === undefined) return 'meeting';
+  return ['meeting', 'review', 'deadline', 'internal'].includes(value as string)
+    ? value as EventKind
+    : undefined;
+}
+
+/**
+ * What a strategy page is called before anyone has named it.
+ *
+ * The client is in the title because a page called "Strategy" is a file rather
+ * than a document, and a list of twenty-four of them is unreadable. The
+ * transcript is not read for a title: guessing at one from the first line
+ * produces "So yeah basically we need" at the top of every client's page.
+ */
+/**
+ * Line items, off the wire, into the record.
+ *
+ * `quantityHundredths` is an integer on purpose. A studio member types "7.5
+ * hours" and this is 750, because `7.5 * 12000` in floating point is not 90000
+ * and a studio that cannot add up its own invoice stops trusting the total.
+ * The amount of a line is never accepted from the client — it is derived in
+ * `invoiceAmounts` and stored on the invoice, so what the studio reads back is
+ * what the arithmetic produced.
+ */
+function readLines(
+  raw: unknown, now: string,
+): { lines?: InvoiceLine[]; error?: string } {
+  if (raw === undefined) return {};
+  if (!Array.isArray(raw)) return { error: 'Lines must be a list.' };
+  const lines: InvoiceLine[] = [];
+  for (const [index, entry] of raw.entries()) {
+    const line = entry as { description?: string; quantityHundredths?: number;
+      unitAmountCents?: number };
+    const where = `Line ${index + 1}`;
+    if (!line?.description?.trim()) return { error: `${where} needs a description.` };
+    if (!Number.isInteger(line.quantityHundredths) || (line.quantityHundredths ?? 0) <= 0) {
+      return { error: `${where} needs a quantity above zero, in hundredths — 7.5 hours is 750.` };
+    }
+    if (!Number.isInteger(line.unitAmountCents) || (line.unitAmountCents ?? -1) < 0) {
+      return { error: `${where} needs a unit price in whole minor units, such as 12000 for 120.00.` };
+    }
+    lines.push(InvoiceLine.parse({
+      id: newId('line'), description: line.description.trim(),
+      quantityHundredths: line.quantityHundredths,
+      unitAmountCents: line.unitAmountCents, createdAt: now,
+    }));
+  }
+  return { lines };
+}
+
+/** The tax rate, refused rather than clamped when it is not a rate at all. */
+function readTax(raw: unknown): { taxBasisPoints?: number; error?: string } {
+  if (raw === undefined) return {};
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw > 10_000) {
+    return { error: 'Tax is a rate in basis points between 0 and 10000 — 20% is 2000.' };
+  }
+  return { taxBasisPoints: raw };
+}
+
+/**
+ * Fees, off the wire, into the record.
+ *
+ * The same integer rule as an invoice line: money in minor units, and `kind`
+ * from a fixed set rather than free text, because the studio sums fees by kind
+ * and a typo in that word would quietly move money between columns in a
+ * document somebody signs.
+ */
+function readFees(raw: unknown): { fees?: ContractFee[]; error?: string } {
+  if (raw === undefined) return {};
+  if (!Array.isArray(raw)) return { error: 'Fees must be a list.' };
+  const kinds = ['retainer', 'deposit', 'milestone', 'final', 'other'] as const;
+  const fees: ContractFee[] = [];
+  for (const [index, entry] of raw.entries()) {
+    const fee = entry as { description?: string; amountCents?: number; kind?: string;
+      dueDate?: string };
+    const where = `Fee ${index + 1}`;
+    if (!fee?.description?.trim()) return { error: `${where} needs a description.` };
+    if (!Number.isInteger(fee.amountCents) || (fee.amountCents ?? -1) < 0) {
+      return { error: `${where} needs an amount in whole minor units, such as 120000 for 1200.00.` };
+    }
+    fees.push(ContractFee.parse({
+      id: newId('fee'), description: fee.description.trim(),
+      amountCents: fee.amountCents,
+      kind: kinds.find((k) => k === fee.kind) ?? 'other',
+      ...(fee.dueDate?.trim() ? { dueDate: fee.dueDate.trim().slice(0, 10) } : {}),
+    }));
+  }
+  return { fees };
+}
+
+function defaultStrategyTitle(clientName: string | undefined): string {
+  return clientName ? `Strategy — ${clientName}` : 'Strategy';
 }
 
 /** Bounded so a malformed or hostile request cannot exhaust memory. */

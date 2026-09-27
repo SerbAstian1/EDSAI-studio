@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { SECTIONS, GROUPS, sectionsIn } from '../src/shell/navigation.js';
+import { SECTIONS, BLOCKS, blockSectionIds, sectionsIn } from '../src/shell/navigation.js';
 import { allCommands, search } from '../src/shell/commands.js';
 import { summarise } from '../src/screens/Home.js';
 import type { Run } from '../src/api.js';
 import { parseRoute, activeSection } from '../src/App.js';
+import { CLIENT_TABS, DEFAULT_TAB } from '../src/screens/ClientDetail.js';
+import { leadsByStage } from '../src/screens/Acquisition.js';
+import { railClients } from '../src/shell/Sidebar.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
@@ -18,6 +21,27 @@ import { layOutLabels } from '../src/components/QuadrantChart.js';
 import { requestConfirmation, resolveConfirmation } from '../src/components/ConfirmDialog.js';
 import { emailShareUrl, portalAccessMessage, whatsAppShareUrl } from '../src/components/PortalShare.js';
 import { dollarsToCents, formatCents } from '../src/screens/Invoices.js';
+import {
+  formatBasisPoints,
+  lineTotalCents,
+  subtotalCents,
+  taxCents,
+  toBasisPoints,
+  toHundredths,
+} from '../src/money.js';
+import {
+  addDays, endMinutes, eventsOn, hourRange, isSameMonth, layoutDay, monthGrid, monthTitle,
+  startOfWeek, timeLabel, todayIso, weekDates, weekTitle, weekdayIndex,
+} from '../src/calendar.js';
+import { rangeFor, rangeTitle, stepAnchor, toneClass, toneFor } from '../src/components/CalendarView.js';
+import { busiest, clientsOn } from '../src/screens/Calendar.js';
+import type { StudioEvent } from '../src/api.js';
+
+const event = (over: Partial<StudioEvent> = {}): StudioEvent => ({
+  id: 'e1', title: 'Kickoff', kind: 'meeting', date: '2026-03-04',
+  createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-01T00:00:00Z', ...over,
+});
+
 
 const output = (departmentId: number, values: number[], over: Partial<DepartmentOutput> = {}): DepartmentOutput => ({
   runId: 'r1', departmentId, body: 'x',
@@ -228,12 +252,24 @@ describe('routing — sections', () => {
   it('reads each built section', () => {
     expect(parseRoute('#/brands').screen).toBe('brands');
     expect(parseRoute('#/portals').screen).toBe('portals');
-    expect(parseRoute('#/activity').screen).toBe('activity');
+    expect(parseRoute('#/updates').screen).toBe('activity');
+    expect(parseRoute('#/acquisition').screen).toBe('acquisition');
     expect(parseRoute('#/settings').screen).toBe('settings');
+  });
+
+  it('keeps the old activity link working, because it is already in saved URLs', () => {
+    // The section was Activity before the rail called it Updates. Renaming it
+    // must not break a link somebody pasted into a note a month ago.
+    expect(parseRoute('#/activity').screen).toBe('activity');
+    expect(activeSection(parseRoute('#/activity'))).toBe('updates');
   });
 
   it('reads a planned section and keeps its id', () => {
     expect(parseRoute('#/section/clients')).toEqual({ screen: 'planned', sectionId: 'clients' });
+  });
+
+  it('routes a planned section by its own path, so the rail can link it directly', () => {
+    expect(parseRoute('#/tasks').screen).toBe('planned');
   });
 
   it('shows a missing-page state for an unknown section', () => {
@@ -249,7 +285,7 @@ describe('routing — sections', () => {
   it('marks the section itself current elsewhere', () => {
     expect(activeSection(parseRoute('#/'))).toBe('overview');
     expect(activeSection(parseRoute('#/brands'))).toBe('brands');
-    expect(activeSection(parseRoute('#/section/assets'))).toBe('assets');
+    expect(activeSection(parseRoute('#/tasks'))).toBe('tasks');
   });
 });
 
@@ -260,8 +296,100 @@ describe('routing — clients', () => {
       .toEqual({ screen: 'client', clientId: 'client-acme' });
   });
 
-  it('marks the clients entry current for a single client', () => {
-    expect(activeSection(parseRoute('#/clients/client-acme'))).toBe('clients');
+  it('reads which tab of the client is open', () => {
+    // The tab is in the URL so a refresh, a shared link and the back button
+    // all land on the same view.
+    expect(parseRoute('#/clients/client-acme/strategy'))
+      .toEqual({ screen: 'client', clientId: 'client-acme', tab: 'strategy' });
+  });
+
+  it('leaves the section blank for one client, because the rail answers it', () => {
+    // A client page is reached from that client's own row in the rail. Marking
+    // the Clients heading current as well would light two things at once for
+    // one click, and neither would be the thing that was clicked.
+    expect(activeSection(parseRoute('#/clients/client-acme'))).toBe('');
+  });
+});
+
+describe('the client’s own tabs', () => {
+  it('offers the ten the plan asks for, in the order the work flows', () => {
+    expect(CLIENT_TABS.map((t) => t.label)).toEqual([
+      'Dashboard', 'Updates', 'Tasks', 'Documents', 'Library',
+      'Discovery & Strategy', 'Brand Hub', 'Timeline', 'Contracts & Invoices', 'Settings',
+    ]);
+  });
+
+  it('opens on the dashboard', () => {
+    expect(DEFAULT_TAB).toBe('dashboard');
+    expect(CLIENT_TABS[0]?.id).toBe(DEFAULT_TAB);
+  });
+});
+
+describe('the lead board', () => {
+  const lead = (id: string, name: string, status: Client['status']): Client => ({
+    id, name, slug: id, status,
+    createdAt: '2026-09-17T00:00:00Z', updatedAt: '2026-09-17T00:00:00Z',
+  });
+
+  it('holds a prospect and a dormant client, and nothing that is already working', () => {
+    // The columns come from `status`, not from a pipeline the database does
+    // not have. A client that has started work is on the rail, not here.
+    const columns = leadsByStage([
+      lead('m', 'Morrow', 'prospect'),
+      lead('a', 'Acme', 'active'),
+      lead('d', 'Dims', 'dormant'),
+    ]);
+    expect(columns.map(([id, held]) => [id, held.map((c) => c.id)])).toEqual([
+      ['prospect', ['m']], ['dormant', ['d']],
+    ]);
+  });
+
+  it('sorts the leads by name, not by when the record happened to be created', () => {
+    const [first, second] = leadsByStage([
+      lead('z', 'Zara', 'prospect'), lead('a', 'Ada', 'prospect'),
+    ]);
+    expect(first?.[1].map((c) => c.name)).toEqual(['Ada', 'Zara']);
+    expect(second?.[1]).toEqual([]);
+  });
+});
+
+describe('the client rail in the sidebar', () => {
+  const person = (id: string, name: string, status: Client['status']): Client => ({
+    id, name, slug: id, status,
+    createdAt: '2026-09-17T00:00:00Z', updatedAt: '2026-09-17T00:00:00Z',
+  });
+
+  it('shows only the clients actually being worked on', () => {
+    // A dormant or archived client is a real record and belongs in the full
+    // list, but listing it beside the work in hand would make the rail
+    // disagree with itself.
+    expect(railClients([
+      person('a', 'Acme', 'active'),
+      person('p', 'Prospect', 'prospect'),
+      person('d', 'Dims', 'dormant'),
+      person('x', 'Old', 'archived'),
+    ]).map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('sorts by name, not by when the record was created', () => {
+    // The rail has to read the same on a studio that grew by accident.
+    expect(railClients([
+      person('z', 'Zara', 'active'),
+      person('a', 'Ada', 'active'),
+      person('m', 'Morrow', 'active'),
+    ]).map((c) => c.name)).toEqual(['Ada', 'Morrow', 'Zara']);
+  });
+
+  it('leaves the list it was given alone', () => {
+    // `sort` mutates. Sorting the query cache's array in place would reorder
+    // every other view reading the same cached list.
+    const given = [person('z', 'Zara', 'active'), person('a', 'Ada', 'active')];
+    railClients(given);
+    expect(given.map((c) => c.name)).toEqual(['Zara', 'Ada']);
+  });
+
+  it('is empty rather than absent before the clients have loaded', () => {
+    expect(railClients([])).toEqual([]);
   });
 });
 
@@ -270,7 +398,6 @@ describe('navigation model', () => {
     for (const section of SECTIONS.filter((s) => s.status === 'planned')) {
       expect(section.phase, section.id).toBeTruthy();
       expect(section.intent, section.id).toBeTruthy();
-      expect(section.href, section.id).toBeUndefined();
     }
   });
 
@@ -281,9 +408,62 @@ describe('navigation model', () => {
     }
   });
 
-  it('places every section in a rendered group', () => {
-    const grouped = GROUPS.flatMap((g) => sectionsIn(g)).map((s) => s.id).sort();
-    expect(grouped).toEqual([...SECTIONS].map((s) => s.id).sort());
+  it('gives every planned section that has a link a route the parser understands', () => {
+    // A planned section with a route is a real page reached by a real link.
+    // An entry drawn in the rail but dead is worse than one that is missing:
+    // it looks broken, and clicking is the only way to find out what it is.
+    const routed = SECTIONS.filter((s) => s.status === 'planned' && s.href);
+    expect(routed.length).toBeGreaterThan(0);
+    for (const section of routed) {
+      expect(activeSection(parseRoute(section.href ?? '')), section.id).toBe(section.id);
+    }
+  });
+
+  it('leaves a planned section with no link unclickable rather than faking one', () => {
+    // No route, no href — rendered as `aria-disabled` text. A link to nothing
+    // would be a promise the studio cannot keep.
+    for (const section of SECTIONS.filter((s) => s.status === 'planned' && !s.href)) {
+      expect(section.href, section.id).toBeUndefined();
+    }
+  });
+
+  it('reaches every section from the rail, with no second list', () => {
+    // Three kinds of block reach three different ways: a section block draws
+    // its sections, the clients block is answered by a client row and its
+    // "all clients" link, and the account block draws settings and support.
+    const drawn = blockSectionIds();
+    const reachable = new Set([
+      ...drawn,
+      ...BLOCKS.filter((b) => b.kind === 'clients').map((b) => b.id),
+      'settings', 'support',
+    ]);
+    for (const section of SECTIONS) {
+      expect(reachable.has(section.id), section.id).toBe(true);
+    }
+  });
+
+  it('marks the studio’s own blocks as studio-only, and keeps the two a client needs', () => {
+    // A client has no Home, no pipeline, no calendar and no leads, so a
+    // preview that kept them was not a preview. The client block is the page
+    // being previewed and the account block is how you turn the eye back.
+    const studioOnly = BLOCKS.filter((b) => b.kind === 'sections' && b.studioOnly).map((b) => b.id);
+    expect(studioOnly).toEqual(['studio', 'acquisition', 'more']);
+    expect(BLOCKS.filter((b) => !studioOnly.includes(b.id)).map((b) => b.id)).toEqual(['clients', 'account']);
+  });
+
+  it('shows the same section once in the rail', () => {
+    // Two blocks claiming one section means it is drawn twice, and the current
+    // marker can only be on one of them.
+    const ids = blockSectionIds();
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('draws a block’s sections in the order the block lists them', () => {
+    // The block is a decision about what sits next to what; reading the order
+    // off the master list would quietly overrule it.
+    const studio = BLOCKS.find((b) => b.id === 'studio');
+    expect(sectionsIn(studio ?? { kind: 'clients', id: 'x', label: 'x', all: '#/' })
+      .map((s) => s.id)).toEqual(['overview', 'updates', 'tasks', 'calendar']);
   });
 });
 
@@ -298,6 +478,27 @@ describe('command palette', () => {
 
   it('offers only runnable commands on an empty query', () => {
     expect(search(commands, '').every((c) => c.available)).toBe(true);
+  });
+
+  it('runs a planned section that has a page to open', () => {
+    // Tasks is still marked as arriving in a later phase but it does have a
+    // route, and so does Calendar now that it is built. The palette is a way of
+    // getting to a section, and being told it does not exist yet should not be
+    // what stops you.
+    for (const id of ['tasks', 'calendar']) {
+      expect(commands.find((c) => c.id === `go:${id}`)?.available, id).toBe(true);
+    }
+  });
+
+  it('cannot run a planned section with nowhere to go', () => {
+    for (const command of commands.filter((c) => c.id.startsWith('go:'))) {
+      const id = command.id.slice(3);
+      const section = SECTIONS.find((s) => s.id === id);
+      if (section?.status === 'planned' && !section.href) {
+        expect(command.available, id).toBe(false);
+        expect(command.unavailable, id).toContain('arrives in');
+      }
+    }
   });
 
   it('ranks a prefix match above a match in the middle', () => {
@@ -757,5 +958,298 @@ describe('an invoice amount, typed as dollars and stored as cents', () => {
   it('formats cents back as a currency string', () => {
     expect(formatCents(150000)).toBe('$1,500.00');
     expect(formatCents(0)).toBe('$0.00');
+  });
+});
+
+/* The studio's copy of the engine's arithmetic. It cannot import the engine
+   (node:sqlite would follow it into the bundle), so the agreement between the
+   two is a promise these tests have to keep — and they are the reason a preview
+   can be trusted to match what the server stores. */
+describe('the invoice builder adding up a quote before it is filed', () => {
+  it('multiplies a quantity in hundredths by a price in cents', () => {
+    expect(lineTotalCents(750, 12000)).toBe(90000);       // 7.5 h at £120
+    expect(lineTotalCents(100, 2500)).toBe(2500);         // one of something
+    expect(lineTotalCents(3, 1999)).toBe(60);             // £19.99 x 3
+  });
+
+  it('rounds the half-cent rather than leaving a fraction behind', () => {
+    expect(lineTotalCents(1, 1)).toBe(0);
+    expect(lineTotalCents(101, 1)).toBe(1);
+  });
+
+  it('sums lines before tax', () => {
+    expect(subtotalCents([
+      { quantityHundredths: 750, unitAmountCents: 12000 },
+      { quantityHundredths: 200, unitAmountCents: 5000 },
+    ])).toBe(100000);
+    expect(subtotalCents([])).toBe(0);
+  });
+
+  it('reads a percentage as basis points and taxes the subtotal with it', () => {
+    expect(toBasisPoints('20')).toBe(2000);
+    expect(toBasisPoints('8.25%')).toBe(825);
+    expect(toBasisPoints('')).toBe(0);          // untaxed is the default, not an error
+    expect(toBasisPoints('free')).toBeUndefined();
+    expect(toBasisPoints('120')).toBeUndefined();   // more than the whole bill
+    expect(taxCents(15000, 2000)).toBe(3000);
+    expect(taxCents(15000, 0)).toBe(0);
+  });
+
+  it('keeps a fractional quantity in hundredths rather than as a float', () => {
+    expect(toHundredths('7.5')).toBe(750);
+    expect(toHundredths('2')).toBe(200);
+  });
+
+  it('shows a rate back as the percentage a person typed', () => {
+    expect(formatBasisPoints(2000)).toBe('20%');
+    expect(formatBasisPoints(825)).toBe('8.25%');
+  });
+
+  it('adds a derived total the way the engine does', () => {
+    // 10 h of strategy at £85 plus 2.5 h of build at £12: £880 before tax,
+    // £1,056 after. The hundredths are what stop the half hour turning into a
+    // rounding argument, and the tax is taken from the subtotal rather than
+    // added to each line.
+    const lines = [
+      { quantityHundredths: 1000, unitAmountCents: 8500 },
+      { quantityHundredths: 250, unitAmountCents: 1200 },
+    ];
+    const subtotal = subtotalCents(lines);
+    const tax = taxCents(subtotal, 2000);
+    expect(subtotal).toBe(88000);
+    expect(tax).toBe(17600);
+    expect(subtotal + tax).toBe(105600);
+  });
+});
+
+describe('the calendar’s dates', () => {
+  it('starts every week on a Monday', () => {
+    // 2026-03-01 is a Sunday, so the week it closes began on the 23rd of
+    // February, and the grid has to say so rather than starting on the Sunday.
+    expect(weekdayIndex('2026-03-01')).toBe(6);
+    expect(startOfWeek('2026-03-01')).toBe('2026-02-23');
+    expect(startOfWeek('2026-03-02')).toBe('2026-03-02');
+    expect(weekDates('2026-03-04')).toEqual([
+      '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05',
+      '2026-03-06', '2026-03-07', '2026-03-08',
+    ]);
+  });
+
+  it('adds days across a month and a year boundary', () => {
+    expect(addDays('2026-02-28', 1)).toBe('2026-03-01');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
+  });
+
+  it('adds a day without moving it, the way a local Date would across a DST change', () => {
+    // Adding 86,400,000ms to a *local* midnight lands on 23:00 the day before in
+    // any timezone that shifts its clocks in March. The grid would then draw the
+    // same date in two columns, or skip one entirely.
+    expect(addDays('2026-03-28', 1)).toBe('2026-03-29');
+    expect(addDays('2026-10-24', 1)).toBe('2026-10-25');
+  });
+
+  it('draws a month as six whole weeks, always', () => {
+    // February 2026 starts on a Sunday and has 28 days, so a 35-day grid would
+    // fit it exactly. It is still 42: a grid that changes height as you page
+    // makes the calendar jump under the pointer, and the sixth row is usually
+    // somebody's deadline.
+    for (const anchor of ['2026-02-15', '2026-03-15', '2026-09-15', '2024-02-15']) {
+      const grid = monthGrid(anchor);
+      expect(grid.length, anchor).toBe(42);
+      expect(new Set(grid).size, anchor).toBe(42);
+      expect(grid[0] && weekdayIndex(grid[0]), anchor).toBe(0);
+    }
+  });
+
+  it('puts the first of the month in the right week of its own grid', () => {
+    const march = monthGrid('2026-03-15');
+    // 1 March 2026 is a Sunday: the last cell of the first row.
+    expect(march[6]).toBe('2026-03-01');
+    expect(isSameMonth('2026-03-01', '2026-03-31')).toBe(true);
+    expect(isSameMonth('2026-03-31', '2026-04-01')).toBe(false);
+  });
+
+  it('titles a month, a week and a day the way a person would', () => {
+    expect(monthTitle('2026-03-04')).toBe('March 2026');
+    expect(weekTitle('2026-03-04')).toBe('2–8 March 2026');
+    // A week that straddles two months names both, rather than printing the
+    // wrong one next to the right day number.
+    expect(weekTitle('2026-02-27')).toContain('February');
+    expect(weekTitle('2026-02-27')).toContain('March');
+    expect(rangeTitle(rangeFor('day', '2026-03-04'))).toBe('Wednesday 4 March 2026');
+  });
+
+  it('reads today in the viewer’s own timezone, not UTC’s', () => {
+    // 23:30 local on the 4th is already the 5th in UTC. A studio booking a call
+    // tomorrow must see tomorrow, whatever the server thinks the date is.
+    const late = new Date(2026, 2, 4, 23, 30);
+    expect(todayIso(late)).toBe('2026-03-04');
+    expect(todayIso(new Date(2026, 2, 4, 0, 30))).toBe('2026-03-04');
+  });
+});
+
+describe('the calendar’s views', () => {
+  it('covers exactly the days it draws, so the query window matches the grid', () => {
+    const month = rangeFor('month', '2026-03-15');
+    expect(monthGrid('2026-03-15')).toHaveLength(42);
+    expect(month.from).toBe('2026-02-23');
+    expect(month.to).toBe('2026-04-05');
+
+    const week = rangeFor('week', '2026-03-04');
+    expect(week.from).toBe('2026-03-02');
+    expect(week.to).toBe('2026-03-08');
+
+    const day = rangeFor('day', '2026-03-04');
+    expect(day.from).toBe('2026-03-04');
+    expect(day.to).toBe('2026-03-04');
+  });
+
+  it('pages by what the view considers a page', () => {
+    expect(stepAnchor('day', '2026-03-04', 1)).toBe('2026-03-05');
+    expect(stepAnchor('week', '2026-03-04', 1)).toBe('2026-03-11');
+    expect(stepAnchor('month', '2026-03-04', 1)).toBe('2026-04-01');
+    // Backwards out of January lands in December of the year before, not
+    // January of this one — a month step that ignores the year is a dead button.
+    expect(stepAnchor('month', '2026-01-15', -1)).toBe('2025-12-01');
+    expect(stepAnchor('month', '2026-12-15', 1)).toBe('2027-01-01');
+  });
+});
+
+describe('what is on a day', () => {
+  it('puts all-day entries first and the timed ones in order', () => {
+    const day = eventsOn([
+      event({ id: 'a', title: 'Afternoon', startTime: '14:00' }),
+      event({ id: 'b', title: 'Deadline', kind: 'deadline' }),
+      event({ id: 'c', title: 'Morning', startTime: '09:00' }),
+      event({ id: 'd', title: 'Elsewhere', date: '2026-03-05' }),
+    ], '2026-03-04');
+    expect(day.map((e) => e.title)).toEqual(['Deadline', 'Morning', 'Afternoon']);
+  });
+
+  it('gives an entry with no end an hour, and never a negative length', () => {
+    expect(endMinutes(event({ startTime: '09:00' }))).toBe(600);
+    // A half-typed `18:00–` must still draw a bar rather than a negative one.
+    expect(endMinutes(event({ startTime: '18:00', endTime: '09:00' }))).toBe(19 * 60);
+    expect(timeLabel(600)).toBe('10:00');
+  });
+
+  it('widens the drawn hours to fit whatever is booked', () => {
+    // A 05:00 start is outside the default window; the entry is the reason the
+    // view opens earlier, not something that quietly falls off the top.
+    const hours = hourRange([event({ startTime: '05:30', endTime: '06:30' })]);
+    expect(hours.from).toBe(5);
+    expect(hourRange([]).from).toBe(7);
+    expect(hourRange([]).to).toBe(22);
+    // An all-day entry has no hour to fit, so it must not drag the axis to 00:00.
+    expect(hourRange([event({ kind: 'deadline' })]).from).toBe(7);
+  });
+
+  it('lays overlapping meetings side by side instead of on top of each other', () => {
+    const placed = layoutDay([
+      event({ id: 'block', title: 'Shoot', startTime: '09:00', endTime: '11:00' }),
+      event({ id: 'call', title: 'Call', startTime: '10:00', endTime: '10:30' }),
+      event({ id: 'third', title: 'Review', startTime: '10:15', endTime: '10:45' }),
+      event({ id: 'after', title: 'Lunch', startTime: '12:00', endTime: '13:00' }),
+    ]);
+    const by = Object.fromEntries(placed.map((p) => [p.event.id, p]));
+
+    // The shoot and the two calls form one cluster of three, so each gets a
+    // third of the width. Lunch starts after the cluster ends, so it gets the
+    // whole column back rather than being pushed off it.
+    expect(by['block']?.columns).toBe(3);
+    expect(by['call']?.columns).toBe(3);
+    expect(by['third']?.columns).toBe(3);
+    expect(new Set([by['block']?.column, by['call']?.column, by['third']?.column]).size).toBe(3);
+    expect(by['after']?.columns).toBe(1);
+    expect(by['after']?.column).toBe(0);
+  });
+
+  it('reuses a lane for entries that do not actually overlap', () => {
+    // 09:00–10:00 and 10:00–11:00 touch but do not overlap, so they share the
+    // width. Treating "ends when the next starts" as an overlap would halve
+    // every column in a normal working day.
+    const placed = layoutDay([
+      event({ id: 'first', startTime: '09:00', endTime: '10:00' }),
+      event({ id: 'second', startTime: '10:00', endTime: '11:00' }),
+    ]);
+    expect(placed.map((p) => p.column)).toEqual([0, 0]);
+    expect(placed.every((p) => p.columns === 1)).toBe(true);
+  });
+
+  it('leaves an all-day entry out of the lanes', () => {
+    expect(layoutDay([event({ kind: 'deadline' })])).toEqual([]);
+  });
+});
+
+describe('the calendar’s colours', () => {
+  it('gives a client the same tone wherever it appears', () => {
+    // The colour has to survive a filter change and a legend rebuild, or it
+    // stops meaning anything. Slotting clients into palette order instead would
+    // recolour half the calendar every time a client was renamed.
+    expect(toneFor('client-acme')).toBe(toneFor('client-acme'));
+    expect(toneClass('client-acme')).toBe(`cal-tone-${toneFor('client-acme')}`);
+  });
+
+  it('keeps every tone inside the palette the stylesheet defines', () => {
+    for (const id of ['a', 'client-acme', 'client-borealis', 'x'.repeat(40), 'Ω-9']) {
+      const tone = toneFor(id);
+      expect(tone, id).toBeGreaterThanOrEqual(0);
+      expect(tone, id).toBeLessThan(8);
+    }
+  });
+
+  it('draws the studio’s own time as the studio, not as a ninth client', () => {
+    // No client is not a colour — it is a third case, and it has to be
+    // distinguishable from every client's at a glance.
+    expect(toneClass(undefined)).toBe('cal-internal');
+    expect(toneClass('')).toBe('cal-internal');
+    expect(toneClass(undefined)).not.toBe(toneClass('client-acme'));
+  });
+});
+
+describe('the calendar’s own screen', () => {
+  it('lists the clients in the window in the order the rail does', () => {
+    const events = [
+      event({ id: 'a', clientId: 'b' }), event({ id: 'b', clientId: 'a' }),
+      event({ id: 'c', clientId: 'a' }),
+    ];
+    expect(clientsOn(events, ['a', 'b', 'c'])).toEqual(['a', 'b']);
+  });
+
+  it('shows a client whose id the client list no longer carries', () => {
+    // A deleted client with events still attached is a real state, and hiding it
+    // would silently drop those entries out of the legend.
+    expect(clientsOn([event({ clientId: 'gone' })], ['a'])).toEqual(['gone']);
+  });
+
+  it('leaves the studio’s own time out of the client list', () => {
+    expect(clientsOn([event({}), event({ id: 'b', clientId: 'a' })], ['a'])).toEqual(['a']);
+  });
+
+  it('ranks clients by how much of the window they hold', () => {
+    const events = [
+      event({ id: '1', clientId: 'a' }), event({ id: '2', clientId: 'a' }),
+      event({ id: '3', clientId: 'b' }), event({ id: '4' }),
+    ];
+    expect(busiest(events)).toEqual([['a', 2], ['b', 1]]);
+  });
+});
+
+describe('the calendar as a section', () => {
+  it('opens its own screen rather than the page that says it is missing', () => {
+    expect(parseRoute('#/calendar').screen).toBe('calendar');
+    expect(activeSection(parseRoute('#/calendar'))).toBe('calendar');
+  });
+
+  it('is listed as built, with a route the parser understands', () => {
+    const calendar = SECTIONS.find((s) => s.id === 'calendar');
+    expect(calendar?.status).toBe('built');
+    expect(parseRoute(calendar?.href ?? '').screen).toBe('calendar');
+  });
+
+  it('runs from the command palette', () => {
+    const go = allCommands().find((c) => c.id === 'go:calendar');
+    expect(go?.available).toBe(true);
   });
 });

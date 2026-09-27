@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
-import { api, type ApiError, type Client, type Contact, type Project } from '../api.js';
+import { api, type ApiError, type Client, type Contact, type Project, type Run } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import { RunTable } from '../components/RunTable.js';
@@ -9,6 +9,8 @@ import OverflowMenu from '../components/OverflowMenu.js';
 import DocumentShelf from '../components/DocumentShelf.js';
 import BrandHubAdmin from './BrandHubAdmin.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
+import { TranscriptStrategy } from '../components/TranscriptStrategy.js';
+import { ContractBuilder } from '../components/ContractBuilder.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
 import PortalAccess from './PortalAccess.js';
@@ -18,16 +20,18 @@ import Milestones from './Milestones.js';
 import Invoices from './Invoices.js';
 import Messages from './Messages.js';
 import FeedbackPanel from './FeedbackPanel.js';
-import type { Run } from '../api.js';
+import { activityForClient } from './Activity.js';
+import { StudioOnly, useViewMode } from '../viewMode.js';
 
 /**
  * One client: their people, their work, and the runs underneath it.
  *
- * The tabs the brief lists (deliverables, portal, approvals) are not here
- * because the entities behind them do not exist yet. Rendering empty tabs would
- * make the record look finished when it is not. Files are here now: they are
- * what the client actually downloads, so they belong beside the people and the
- * work rather than in a library of their own.
+ * The tabs are the client's own workspace, in the order the work flows: what is
+ * happening, what they are being sent, what they have access to, what it costs,
+ * and the record itself. The studio-only furniture — the edit menus, the upload
+ * targets, the internal notes — is wrapped in `StudioOnly` throughout, so the
+ * header's eye toggle turns the whole page into what the client would be shown
+ * rather than a page with a few buttons missing.
  *
  * Editing and deleting follow one rule throughout this page: a delete asks
  * first through the shared confirmation panel. Clients with dependent work
@@ -97,11 +101,13 @@ function ClientHeader({ client, dependents, onSaved }: {
                 style={{ marginLeft: 'auto' }}>
             {client.status}
           </span>
-          <OverflowMenu label={`Actions for ${client.name}`} size="bar" items={[
-            { label: 'Edit client', icon: Pencil, onSelect: () => setEditing(true) },
-            { label: remove.isPending ? 'Deleting…' : 'Delete client', icon: Trash2,
-              danger: true, disabled: remove.isPending, onSelect: onDelete },
-          ]} />
+          <StudioOnly>
+            <OverflowMenu label={`Actions for ${client.name}`} size="bar" items={[
+              { label: 'Edit client', icon: Pencil, onSelect: () => setEditing(true) },
+              { label: remove.isPending ? 'Deleting…' : 'Delete client', icon: Trash2,
+                danger: true, disabled: remove.isPending, onSelect: onDelete },
+            ]} />
+          </StudioOnly>
         </div>
         <p className="muted">
           {[client.industry, client.location, client.website].filter(Boolean).join(' · ') || '—'}
@@ -111,6 +117,10 @@ function ClientHeader({ client, dependents, onSaved }: {
           existed meant the integration was invisible until you already knew
           it was there — the feature and the empty state were the same
           nothing. Unset, each one is the way in to setting it.
+
+          In client view these read as plain links, because they are the only
+          two buttons a client has on this page and they are both ways out of
+          it. The "add a channel" half is studio-only; the "open it" half is not.
         */}
         <div className="row" style={{ gap: 6 }}>
           {client.slackUrl ? (
@@ -118,24 +128,32 @@ function ClientHeader({ client, dependents, onSaved }: {
               <button type="button">Open Slack ↗</button>
             </a>
           ) : (
-            <button type="button" className="link" onClick={() => setEditing(true)}>
-              + Slack channel
-            </button>
+            <StudioOnly>
+              <button type="button" className="link" onClick={() => setEditing(true)}>
+                + Slack channel
+              </button>
+            </StudioOnly>
           )}
           {client.meetUrl ? (
             <a href={client.meetUrl} target="_blank" rel="noreferrer">
               <button type="button">Join Meet ↗</button>
             </a>
           ) : (
-            <button type="button" className="link" onClick={() => setEditing(true)}>
-              + Google Meet
-            </button>
+            <StudioOnly>
+              <button type="button" className="link" onClick={() => setEditing(true)}>
+                + Google Meet
+              </button>
+            </StudioOnly>
           )}
         </div>
-        {client.notes && <p className="muted">{client.notes}</p>}
-        {remove.error && (
-          <p className="err">{((remove.error as ApiError).message)}</p>
-        )}
+        {/* The note field is a studio's private shorthand — nobody writes it
+            expecting a client to read it, so it is not shown to one. */}
+        <StudioOnly>
+          {client.notes && <p className="muted">{client.notes}</p>}
+          {remove.error && (
+            <p className="err">{((remove.error as ApiError).message)}</p>
+          )}
+        </StudioOnly>
       </div>
     );
   }
@@ -252,10 +270,12 @@ function ContactRow({ contact, onChanged }: { contact: Contact; onChanged: () =>
       <td className="muted" data-label="WhatsApp">{contact.phone ?? '—'}</td>
       <td data-label="Decides">{contact.decisionMaker ? <span className="pill pass">yes</span> : '—'}</td>
       <td className="actions">
-        <OverflowMenu label={`Actions for ${contact.name}`} items={[
-          { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-          { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
-        ]} />
+        <StudioOnly>
+          <OverflowMenu label={`Actions for ${contact.name}`} items={[
+            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+          ]} />
+        </StudioOnly>
       </td>
     </tr>
   );
@@ -345,47 +365,116 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
       </td>
       <td className="actions">
         <div className="row">
-          <a href={`#/new/${project.id}`}>
-            <button type="button" className="primary">Start a run</button>
-          </a>
-          <OverflowMenu label={`Actions for ${project.name}`} items={[
-            { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
-            ...(project.figmaUrl ? [{
-              label: 'Open in Figma', icon: ExternalLink,
-              onSelect: () => { window.open(project.figmaUrl, '_blank', 'noopener'); },
-            }] : []),
-            { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
-          ]} />
+          <StudioOnly>
+            <a href={`#/new/${project.id}`}>
+              <button type="button" className="primary">Start a run</button>
+            </a>
+          </StudioOnly>
+          <StudioOnly>
+            <OverflowMenu label={`Actions for ${project.name}`} items={[
+              { label: 'Edit', icon: Pencil, onSelect: () => setEditing(true) },
+              ...(project.figmaUrl ? [{
+                label: 'Open in Figma', icon: ExternalLink,
+                onSelect: () => { window.open(project.figmaUrl, '_blank', 'noopener'); },
+              }] : []),
+              { label: 'Remove', icon: Trash2, danger: true, disabled: remove.isPending, onSelect: onDelete },
+            ]} />
+          </StudioOnly>
         </div>
         {/* A refusal that only exists in a `title` is a refusal for people
             who happen to hover. This one says why a project with a run
             against it stays. */}
-        {remove.error && (
-          <p className="err" style={{ margin: '6px 0 0', fontSize: 13 }}>
-            {(remove.error as ApiError).message}
-          </p>
-        )}
+        <StudioOnly>
+          {remove.error && (
+            <p className="err" style={{ margin: '6px 0 0', fontSize: 13 }}>
+              {(remove.error as ApiError).message}
+            </p>
+          )}
+        </StudioOnly>
       </td>
     </tr>
   );
 }
 
-export type ClientTab = 'overview' | 'discovery' | 'brand' | 'delivery' | 'client' | 'hub';
+export type ClientTab =
+  | 'dashboard' | 'updates' | 'tasks' | 'documents' | 'library'
+  | 'strategy' | 'hub' | 'timeline' | 'contracts' | 'settings';
 
-/** In the order the work actually flows: set up, discover, define, deliver, talk. */
-const TABS: { id: ClientTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'discovery', label: 'Discovery' },
-  { id: 'brand', label: 'Brand' },
-  { id: 'delivery', label: 'Delivery' },
-  { id: 'client', label: 'Client' },
+/**
+ * The client's workspace, in the order the work flows.
+ *
+ * Two of these are the studio's own record and belong nowhere a client can
+ * reach — Contacts, Projects and Runs live on the Dashboard, which is why
+ * nothing above it needs a tab of its own. Two are not built yet (Tasks), and
+ * say so rather than rendering an empty board.
+ */
+export const CLIENT_TABS: readonly { id: ClientTab; label: string }[] = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'updates', label: 'Updates' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'library', label: 'Library' },
+  { id: 'strategy', label: 'Discovery & Strategy' },
   { id: 'hub', label: 'Brand Hub' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'contracts', label: 'Contracts & Invoices' },
+  { id: 'settings', label: 'Settings' },
 ];
+
+/** The first tab, which is also the one the URL leaves off. */
+export const DEFAULT_TAB: ClientTab = 'dashboard';
+
+function isClientTab(tab: string | undefined): tab is ClientTab {
+  return tab !== undefined && CLIENT_TABS.some((t) => t.id === tab);
+}
+
+/**
+ * One client's updates: their runs, their messages, what they said back.
+ *
+ * All three are the same question — what has this client heard from us, and
+ * what have they said — so they share a tab rather than being scattered across
+ * three. The run state itself is derived, not stored; see `Activity.tsx`.
+ */
+function ClientUpdates({ client, runs }: {
+  client: Client; runs: readonly Run[];
+}): ReactElement {
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
+  const mine = projects.data?.filter((project) => project.clientId === client.id) ?? [];
+  const entries = activityForClient(runs, mine);
+
+  return (
+    <>
+      {entries.length > 0 ? (
+        <div className="stack">
+          {entries.map((entry) => (
+            <div className="card" key={entry.runId} style={{ marginBottom: 0 }}>
+              <div className="row">
+                <strong>{entry.project}</strong>
+                <span className={entry.tone}>{entry.text}</span>
+                <a className="mono muted" href={`#/run/${entry.runId}`}
+                   style={{ marginLeft: 'auto' }}>{entry.runId}</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">
+          Nothing from the pipeline yet. A run started on this client shows up here with
+          where it has got to, and nowhere keeps a history of that changing.
+        </p>
+      )}
+
+      <Messages clientId={client.id} />
+      <FeedbackPanel clientId={client.id} />
+    </>
+  );
+}
 
 export default function ClientDetail({ clientId, tab }: {
   clientId: string; tab: string | undefined;
 }): ReactElement {
   const queryClient = useQueryClient();
+  const { clientView } = useViewMode();
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ['client', clientId], queryFn: () => api.client(clientId),
   });
@@ -400,6 +489,16 @@ export default function ClientDetail({ clientId, tab }: {
     void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
     void queryClient.invalidateQueries({ queryKey: ['clients'] });
     void queryClient.invalidateQueries({ queryKey: ['projects'] });
+  };
+
+  /*
+   * A contract is written once and read many times, and the two lists of it are
+   * cached separately from the client record above. Invalidating them here
+   * rather than inside the builder keeps one rule for "something changed on this
+   * client": everything keyed to it goes stale together.
+   */
+  const onContractsChanged = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['contracts', clientId] });
   };
 
   const addContact = useMutation({
@@ -434,7 +533,7 @@ export default function ClientDetail({ clientId, tab }: {
   }
 
   const { client, contacts, projects, runs } = data;
-  const current: ClientTab = tab && TABS.some((t) => t.id === tab) ? tab as ClientTab : 'overview';
+  const current: ClientTab = isClientTab(tab) ? tab : DEFAULT_TAB;
 
   return (
     <section className="stack">
@@ -452,22 +551,25 @@ export default function ClientDetail({ clientId, tab }: {
       </div>
 
       {/*
-        Five tabs where there were twelve stacked sections. The tab is in the
-        URL rather than component state so a refresh, a shared link and the
-        back button all land on the same view — the same reason the run
-        screens are routes and not a state variable.
+        Ten tabs where there were six, and the six are all still here — the
+        brand system moved under Discovery & Strategy, delivery split into
+        Documents and Library, and the client record split into Timeline,
+        Contracts and Settings. The tab is in the URL rather than component
+        state so a refresh, a shared link and the back button all land on the
+        same view — the same reason the run screens are routes and not a state
+        variable.
       */}
       <nav className="tabs" aria-label="Client sections">
-        {TABS.map((t) => (
+        {CLIENT_TABS.map((t) => (
           <a key={t.id} className="tab"
-             href={`#/clients/${clientId}${t.id === 'overview' ? '' : `/${t.id}`}`}
+             href={`#/clients/${clientId}${t.id === DEFAULT_TAB ? '' : `/${t.id}`}`}
              aria-current={current === t.id ? 'page' : undefined}>
             {t.label}
           </a>
         ))}
       </nav>
 
-      {current === 'overview' && (<>
+      {current === 'dashboard' && (<>
       <h3>Contacts</h3>
       {contacts.length === 0
         ? <p className="muted">Nobody recorded yet. A project whose approver is unnamed is a
@@ -483,19 +585,21 @@ export default function ClientDetail({ clientId, tab }: {
           </table>
         )}
 
-      <form className="row" onSubmit={(e) => { e.preventDefault(); addContact.mutate(); }}>
-        <input value={contactName} onChange={(e) => setContactName(e.target.value)}
-               placeholder="Name" aria-label="Contact name" style={{ maxWidth: 220 }} />
-        <input value={contactTitle} onChange={(e) => setContactTitle(e.target.value)}
-               placeholder="Title" aria-label="Contact title" style={{ maxWidth: 220 }} />
-        <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)}
-               placeholder="Email" aria-label="Contact email" style={{ maxWidth: 240 }} />
-        <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
-               placeholder="WhatsApp number" aria-label="Contact WhatsApp number" style={{ maxWidth: 220 }} />
-        <button type="submit" disabled={!contactName.trim() || addContact.isPending}>
-          Add contact
-        </button>
-      </form>
+      <StudioOnly>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); addContact.mutate(); }}>
+          <input value={contactName} onChange={(e) => setContactName(e.target.value)}
+                 placeholder="Name" aria-label="Contact name" style={{ maxWidth: 220 }} />
+          <input value={contactTitle} onChange={(e) => setContactTitle(e.target.value)}
+                 placeholder="Title" aria-label="Contact title" style={{ maxWidth: 220 }} />
+          <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)}
+                 placeholder="Email" aria-label="Contact email" style={{ maxWidth: 240 }} />
+          <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
+                 placeholder="WhatsApp number" aria-label="Contact WhatsApp number" style={{ maxWidth: 220 }} />
+          <button type="submit" disabled={!contactName.trim() || addContact.isPending}>
+            Add contact
+          </button>
+        </form>
+      </StudioOnly>
 
       <h3>Projects</h3>
       {projects.length === 0
@@ -511,13 +615,15 @@ export default function ClientDetail({ clientId, tab }: {
           </table>
         )}
 
-      <form className="row" onSubmit={(e) => { e.preventDefault(); addProject.mutate(); }}>
-        <input value={projectName} onChange={(e) => setProjectName(e.target.value)}
-               placeholder="Project name" aria-label="Project name" style={{ maxWidth: 260 }} />
-        <button type="submit" disabled={!projectName.trim() || addProject.isPending}>
-          Add project
-        </button>
-      </form>
+      <StudioOnly>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); addProject.mutate(); }}>
+          <input value={projectName} onChange={(e) => setProjectName(e.target.value)}
+                 placeholder="Project name" aria-label="Project name" style={{ maxWidth: 260 }} />
+          <button type="submit" disabled={!projectName.trim() || addProject.isPending}>
+            Add project
+          </button>
+        </form>
+      </StudioOnly>
 
       <h3>Runs</h3>
       {runs.length === 0
@@ -525,28 +631,78 @@ export default function ClientDetail({ clientId, tab }: {
         : <RunTable runs={runs as Run[]} />}
       </>)}
 
-      {current === 'discovery' && (<>
+      {current === 'updates' && <ClientUpdates client={client} runs={runs as Run[]} />}
+
+      {/*
+        Two tabs the plan asks for that the studio cannot fill yet. They are
+        here, named, and honest — a tab that does not exist is a feature nobody
+        can report missing, and a tab that renders an empty board would be a
+        lie about work that is tracked on the Timeline.
+
+        The cross-client sentence is studio-side. Pointing a client at a page
+        they are not shown, about other people's work, is the wrong answer even
+        when the page is real.
+      */}
+      {current === 'tasks' && (
+        <p className="muted">
+          Nothing is tracked as a task yet. A client’s outstanding work is on their{' '}
+          <a className="link" href={`#/clients/${clientId}/timeline`}>Timeline</a> as
+          milestones.
+          {!clientView && <>
+            {' '}What is still owed to somebody across every client is{' '}
+            <a className="link" href="#/tasks">Tasks</a>, which arrives with the calendar in
+            the next phase.
+          </>}
+        </p>
+      )}
+
+      {current === 'documents' && (<>
+        <DocumentShelf clientId={clientId} editable={!clientView} />
+        <Deliverables clientId={clientId} />
+      </>)}
+
+      {current === 'library' && <Assets clientId={clientId} />}
+
+      {current === 'strategy' && (<>
+        <Brand clientId={clientId} />
         <OnboardingPanel clientId={clientId} />
         <Positioning clientId={clientId} />
+        <TranscriptStrategy clientId={clientId} />
       </>)}
 
-      {current === 'brand' && <Brand clientId={clientId} />}
+      {/*
+        The whole panel is studio-side by its own admission: it is where a hub
+        is switched on, which tools it gets, and where the studio tries them.
+        There is no read-only half to show a client, so in client view this
+        says where the hub actually is rather than rendering an admin screen
+        with its radio buttons removed.
+      */}
+      {current === 'hub' && (clientView ? (
+        <p className="muted">
+          This client’s Brand Hub is theirs, in their portal. Set-up lives on the studio side
+          of this tab — turn the eye back to see it.
+        </p>
+      ) : <BrandHubAdmin clientId={clientId} />)}
 
-      {current === 'delivery' && (<>
-        <DocumentShelf clientId={clientId} editable />
-        <Deliverables clientId={clientId} />
-        <Milestones clientId={clientId} />
-        <Assets clientId={clientId} />
-      </>)}
+      {current === 'timeline' && <Milestones clientId={clientId} />}
 
-      {current === 'client' && (<>
-        <Messages clientId={clientId} />
-        <FeedbackPanel clientId={clientId} />
+      {/*
+        Contracts and invoices share a tab because they are the two documents
+        that put a number in front of a client, and a studio member looking for
+        "what did we agree and what have they paid" should not have to decide
+        which half of the answer they want. Contracts come first: a contract is
+        the thing that exists, and an invoice is an artefact of one.
+      */}
+      {current === 'contracts' && (<>
+        <ContractBuilder clientId={clientId} onChanged={onContractsChanged} />
         <Invoices clientId={clientId} />
-        <PortalAccess clientId={clientId} clientName={client.name} contacts={contacts} />
       </>)}
 
-      {current === 'hub' && <BrandHubAdmin clientId={clientId} />}
+      {current === 'settings' && (<>
+        <StudioOnly>
+          <PortalAccess clientId={clientId} clientName={client.name} contacts={contacts} />
+        </StudioOnly>
+      </>)}
     </section>
   );
 }

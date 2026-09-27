@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OnboardingSummary } from '../api.js';
 import { DiscoveryQuestions } from './DiscoveryQuestions.js';
+import { StudioOnly } from '../viewMode.js';
 
 /**
  * The studio's side of onboarding.
@@ -101,10 +102,12 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
     <div className="stack">
       <div className="row">
         <h3 style={{ margin: 0 }}>Onboarding</h3>
-        <button style={{ marginLeft: 'auto' }} onClick={() => start.mutate()}
-                disabled={start.isPending}>
-          {start.isPending ? 'Creating…' : 'New onboarding link'}
-        </button>
+        <StudioOnly>
+          <button style={{ marginLeft: 'auto' }} onClick={() => start.mutate()}
+                  disabled={start.isPending}>
+            {start.isPending ? 'Creating…' : 'New onboarding link'}
+          </button>
+        </StudioOnly>
       </div>
 
       {link && (
@@ -137,17 +140,21 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                 <span className="muted mono" style={{ fontSize: 12 }}>{onboarding.id}</span>
                 {(onboarding.status === 'draft' || onboarding.status === 'sent'
                   || onboarding.status === 'in-progress') && (
-                  <button style={{ marginLeft: 'auto' }}
-                          onClick={() => setAnswering((id) => id === onboarding.id ? undefined : onboarding.id)}>
-                    {answering === onboarding.id ? 'Close' : 'Answer here'}
-                  </button>
+                  <StudioOnly>
+                    <button style={{ marginLeft: 'auto' }}
+                            onClick={() => setAnswering((id) => id === onboarding.id ? undefined : onboarding.id)}>
+                      {answering === onboarding.id ? 'Close' : 'Answer here'}
+                    </button>
+                  </StudioOnly>
                 )}
                 {onboarding.status === 'submitted' && (
-                  <button className="primary" style={{ marginLeft: 'auto' }}
-                          onClick={() => accept.mutate(onboarding.id)}
-                          disabled={accept.isPending}>
-                    Turn into a project
-                  </button>
+                  <StudioOnly>
+                    <button className="primary" style={{ marginLeft: 'auto' }}
+                            onClick={() => accept.mutate(onboarding.id)}
+                            disabled={accept.isPending}>
+                      Turn into a project
+                    </button>
+                  </StudioOnly>
                 )}
               </div>
 
@@ -170,9 +177,11 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                     <strong>{projectName.get(onboarding.projectId) ?? onboarding.projectId}</strong>.
                   </span>
                   {/* The answers are the brief: a run started from here carries them. */}
-                  <a href={`#/new/${onboarding.projectId}`}>
-                    <button type="button">Start a run from these answers</button>
-                  </a>
+                  <StudioOnly>
+                    <a href={`#/new/${onboarding.projectId}`}>
+                      <button type="button">Start a run from these answers</button>
+                    </a>
+                  </StudioOnly>
                 </p>
               )}
 
@@ -189,9 +198,11 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
         </div>
       )}
 
-      {(start.error || accept.error) && (
-        <p className="err">{((start.error ?? accept.error) as Error).message}</p>
-      )}
+      <StudioOnly>
+        {(start.error || accept.error) && (
+          <p className="err">{((start.error ?? accept.error) as Error).message}</p>
+        )}
+      </StudioOnly>
     </div>
   );
 }

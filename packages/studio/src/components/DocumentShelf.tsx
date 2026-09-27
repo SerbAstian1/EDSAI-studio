@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { Fragment, useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, Compass, ExternalLink, FileSignature, FileText, Link2, Presentation,
@@ -18,12 +18,19 @@ import OverflowMenu from './OverflowMenu.js';
  * to the final presentation and the guidelines. The same shelf in the same
  * order for every client, so "the contract" is always the second tile.
  *
- * Pressing a tile opens the document *here*, in a Figma frame under the
- * shelf, rather than sending anyone to Figma. One document is open at a
- * time; pressing its tile again, or the ×, closes it.
+ * Pressing a tile expands it *in place*, accordion-style, rather than sending
+ * anyone to Figma and rather than moving the answer to the bottom of the shelf
+ * where a grid puts it far from the question. The panel spans the width of the
+ * row it was asked from, so it reads as belonging to the tile that is open and
+ * not to whichever tile happens to sit under it. One document is open at a
+ * time; pressing its tile again, or the ×, closes it. A tile with nothing
+ * linked opens the link form in the same place, so pressing a tile always
+ * answers the tile you pressed.
  *
- * The studio sees every tile and can link, relink or clear one. A client
- * sees the same shelf with the empty tiles greyed out and unpressable —
+ * A linked tile is filled and a tile with nothing behind it is a dashed
+ * outline, so the state of the engagement is legible before anything is
+ * pressed. The studio sees every tile and can link, relink or clear one. A
+ * client sees the same shelf with the empty tiles greyed out and unpressable —
  * the shape of what is coming, not a list that grows without warning.
  */
 
@@ -117,8 +124,6 @@ export default function DocumentShelf({ clientId, editable }: {
   }
 
   const held = data.filter((d) => d.figmaUrl).length;
-  const current = data.find((d) => d.slot === open);
-  const editing = data.find((d) => d.slot === linking);
 
   const press = (doc: ClientDocument): void => {
     if (!doc.figmaUrl) {
@@ -142,65 +147,78 @@ export default function DocumentShelf({ clientId, editable }: {
           <div className="shelf-tiles">
             {data.filter((d) => d.group === group.id).map((doc) => {
               const Icon = ICONS[doc.slot] ?? FileText;
-              const linked = Boolean(doc.figmaUrl);
+              const url = doc.figmaUrl;
+              const linked = url !== undefined;
               const isOpen = open === doc.slot;
+              const isLinking = linking === doc.slot;
+              const panelId = `shelf-panel-${clientId}-${doc.slot}`;
               return (
-                <button
-                  key={doc.slot}
-                  type="button"
-                  className={`shelf-tile${linked ? ' linked' : ' empty'}${isOpen ? ' open' : ''}`}
-                  aria-pressed={isOpen}
-                  disabled={!linked && !editable}
-                  onClick={() => press(doc)}
-                >
-                  <Icon className="shelf-icon" size={22} strokeWidth={1.5} aria-hidden="true" />
-                  <span className="shelf-label">{doc.label}</span>
-                  <span className="shelf-meta">
-                    {linked
-                      ? `Figma · ${when(doc.updatedAt)}${doc.note ? ` · ${doc.note}` : ''}`
-                      : editable ? 'Not linked — press to add' : 'Not ready yet'}
-                  </span>
-                </button>
+                <Fragment key={doc.slot}>
+                  <button
+                    type="button"
+                    className={`shelf-tile${linked ? ' linked' : ' empty'}${isOpen || isLinking ? ' open' : ''}`}
+                    aria-expanded={linked ? isOpen : isLinking}
+                    aria-controls={isOpen || isLinking ? panelId : undefined}
+                    disabled={!linked && !editable}
+                    onClick={() => press(doc)}
+                  >
+                    <Icon className="shelf-icon" size={22} strokeWidth={1.5} aria-hidden="true" />
+                    <span className="shelf-label">{doc.label}</span>
+                    <span className="shelf-meta">
+                      {linked
+                        ? `Figma · ${when(doc.updatedAt)}${doc.note ? ` · ${doc.note}` : ''}`
+                        : editable ? 'Not linked — press to add' : 'Not ready yet'}
+                    </span>
+                  </button>
+
+                  {/* The panel is a sibling of the tile, not a child: a grid
+                      child cannot sit under its own tile without becoming the
+                      width of the row. Spanning the row puts it directly below
+                      the tile that asked for it, with the other tiles of that
+                      row still above. */}
+                  {isOpen && url && (
+                    <div className="shelf-viewer" id={panelId}>
+                      <div className="row">
+                        <strong>{doc.label}</strong>
+                        {doc.note && <span className="muted">{doc.note}</span>}
+                        <span style={{ marginLeft: 'auto' }} className="row">
+                          {editable && (
+                            <OverflowMenu label={`Actions for ${doc.label}`} items={[
+                              { label: 'Change link', icon: Link2,
+                                onSelect: () => { setLinking(doc.slot); setOpen(undefined); } },
+                              { label: 'Open in Figma', icon: ExternalLink,
+                                onSelect: () => { window.open(url, '_blank', 'noopener'); } },
+                              { label: 'Remove from shelf', icon: Trash2, danger: true, disabled: clear.isPending,
+                                onSelect: () => {
+                                  void requestConfirmation({
+                                    title: `Remove ${doc.label}?`,
+                                    message: 'This clears the linked document from the shelf. You can add it again later.',
+                                    confirmLabel: 'Remove link',
+                                  }).then((confirmed) => { if (confirmed) clear.mutate(doc.slot); });
+                                } },
+                            ]} />
+                          )}
+                          <button type="button" className="overflow-button row" aria-label={`Close ${doc.label}`}
+                                  onClick={() => setOpen(undefined)}>
+                            <X size={16} aria-hidden="true" />
+                          </button>
+                        </span>
+                      </div>
+                      <FigmaEmbed url={url} title={doc.label} />
+                    </div>
+                  )}
+
+                  {isLinking && editable && (
+                    <div id={panelId}>
+                      <LinkForm clientId={clientId} doc={doc} onDone={() => setLinking(undefined)} />
+                    </div>
+                  )}
+                </Fragment>
               );
             })}
           </div>
         </div>
       ))}
-
-      {editable && editing && (
-        <LinkForm clientId={clientId} doc={editing} onDone={() => setLinking(undefined)} />
-      )}
-
-      {current?.figmaUrl && (
-        <div className="shelf-viewer">
-          <div className="row">
-            <strong>{current.label}</strong>
-            {current.note && <span className="muted">{current.note}</span>}
-            <span style={{ marginLeft: 'auto' }} className="row">
-              {editable && (
-                <OverflowMenu label={`Actions for ${current.label}`} items={[
-                  { label: 'Change link', icon: Link2, onSelect: () => { setLinking(current.slot); setOpen(undefined); } },
-                  { label: 'Open in Figma', icon: ExternalLink,
-                    onSelect: () => { window.open(current.figmaUrl, '_blank', 'noopener'); } },
-                  { label: 'Remove from shelf', icon: Trash2, danger: true, disabled: clear.isPending,
-                    onSelect: () => {
-                      void requestConfirmation({
-                        title: `Remove ${current.label}?`,
-                        message: 'This clears the linked document from the shelf. You can add it again later.',
-                        confirmLabel: 'Remove link',
-                      }).then((confirmed) => { if (confirmed) clear.mutate(current.slot); });
-                    } },
-                ]} />
-              )}
-              <button type="button" className="overflow-button row" aria-label="Close preview"
-                      onClick={() => setOpen(undefined)}>
-                <X size={16} aria-hidden="true" />
-              </button>
-            </span>
-          </div>
-          <FigmaEmbed url={current.figmaUrl} title={current.label} />
-        </div>
-      )}
     </section>
   );
 }

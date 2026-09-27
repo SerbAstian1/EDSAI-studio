@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Forbidden, type Principal } from '@edsai/auth';
 import { RunStore } from '../src/store.js';
 import { ScopedStore } from '../src/scoped.js';
-import { invoiceStatus, invoiceTotals, type Invoice } from '../src/invoices.js';
+import {
+  invoiceStatus, invoiceTotals, lineAmountCents, invoiceSubtotalCents, invoiceTaxCents,
+  invoiceAmounts, type Invoice,
+} from '../src/invoices.js';
 import { orderMilestones, type Milestone } from '../src/milestones.js';
 import type { Client } from '../src/entities.js';
 import { isFigmaUrl, type Deliverable } from '../src/deliverables.js';
@@ -137,9 +140,110 @@ describe('store round-trips', () => {
       currency: 'USD', paid: false, createdAt: NOW, updatedAt: NOW,
     };
     store.saveInvoice(invoice);
-    expect(store.getInvoice('i1')).toEqual(invoice);
+    // Defaults are part of the record: an invoice written before there were
+    // lines reads back as an invoice with no lines, not as a broken one.
+    expect(store.getInvoice('i1')).toEqual({ ...invoice, lines: [], taxBasisPoints: 0 });
     store.saveInvoice({ ...invoice, paid: true, paidAt: NOW });
     expect(store.getInvoice('i1')?.paid).toBe(true);
+  });
+
+  it('round-trips invoice lines in the order they were filed', () => {
+    const store = fixture();
+    const invoice: Invoice = {
+      id: 'i2', clientId: 'acme', number: 'INV-0002', description: 'Identity work',
+      issueDate: '2026-02-01', dueDate: '2026-02-15',
+      // 120000 + 150000, plus the 20% proposed below: the store derives this,
+      // so a round-trip means the derived total came back rather than the typed one.
+      amountCents: 324000,
+      currency: 'GBP', lines: [
+        { id: 'l1', description: 'Discovery workshop', quantityHundredths: 100,
+          unitAmountCents: 120000, createdAt: NOW },
+        { id: 'l2', description: 'Identity system', quantityHundredths: 100,
+          unitAmountCents: 150000, createdAt: NOW },
+      ],
+      taxBasisPoints: 2000, terms: 'Net 14. Bank transfer.',
+      paid: false, createdAt: NOW, updatedAt: NOW,
+    };
+    store.saveInvoice(invoice);
+    expect(store.getInvoice('i2')).toEqual(invoice);
+  });
+
+  it('derives the stored total from the lines, whatever the caller sent', () => {
+    const store = fixture();
+    // The route already adds this up, but the store is where the row is
+    // written and it is reachable by seeds, tests and anything written later.
+    // A total that disagrees with the lines under it is the one thing an
+    // invoice must never be.
+    store.saveInvoice({
+      id: 'i2b', clientId: 'acme', number: 'INV-0002B', description: 'Identity work',
+      issueDate: '2026-02-01', dueDate: '2026-02-15',
+      // Deliberately wrong: 120000 + 150000, plus 20% on top.
+      amountCents: 1,
+      currency: 'GBP', lines: [
+        { id: 'l1', description: 'Discovery workshop', quantityHundredths: 100,
+          unitAmountCents: 120000, createdAt: NOW },
+        { id: 'l2', description: 'Identity system', quantityHundredths: 100,
+          unitAmountCents: 150000, createdAt: NOW },
+      ],
+      taxBasisPoints: 2000, paid: false, createdAt: NOW, updatedAt: NOW,
+    });
+    expect(store.getInvoice('i2b')?.amountCents).toBe(324000);
+  });
+
+  it('keeps the stated total on an invoice that has no lines', () => {
+    const store = fixture();
+    store.saveInvoice({
+      id: 'i2c', clientId: 'acme', number: 'INV-0002C', description: 'Retainer',
+      issueDate: '2026-02-01', dueDate: '2026-02-15', amountCents: 120000,
+      taxBasisPoints: 2000, paid: false, createdAt: NOW, updatedAt: NOW,
+    });
+    // No lines means nothing to derive from: the number it was created with is
+    // the only total it has, and the tax on it is shown beside it.
+    const stored = store.getInvoice('i2c');
+    expect(stored?.amountCents).toBe(120000);
+    expect(stored && invoiceAmounts(stored)).toEqual({
+      subtotalCents: 120000, taxCents: 24000, totalCents: 144000,
+    });
+  });
+
+  it('replaces the line set on save, so a removed line leaves the total', () => {
+    const store = fixture();
+    const base: Invoice = {
+      id: 'i3', clientId: 'acme', number: 'INV-0003', description: 'Two lines',
+      issueDate: '2026-02-01', dueDate: '2026-02-15', amountCents: 200,
+      currency: 'USD', paid: false, createdAt: NOW, updatedAt: NOW,
+    };
+    const line = (id: string, cents: number) => ({
+      id, description: id, quantityHundredths: 100, unitAmountCents: cents, createdAt: NOW,
+    });
+    store.saveInvoice({ ...base, lines: [line('a', 100), line('b', 100)] });
+    expect(store.getInvoice('i3')?.lines).toHaveLength(2);
+    // Saving with one line is a deletion, and the orphan has to go with it.
+    store.saveInvoice({ ...base, lines: [line('a', 100)] });
+    expect(store.getInvoice('i3')?.lines.map((l) => l.id)).toEqual(['a']);
+  });
+
+  it('takes an invoice\'s lines with it when the invoice is deleted', () => {
+    const store = fixture();
+    store.saveInvoice({
+      id: 'i4', clientId: 'acme', number: 'INV-0004', description: 'Gone',
+      issueDate: '2026-02-01', dueDate: '2026-02-15', amountCents: 100,
+      currency: 'USD', lines: [{
+        id: 'l1', description: 'Work', quantityHundredths: 100,
+        unitAmountCents: 100, createdAt: NOW,
+      }],
+      paid: false, createdAt: NOW, updatedAt: NOW,
+    });
+    store.deleteInvoice('i4');
+    expect(store.getInvoice('i4')).toBeUndefined();
+    // Nothing here cascades, so the lines are removed explicitly. Re-saving the
+    // id afterwards must not resurrect them.
+    store.saveInvoice({
+      id: 'i4', clientId: 'acme', number: 'INV-0004', description: 'Again',
+      issueDate: '2026-02-01', dueDate: '2026-02-15', amountCents: 100,
+      currency: 'USD', paid: false, createdAt: NOW, updatedAt: NOW,
+    });
+    expect(store.getInvoice('i4')?.lines).toEqual([]);
   });
 
   it('appends messages in order without an update method', () => {
@@ -198,6 +302,48 @@ describe('invoice status, computed rather than stored', () => {
       totalCents: 600, paidCents: 100, pendingCents: 200, overdueCents: 300,
       count: 3, pendingCount: 1, overdueCount: 1,
     });
+  });
+});
+
+describe('invoice arithmetic, in integers', () => {
+  const line = (description: string, quantityHundredths: number, unitAmountCents: number) =>
+    ({ description, quantityHundredths, unitAmountCents });
+
+  it('multiplies a fractional quantity without floating point drift', () => {
+    // 7.5 hours at £120 is £900. In floats, 7.5 * 12000 is 90000.00000000001.
+    expect(lineAmountCents(line('Design', 750, 12000))).toBe(90000);
+    // Half a unit of £33.35 is £16.675, and half a cent rounds up rather than
+    // being lost — three lines like that would otherwise quietly be a penny short.
+    expect(lineAmountCents(line('Half hour', 50, 3335))).toBe(1668);
+  });
+
+  it('sums the lines into a subtotal', () => {
+    expect(invoiceSubtotalCents([
+      line('Workshop', 100, 120000), line('System', 250, 60000),
+    ])).toBe(270000);
+  });
+
+  it('turns a proposed rate in basis points into an amount', () => {
+    expect(invoiceTaxCents(100000, 2000)).toBe(20000);
+    expect(invoiceTaxCents(100000, 0)).toBe(0);
+    // 20% of 33.335 rounds to the nearest cent, not down.
+    expect(invoiceTaxCents(3335, 2000)).toBe(667);
+  });
+
+  it('falls back to the stored amount when there are no lines', () => {
+    // An invoice recorded as one number has to keep totalling that number.
+    expect(invoiceAmounts({ lines: [], taxBasisPoints: 0, amountCents: 45000 }))
+      .toEqual({ subtotalCents: 45000, taxCents: 0, totalCents: 45000 });
+  });
+
+  it('derives the total from the lines and the rate, not from a typed number', () => {
+    const amounts = invoiceAmounts({
+      lines: [line('Workshop', 100, 120000), line('System', 100, 150000)],
+      taxBasisPoints: 2000,
+      // A total that disagrees with the lines is exactly the bug this prevents.
+      amountCents: 1,
+    });
+    expect(amounts).toEqual({ subtotalCents: 270000, taxCents: 54000, totalCents: 324000 });
   });
 });
 

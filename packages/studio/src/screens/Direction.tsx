@@ -155,7 +155,24 @@ export default function Direction({ runId }: { runId: string }): ReactElement {
               </>
             )}
             {facts.worst && <><dt>Who they do not want to resemble</dt><dd>{facts.worst}</dd></>}
+            {facts.competitors && <><dt>Up against</dt><dd>{facts.competitors}</dd></>}
             {facts.headline && <><dt>What they want to be known for</dt><dd>“{facts.headline}”</dd></>}
+            {/*
+              The commercial round. A run that is scoring work needs to know what
+              it is scoring it *for* — who signs it off, what the money is, and
+              what a year from now has to look different. None of it is a design
+              axis, and all of it changes which answer is the right one.
+            */}
+            {facts.audience && <><dt>Who they want more of</dt><dd>{facts.audience}</dd></>}
+            {facts.growth && <><dt>What has to change in a year</dt><dd>{facts.growth}</dd></>}
+            {facts.budget && <><dt>Budget band</dt><dd>{facts.budget}</dd></>}
+            {facts.decisionMaker && <><dt>Signs off</dt><dd>{facts.decisionMaker}</dd></>}
+            {facts.cadence && facts.cadence.length > 0 && (
+              <><dt>How they want to be worked with</dt><dd>{facts.cadence.join('; ')}</dd></>
+            )}
+            {facts.ongoing && facts.ongoing.length > 0 && (
+              <><dt>What has to keep being made</dt><dd>{facts.ongoing.join('; ')}</dd></>
+            )}
             {facts.decisions.length > 0 && (
               <>
                 <dt>Choices from Discovery</dt>
