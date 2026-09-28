@@ -105,6 +105,36 @@ export const WEEKDAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
   'Friday', 'Saturday', 'Sunday'] as const;
 
+/**
+ * One day named the way a person says it: "Monday 15 September 2026".
+ *
+ * With the year, because this is the one date in the calendar with no month
+ * title above it to carry it — the page title in day view, the label on the
+ * selected day, and the accessible name on every day number in the grid all read
+ * from here, and a day without a year is ambiguous in January.
+ *
+ * Spelled out, because a selected day is a sentence at the top of a list and
+ * "15/09" is a date on a form.
+ */
+export function dayTitle(value: string): string {
+  const month = MONTHS[monthOf(value) - 1] ?? '';
+  return `${WEEKDAY_NAMES[weekdayIndex(value)]} ${dayOfMonth(value)} ${month} ${yearOf(value)}`;
+}
+
+/**
+ * Keep a date inside a range, or hand back the range's own first day.
+ *
+ * The selected day is the calendar's memory of where the user is: page forward a
+ * month and the day they were looking at is off the edge, still selected, and
+ * the strip above the grid is describing a day nobody can see. So paging moves
+ * the selection with the page, and this is where the decision lives.
+ */
+export function clampToRange(value: string, from: string, to: string): string {
+  if (value < from) return from;
+  if (value > to) return to;
+  return value;
+}
+
 export const DEFAULT_DURATION_MINUTES = 60;
 
 /* --------------------------------------------------------------- the entries */
@@ -150,6 +180,47 @@ export function eventsOn(events: readonly StudioEvent[], date: string): StudioEv
       }
       return a.title.localeCompare(b.title);
     });
+}
+
+/**
+ * What a search box is searching over.
+ *
+ * The title is the obvious field and the wrong answer: a month of a studio's
+ * calendar is mostly meetings that belong to somebody else, and the question
+ * somebody is actually asking while scrolling is almost never "what is this
+ * called" but "whose is this" or "is this the pitch". So the client's name, the
+ * kind of work and the location are searchable too — the studio's own time is
+ * findable by its kind, an entry with no client included, which is why this
+ * takes the *names* of the clients rather than the entries.
+ *
+ * Every word must match somewhere, so "regal pitch" finds a Regal pitch call and
+ * "pitch regal" finds the same one.
+ */
+export function matchesEvent(
+  event: StudioEvent,
+  query: string,
+  clientName: (clientId: string | undefined) => string,
+): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const haystack = [
+    event.title,
+    event.kind,
+    event.location ?? '',
+    event.notes ?? '',
+    clientName(event.clientId),
+  ].join(' ').toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
+/** Apply a search to a set of entries. Empty query keeps everything. */
+export function searchEvents(
+  events: readonly StudioEvent[],
+  query: string,
+  clientName: (clientId: string | undefined) => string,
+): StudioEvent[] {
+  if (query.trim() === '') return [...events];
+  return events.filter((event) => matchesEvent(event, query, clientName));
 }
 
 /* --------------------------------------------------------------- the grid */

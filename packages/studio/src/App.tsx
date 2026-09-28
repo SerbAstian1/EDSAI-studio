@@ -10,6 +10,7 @@ import { useRunStream } from './useRunStream.js';
 import { Sidebar } from './shell/Sidebar.js';
 import { Header } from './shell/Header.js';
 import { StatusBar } from './shell/StatusBar.js';
+import { ClientWorkspace } from './shell/ClientWorkspace.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
 import { PLANNED_ROUTES } from './shell/navigation.js';
@@ -327,8 +328,54 @@ function Shell(): ReactElement {
       ] as const
     : [];
 
+  /*
+   * A client is open exactly when the route names one, and that is the only
+   * condition under which the second rail appears. It is not a preference and
+   * not remembered between visits: the calendar, the pipeline and Settings are
+   * studio-level pages, and a rail of one client's sections beside them would
+   * offer ten ways to leave the page you are on.
+   */
+  const clientId = route.screen === 'client' ? route.clientId : undefined;
+
+  const screen = (
+    <Suspense fallback={<LoadingOverlay label="Loading workspace…" />}>
+      {route.screen === 'workspace' && <Home />}
+      {route.screen === 'intake' && <NewRun projectId={route.projectId} />}
+      {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
+      {route.screen === 'direction' && route.runId && <Direction runId={route.runId} />}
+      {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
+      {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
+      {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
+      {route.screen === 'runs' && <Runs />}
+      {route.screen === 'clients' && <Clients />}
+      {route.screen === 'client' && route.clientId && (
+        <ClientDetail clientId={route.clientId} tab={route.tab} />
+      )}
+      {route.screen === 'projects' && <Projects />}
+      {route.screen === 'discovery' && <Discovery />}
+      {route.screen === 'brands' && <Brands />}
+      {route.screen === 'brandHubs' && <BrandHubs />}
+      {route.screen === 'portals' && <Portals />}
+      {route.screen === 'assets' && <FileLibrary />}
+      {route.screen === 'templates' && <Templates />}
+      {route.screen === 'campaigns' && <Campaigns />}
+      {route.screen === 'processBuilder' && <ProcessBuilder />}
+      {route.screen === 'activity' && <Activity />}
+      {route.screen === 'acquisition' && <Acquisition />}
+      {route.screen === 'calendar' && <Calendar />}
+      {route.screen === 'settings' && <Settings />}
+      {route.screen === 'support' && <Support />}
+      {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
+      {route.screen === 'notFound' && <NotFound />}
+    </Suspense>
+  );
+
   return (
-    <div className="shell" data-view={clientView ? 'client' : 'studio'}>
+    <div
+      className="shell"
+      data-view={clientView ? 'client' : 'studio'}
+      data-workspace={clientId ? 'client' : undefined}
+    >
       <Sidebar
         current={activeSection(route)}
         currentClientId={route.clientId}
@@ -354,38 +401,9 @@ function Shell(): ReactElement {
           </header>
         )}
 
-        <main className="content">
-          <Suspense fallback={<LoadingOverlay label="Loading workspace…" />}>
-            {route.screen === 'workspace' && <Home />}
-            {route.screen === 'intake' && <NewRun projectId={route.projectId} />}
-            {route.screen === 'run' && route.runId && <RunView runId={route.runId} />}
-            {route.screen === 'direction' && route.runId && <Direction runId={route.runId} />}
-            {route.screen === 'scorecard' && route.runId && <Scorecard runId={route.runId} />}
-            {route.screen === 'review' && route.runId && <Review runId={route.runId} />}
-            {route.screen === 'finalize' && route.runId && <Finalize runId={route.runId} />}
-            {route.screen === 'runs' && <Runs />}
-            {route.screen === 'clients' && <Clients />}
-            {route.screen === 'client' && route.clientId && (
-              <ClientDetail clientId={route.clientId} tab={route.tab} />
-            )}
-            {route.screen === 'projects' && <Projects />}
-            {route.screen === 'discovery' && <Discovery />}
-            {route.screen === 'brands' && <Brands />}
-            {route.screen === 'brandHubs' && <BrandHubs />}
-            {route.screen === 'portals' && <Portals />}
-            {route.screen === 'assets' && <FileLibrary />}
-            {route.screen === 'templates' && <Templates />}
-            {route.screen === 'campaigns' && <Campaigns />}
-            {route.screen === 'processBuilder' && <ProcessBuilder />}
-            {route.screen === 'activity' && <Activity />}
-            {route.screen === 'acquisition' && <Acquisition />}
-            {route.screen === 'calendar' && <Calendar />}
-            {route.screen === 'settings' && <Settings />}
-            {route.screen === 'support' && <Support />}
-            {route.screen === 'planned' && <Planned id={route.sectionId ?? ''} />}
-            {route.screen === 'notFound' && <NotFound />}
-          </Suspense>
-        </main>
+        {clientId
+          ? <ClientWorkspace clientId={clientId} tab={route.tab}>{screen}</ClientWorkspace>
+          : <main className="content" data-screen={route.screen}>{screen}</main>}
       </div>
 
       {palette.open && <CommandPalette onClose={() => palette.setOpen(false)} />}

@@ -1,19 +1,20 @@
 import type { CSSProperties, ReactElement } from 'react';
 import {
-  addDays, dayOfMonth, isAllDay, isSameMonth, layoutDay, monthGrid, monthTitle, startOfWeek,
-  timeLabel, todayIso, weekdayIndex, weekDates, weekTitle, hourRange, WEEKDAY_INITIALS,
-  WEEKDAY_NAMES, type Placed,
+  addDays, dayOfMonth, dayTitle, isAllDay, isSameMonth, layoutDay, monthGrid, monthTitle,
+  startOfWeek, timeLabel, todayIso, weekdayIndex, weekDates, weekTitle, hourRange,
+  WEEKDAY_INITIALS, WEEKDAY_NAMES, type Placed,
 } from '../calendar.js';
-import type { StudioEvent } from '../api.js';
+import type { Client, StudioEvent } from '../api.js';
+import { ClientIdentity } from './ClientIdentity.js';
 
 /**
  * The calendar grid, in the three views a studio actually switches between.
  *
  * **Month, week and day are three renderings of one list, not three features.**
- * All the arithmetic lives in `@edsai/engine`'s `events.ts` as pure functions —
- * the month grid, the week range, and the lane layout for overlapping meetings —
- * so the shapes they produce are testable without a DOM and cannot drift
- * between the views. This file draws what they return.
+ * All the arithmetic lives in `../calendar.ts` as pure functions — the month
+ * grid, the week range, and the lane layout for overlapping meetings — so the
+ * shapes they produce are testable without a DOM and cannot drift between the
+ * views. This file draws what they return.
  *
  * Two decisions worth stating, because both were the other way round first:
  *
@@ -25,6 +26,14 @@ import type { StudioEvent } from '../api.js';
  * 2. **The month grid is always six weeks.** A grid that grows and shrinks as
  *    you page makes the whole calendar move under the pointer, and the sixth
  *    row is usually somebody's deadline.
+ *
+ * A third, newer: **a chip draws the client's mark, not their name as a
+ * string.** Resolving a client to their name was the old contract, and it is the
+ * one that lets a calendar drift from the rest of the studio — a row somewhere
+ * shows a name, a chip shows different initials, and the studio is not
+ * self-consistent. The chip asks for the client and draws them with
+ * `ClientIdentity`, exactly as the client list, the client rail and a project
+ * card do.
  */
 
 export type CalendarView = 'month' | 'week' | 'day';
@@ -81,10 +90,7 @@ export function rangeFor(view: CalendarView, anchor: string): CalendarRange {
 }
 
 export function rangeTitle(range: CalendarRange): string {
-  if (range.view === 'day') {
-    const weekday = WEEKDAY_NAMES[weekdayIndex(range.anchor)] ?? '';
-    return `${weekday} ${dayOfMonth(range.anchor)} ${monthTitle(range.anchor)}`;
-  }
+  if (range.view === 'day') return dayTitle(range.anchor);
   return range.view === 'week' ? weekTitle(range.anchor) : monthTitle(range.anchor);
 }
 
@@ -100,32 +106,54 @@ export function stepAnchor(view: CalendarView, anchor: string, direction: -1 | 1
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
+export type ClientLookup = (id: string | undefined) => Client | undefined;
+
 export interface CalendarViewProps {
   view: CalendarView;
   anchor: string;
   events: readonly StudioEvent[];
-  /** The name of each client, for the chip's second line. */
-  clientName: (id: string) => string;
+  /**
+   * The client behind an event, resolved to a record rather than a name, so a
+   * chip can draw the same identity the rest of the studio draws. An event with
+   * no client is the studio's own time and gets no mark.
+   */
+  clientOf: ClientLookup;
   onOpenEvent: (event: StudioEvent) => void;
   /** A click on empty space in a day: the calendar opens a new entry there. */
   onOpenDay: (date: string, startTime?: string) => void;
+  /** The day the strip above the grid is showing, ringed in the grid itself. */
+  selected?: string | undefined;
+  /** A click on a day number or on "+n more". */
+  onSelectDay?: ((date: string) => void) | undefined;
+}
+
+/** The client record and the name that goes with it, or the studio's own name. */
+export function clientOfEvent(event: StudioEvent, clientOf: ClientLookup): Client | undefined {
+  return event.clientId ? clientOf(event.clientId) : undefined;
+}
+
+export function whoseIs(event: StudioEvent, clientOf: ClientLookup): string {
+  return clientOfEvent(event, clientOf)?.name ?? 'Studio';
 }
 
 /**
  * One chip, wherever it is drawn.
  *
- * The client is named rather than colour-coded alone: eight tones is not enough
- * to tell twenty clients apart, and a chip that relies on the reader holding the
- * legend in their head is a chip that fails for a colour-blind reader and for
- * anyone on a projector. The colour is the fast path, not the only one.
+ * The client is drawn, not merely named: eight tones is not enough to tell
+ * twenty clients apart, and a chip that relies on the reader holding the legend
+ * in their head is a chip that fails for a colour-blind reader and for anyone on
+ * a projector. The colour is the fast path; the mark and the name beside it are
+ * the one that still works in greyscale, in a screenshot, and for a reader who
+ * has never opened the legend.
  */
-function Chip({ event, clientName, onOpen, className }: {
+function Chip({ event, clientOf, onOpen, className }: {
   event: StudioEvent;
-  clientName: (id: string) => string;
+  clientOf: ClientLookup;
   onOpen: () => void;
   className?: string;
 }): ReactElement {
-  const whose = event.clientId ? clientName(event.clientId) : 'Studio';
+  const client = clientOfEvent(event, clientOf);
+  const whose = client?.name ?? 'Studio';
   return (
     <button
       type="button"
@@ -133,13 +161,18 @@ function Chip({ event, clientName, onOpen, className }: {
       onClick={(e) => { e.stopPropagation(); onOpen(); }}
       title={`${event.title} — ${whose}${event.startTime ? `, ${event.startTime}` : ''}`}
     >
-      <span className="cal-chip-title">{event.title}</span>
-      <span className="cal-chip-whose">{whose}</span>
+      <span className="cal-chip-line">
+        {client && <ClientIdentity size="xs" showName={false} client={client} />}
+        <span className="cal-chip-title">{event.title}</span>
+      </span>
+      <span className="cal-chip-meta">
+        {event.startTime ? `${event.startTime} · ` : ''}{whose}
+      </span>
     </button>
   );
 }
 
-function MonthGrid({ anchor, events, today, clientName, onOpenEvent, onOpenDay }:
+function MonthGrid({ anchor, events, today, selected, clientOf, onOpenEvent, onOpenDay, onSelectDay }:
   Omit<CalendarViewProps, 'view'> & { today: string }): ReactElement {
   const days = monthGrid(anchor);
   const byDate = new Map<string, StudioEvent[]>();
@@ -172,34 +205,49 @@ function MonthGrid({ anchor, events, today, clientName, onOpenEvent, onOpenDay }
                   key={date}
                   data-outside={!isSameMonth(date, anchor) || undefined}
                   data-today={date === today || undefined}
+                  data-selected={date === selected || undefined}
                 >
-                  <div className="cal-day-head">
-                    <button
-                      type="button"
-                      className="cal-day-number"
-                      onClick={() => onOpenDay(date)}
-                      aria-label={`Add an entry on ${date}`}
-                    >
-                      {dayOfMonth(date)}
-                    </button>
+                  {/* The empty part of a cell is a button. The calendar is where
+                      scheduling happens, and clicking the 15th is how anybody
+                      expects to add something to the 15th. It is a mouse
+                      affordance with the number and the New Event button both
+                      reachable by keyboard, so it is not the only way in. */}
+                  <div className="cal-cell" onClick={() => onOpenDay(date)} role="presentation">
+                    <div className="cal-day-head">
+                      <button
+                        type="button"
+                        className="cal-day-number"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onSelectDay) onSelectDay(date); else onOpenDay(date);
+                        }}
+                        aria-label={`${onSelectDay ? 'Show' : 'Add an entry on'} ${dayTitle(date)}`}
+                        aria-pressed={onSelectDay ? date === selected : undefined}
+                      >
+                        {dayOfMonth(date)}
+                      </button>
+                    </div>
+                    {held.slice(0, MONTH_CELL_LIMIT).map((event) => (
+                      <Chip
+                        key={event.id}
+                        event={event}
+                        clientOf={clientOf}
+                        onOpen={() => onOpenEvent(event)}
+                      />
+                    ))}
+                    {overflow > 0 && (
+                      <button
+                        type="button"
+                        className="cal-more"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onSelectDay) onSelectDay(date); else onOpenDay(date);
+                        }}
+                      >
+                        +{overflow} more
+                      </button>
+                    )}
                   </div>
-                  {held.slice(0, MONTH_CELL_LIMIT).map((event) => (
-                    <Chip
-                      key={event.id}
-                      event={event}
-                      clientName={clientName}
-                      onOpen={() => onOpenEvent(event)}
-                    />
-                  ))}
-                  {overflow > 0 && (
-                    <button
-                      type="button"
-                      className="cal-more"
-                      onClick={() => onOpenDay(date)}
-                    >
-                      +{overflow} more
-                    </button>
-                  )}
                 </td>
               );
             })}
@@ -219,8 +267,8 @@ function MonthGrid({ anchor, events, today, clientName, onOpenEvent, onOpenDay }
  * two lanes, and the third of three gets a third — which is the whole reason
  * `layoutDay` exists.
  */
-function PlacedChip({ placed, clientName, onOpen }: {
-  placed: Placed; clientName: (id: string) => string; onOpen: () => void;
+function PlacedChip({ placed, clientOf, onOpen }: {
+  placed: Placed; clientOf: ClientLookup; onOpen: () => void;
 }): ReactElement {
   const width = 100 / placed.columns;
   return (
@@ -231,11 +279,11 @@ function PlacedChip({ placed, clientName, onOpen }: {
         height: `calc(var(--cal-hour-h) * ${(placed.end - placed.start) / 60})`,
         left: `calc(${placed.column * width}% + 2px)`,
         width: `calc(${width}% - 4px)`,
-      } as React.CSSProperties}
+      } as CSSProperties}
     >
       <Chip
         event={placed.event}
-        clientName={clientName}
+        clientOf={clientOf}
         onOpen={onOpen}
         className="cal-chip-timed"
       />
@@ -254,12 +302,14 @@ function PlacedChip({ placed, clientName, onOpen }: {
  * opens a new entry at that time — the calendar is where scheduling happens, so
  * the way to add one is to click the slot it goes in.
  */
-function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
+function TimeGrid({ dates, events, selected, clientOf, onOpenEvent, onOpenDay, onSelectDay }: {
   dates: readonly string[];
   events: readonly StudioEvent[];
-  clientName: (id: string) => string;
+  selected?: string | undefined;
+  clientOf: ClientLookup;
   onOpenEvent: (event: StudioEvent) => void;
   onOpenDay: (date: string, startTime?: string) => void;
+  onSelectDay?: ((date: string) => void) | undefined;
 }): ReactElement {
   const { from, to } = hourRange(events);
   const hours = Array.from({ length: to - from }, (_, n) => from + n);
@@ -272,15 +322,23 @@ function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
       className="cal-time"
       // The column template, the minimum width and the three rows all read this
       // one number, so a day view draws one column rather than seven empty ones.
-      style={{ '--cal-days': dates.length } as React.CSSProperties}
+      style={{ '--cal-days': dates.length } as CSSProperties}
     >
       <div className="cal-time-head">
         <span className="cal-gutter" aria-hidden="true" />
         {dates.map((date) => (
-          <div key={date} className="cal-time-day" data-today={date === today || undefined}>
+          <button
+            key={date}
+            type="button"
+            className="cal-time-day"
+            data-today={date === today || undefined}
+            data-selected={date === selected || undefined}
+            onClick={() => (onSelectDay ? onSelectDay(date) : onOpenDay(date))}
+            aria-label={onSelectDay ? `Show ${dayTitle(date)}` : `Add an entry on ${date}`}
+          >
             <span className="label">{WEEKDAY_NAMES[weekdayIndex(date)]?.slice(0, 3)}</span>
             <strong>{dayOfMonth(date)}</strong>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -293,7 +351,7 @@ function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
                 <Chip
                   key={event.id}
                   event={event}
-                  clientName={clientName}
+                  clientOf={clientOf}
                   onOpen={() => onOpenEvent(event)}
                 />
               ))}
@@ -304,7 +362,7 @@ function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
 
       <div className="cal-time-body">
         {dates.map((date, n) => (
-          <div key={date} className="cal-time-col">
+          <div key={date} className="cal-time-col" data-selected={date === selected || undefined}>
             {hours.map((hour) => (
               <button
                 key={hour}
@@ -318,7 +376,7 @@ function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
               <PlacedChip
                 key={placed.event.id}
                 placed={placed}
-                clientName={clientName}
+                clientOf={clientOf}
                 onOpen={() => onOpenEvent(placed.event)}
               />
             ))}
@@ -341,7 +399,7 @@ function TimeGrid({ dates, events, clientName, onOpenEvent, onOpenDay }: {
 }
 
 export default function CalendarView(props: CalendarViewProps): ReactElement {
-  const { view, anchor, events, clientName, onOpenEvent, onOpenDay } = props;
+  const { view, anchor, events, clientOf, onOpenEvent, onOpenDay, selected, onSelectDay } = props;
   const today = todayIso();
 
   if (view === 'month') {
@@ -350,9 +408,11 @@ export default function CalendarView(props: CalendarViewProps): ReactElement {
         anchor={anchor}
         events={events}
         today={today}
-        clientName={clientName}
+        clientOf={clientOf}
+        selected={selected}
         onOpenEvent={onOpenEvent}
         onOpenDay={onOpenDay}
+        onSelectDay={onSelectDay}
       />
     );
   }
@@ -361,9 +421,11 @@ export default function CalendarView(props: CalendarViewProps): ReactElement {
     <TimeGrid
       dates={view === 'day' ? [anchor] : weekDates(anchor)}
       events={events}
-      clientName={clientName}
+      clientOf={clientOf}
+      selected={selected}
       onOpenEvent={onOpenEvent}
       onOpenDay={onOpenDay}
+      onSelectDay={onSelectDay}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { api, type ApiError, type Client, type Contact, type Project, type Run } from '../api.js';
@@ -11,9 +11,11 @@ import DocumentLibrary from '../components/DocumentLibrary.js';
 import BrandHubAdmin from './BrandHubAdmin.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
 import { ClientLogo } from '../components/ClientLogo.js';
-import { ClientIdentity } from '../components/ClientIdentity.js';
 import { TranscriptStrategy } from '../components/TranscriptStrategy.js';
 import { ContractBuilder } from '../components/ContractBuilder.js';
+import {
+  CLIENT_SECTIONS, clientSectionOf, type ClientSection,
+} from '../shell/clientNavigation.js';
 import Brand from './Brand.js';
 import Assets from './Assets.js';
 import PortalAccess from './PortalAccess.js';
@@ -29,24 +31,38 @@ import { StudioOnly, useViewMode } from '../viewMode.js';
 /**
  * One client: their people, their work, and the runs underneath it.
  *
- * The tabs are the client's own workspace, in the order the work flows: what is
- * happening, what they are being sent, what they have access to, what it costs,
- * and the record itself. The studio-only furniture — the edit menus, the upload
- * targets, the internal notes — is wrapped in `StudioOnly` throughout, so the
- * header's eye toggle turns the whole page into what the client would be shown
- * rather than a page with a few buttons missing.
+ * **This file is the sections. It is not the navigation.** The sections are
+ * drawn in the order the work flows — what is happening, what they are being
+ * sent, what they have access to, what it costs, and the record itself — and
+ * the sidebar beside them is read from `shell/clientNavigation.ts`. Neither half
+ * knows the other's list, which is the only way a tenth section can be added
+ * without touching ten pages.
  *
- * Editing and deleting follow one rule throughout this page: a delete asks
- * first through the shared confirmation panel. Clients with dependent work
- * stay protected; deleting a project explicitly includes every run under it.
+ * The studio-only furniture — the edit menus, the upload targets, the internal
+ * notes — is wrapped in `StudioOnly` throughout, so the header's eye toggle
+ * turns the whole workspace into what the client would be shown rather than a
+ * page with a few buttons missing.
+ *
+ * Editing and deleting follow one rule throughout: a delete asks first through
+ * the shared confirmation panel. Clients with dependent work stay protected;
+ * deleting a project explicitly includes every run under it.
  */
 
 const CLIENT_STATUSES: Client['status'][] = ['prospect', 'active', 'dormant', 'archived'];
 
-function ClientHeader({ client, dependents, onSaved }: {
-  client: Client; dependents: number; onSaved: () => void;
+/**
+ * The client record, and the form that edits it.
+ *
+ * This used to sit above the tabs on every section, in place of the header, so
+ * the name and mark were drawn twice over a ten-item navigation strip. It
+ * belongs to Settings — a person who wants to change who a client is goes
+ * looking for the client's settings, not for a title that turns into a form
+ * when they click it — and the identity it used to carry is now the sidebar's
+ * one job.
+ */
+function ClientRecord({ client, onSaved }: {
+  client: Client; onSaved: () => void;
 }): ReactElement {
-  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(client.name);
   const [industry, setIndustry] = useState(client.industry ?? '');
@@ -64,69 +80,41 @@ function ClientHeader({ client, dependents, onSaved }: {
     onSuccess: () => { setEditing(false); onSaved(); },
   });
 
-  const remove = useMutation({
-    mutationFn: () => api.deleteClient(client.id),
-    onSuccess: () => {
-      // The navigation below is a hash change, not a reload — the query
-      // cache survives it, so the clients list would otherwise still show
-      // the row this just deleted until its own staleTime happened to lapse.
-      void queryClient.invalidateQueries({ queryKey: ['clients'] });
-      globalThis.location.href = '#/clients';
-    },
-  });
-
-  // A refusal from one attempt ("still has a contact") goes stale the moment
-  // that contact is removed from a table below — nothing about *this*
-  // mutation changes to clear it on its own, so the count that caused it is
-  // watched directly instead.
-  // `remove` is deliberately left out of this dependency list — its own
-  // identity changes the moment `reset()` runs, which would make this fire
-  // on every render instead of only when `dependents` actually moves.
-  useEffect(() => { remove.reset(); }, [dependents]);
-
-  const onDelete = (): void => {
-    void requestConfirmation({
-      title: `Delete ${client.name}?`,
-      message: 'This cannot be undone. Remove the client’s contacts and projects first.',
-      confirmLabel: 'Delete client',
-    }).then((confirmed) => { if (confirmed) remove.mutate(); });
-  };
-
   if (!editing) {
     return (
-      <div>
+      <div className="card stack">
         <div className="row">
-          {/* The largest mark in the studio, because this is the one page where
-              there is nothing else to tell you which client you are looking at. */}
-          <ClientIdentity size="lg" showName={false} client={client} />
-          <div>
-            <p className="label">Client · /{client.slug}</p>
-            <h2>{client.name}</h2>
-          </div>
-          <span className={`pill ${client.status === 'archived' ? 'minor' : 'pass'}`}
-                style={{ marginLeft: 'auto' }}>
-            {client.status}
-          </span>
+          <h3 className="card-title">The record</h3>
           <StudioOnly>
-            <OverflowMenu label={`Actions for ${client.name}`} size="bar" items={[
-              { label: 'Edit client', icon: Pencil, onSelect: () => setEditing(true) },
-              { label: remove.isPending ? 'Deleting…' : 'Delete client', icon: Trash2,
-                danger: true, disabled: remove.isPending, onSelect: onDelete },
-            ]} />
+            <button type="button" className="row-edit" onClick={() => setEditing(true)}>
+              <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+              Edit record
+            </button>
           </StudioOnly>
         </div>
-        <p className="muted">
-          {[client.industry, client.location, client.website].filter(Boolean).join(' · ') || '—'}
-        </p>
+
+        <dl className="facts">
+          <dt>Client</dt><dd>/{client.slug}</dd>
+          <dt>Status</dt>
+          <dd><span className={`pill ${client.status === 'archived' ? 'minor' : 'pass'}`}>{client.status}</span></dd>
+          <dt>Industry</dt><dd>{client.industry || '—'}</dd>
+          <dt>Location</dt><dd>{client.location || '—'}</dd>
+          <dt>Website</dt>
+          <dd>{client.website
+            ? <a href={client.website} target="_blank" rel="noreferrer">Open ↗</a>
+            : '—'}</dd>
+        </dl>
+
         {/*
           Shown whether or not they are set. Rendering these only once a URL
-          existed meant the integration was invisible until you already knew
-          it was there — the feature and the empty state were the same
-          nothing. Unset, each one is the way in to setting it.
+          existed meant the integration was invisible until you already knew it
+          was there — the feature and the empty state were the same nothing.
+          Unset, each one is the way in to setting it.
 
           In client view these read as plain links, because they are the only
-          two buttons a client has on this page and they are both ways out of
-          it. The "add a channel" half is studio-only; the "open it" half is not.
+          two things a client can act on from here and they are both ways out
+          of the studio. The "add a channel" half is studio-only; the "open it"
+          half is not.
         */}
         <div className="row" style={{ gap: 6 }}>
           {client.slackUrl ? (
@@ -152,13 +140,11 @@ function ClientHeader({ client, dependents, onSaved }: {
             </StudioOnly>
           )}
         </div>
+
         {/* The note field is a studio's private shorthand — nobody writes it
             expecting a client to read it, so it is not shown to one. */}
         <StudioOnly>
           {client.notes && <p className="muted">{client.notes}</p>}
-          {remove.error && (
-            <p className="err">{((remove.error as ApiError).message)}</p>
-          )}
         </StudioOnly>
       </div>
     );
@@ -166,6 +152,7 @@ function ClientHeader({ client, dependents, onSaved }: {
 
   return (
     <form className="card stack" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      <h3 className="card-title">Edit the record</h3>
       <div className="row">
         <label className="field" style={{ flex: 1 }}>
           <span className="label">Name</span>
@@ -402,44 +389,12 @@ function ProjectRow({ project, onChanged }: { project: Project; onChanged: () =>
   );
 }
 
-export type ClientTab =
-  | 'dashboard' | 'updates' | 'tasks' | 'documents' | 'library'
-  | 'strategy' | 'hub' | 'timeline' | 'contracts' | 'settings';
-
-/**
- * The client's workspace, in the order the work flows.
- *
- * Two of these are the studio's own record and belong nowhere a client can
- * reach — Contacts, Projects and Runs live on the Dashboard, which is why
- * nothing above it needs a tab of its own. Two are not built yet (Tasks), and
- * say so rather than rendering an empty board.
- */
-export const CLIENT_TABS: readonly { id: ClientTab; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'updates', label: 'Updates' },
-  { id: 'tasks', label: 'Tasks' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'library', label: 'Library' },
-  { id: 'strategy', label: 'Discovery & Strategy' },
-  { id: 'hub', label: 'Brand Hub' },
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'contracts', label: 'Contracts & Invoices' },
-  { id: 'settings', label: 'Settings' },
-];
-
-/** The first tab, which is also the one the URL leaves off. */
-export const DEFAULT_TAB: ClientTab = 'dashboard';
-
-function isClientTab(tab: string | undefined): tab is ClientTab {
-  return tab !== undefined && CLIENT_TABS.some((t) => t.id === tab);
-}
-
 /**
  * One client's updates: their runs, their messages, what they said back.
  *
  * All three are the same question — what has this client heard from us, and
- * what have they said — so they share a tab rather than being scattered across
- * three. The run state itself is derived, not stored; see `Activity.tsx`.
+ * what have they said — so they share a section rather than being scattered
+ * across three. The run state itself is derived, not stored; see `Activity.tsx`.
  */
 function ClientUpdates({ client, runs }: {
   client: Client; runs: readonly Run[];
@@ -549,12 +504,21 @@ export default function ClientDetail({ clientId, tab }: {
   }
 
   const { client, contacts, projects, runs } = data;
-  const current: ClientTab = isClientTab(tab) ? tab : DEFAULT_TAB;
+  const current: ClientSection = clientSectionOf(tab);
+  const title = CLIENT_SECTIONS.find((item) => item.id === current)?.label ?? 'Client';
 
+  /*
+   * Every screen names itself — here and in the sidebar beside it, which is
+   * what a page title and a navigation item are for. What it must not do is
+   * name the *client* as well: their mark, name, industry and status live in
+   * the sidebar header, and saying them again at the top of the content is the
+   * duplication the second rail exists to remove.
+   */
   return (
     <section className="stack">
-      <ClientHeader client={client} dependents={contacts.length + projects.length} onSaved={invalidate} />
+      <h2 className="page-title">{title}</h2>
 
+      {current === 'dashboard' && (<>
       <div className="stat-row">
         <div className="stat"><span className="label">Projects</span>
           <span className="metric">{String(projects.length).padStart(2, '0')}</span></div>
@@ -562,30 +526,8 @@ export default function ClientDetail({ clientId, tab }: {
           <span className="metric">{String(runs.length).padStart(2, '0')}</span></div>
         <div className="stat"><span className="label">Contacts</span>
           <span className="metric">{String(contacts.length).padStart(2, '0')}</span></div>
-        <div className="stat"><span className="label">Status</span>
-          <span className="metric" style={{ fontSize: 20 }}>{client.status}</span></div>
       </div>
 
-      {/*
-        Ten tabs where there were six, and the six are all still here — the
-        brand system moved under Discovery & Strategy, delivery split into
-        Documents and Library, and the client record split into Timeline,
-        Contracts and Settings. The tab is in the URL rather than component
-        state so a refresh, a shared link and the back button all land on the
-        same view — the same reason the run screens are routes and not a state
-        variable.
-      */}
-      <nav className="tabs" aria-label="Client sections">
-        {CLIENT_TABS.map((t) => (
-          <a key={t.id} className="tab"
-             href={`#/clients/${clientId}${t.id === DEFAULT_TAB ? '' : `/${t.id}`}`}
-             aria-current={current === t.id ? 'page' : undefined}>
-            {t.label}
-          </a>
-        ))}
-      </nav>
-
-      {current === 'dashboard' && (<>
       <h3>Contacts</h3>
       {contacts.length === 0
         ? <p className="muted">Nobody recorded yet. A project whose approver is unnamed is a
@@ -650,10 +592,10 @@ export default function ClientDetail({ clientId, tab }: {
       {current === 'updates' && <ClientUpdates client={client} runs={runs as Run[]} />}
 
       {/*
-        Two tabs the plan asks for that the studio cannot fill yet. They are
-        here, named, and honest — a tab that does not exist is a feature nobody
-        can report missing, and a tab that renders an empty board would be a
-        lie about work that is tracked on the Timeline.
+        Two sections the plan asks for that the studio cannot fill yet. They are
+        here, named, and honest — a section that does not exist is a feature
+        nobody can report missing, and one that renders an empty board would be
+        a lie about work that is tracked on the Timeline.
 
         The cross-client sentence is studio-side. Pointing a client at a page
         they are not shown, about other people's work, is the wrong answer even
@@ -697,18 +639,18 @@ export default function ClientDetail({ clientId, tab }: {
       {current === 'hub' && (clientView ? (
         <p className="muted">
           This client’s Brand Hub is theirs, in their portal. Set-up lives on the studio side
-          of this tab — turn the eye back to see it.
+          of this section — turn the eye back to see it.
         </p>
       ) : <BrandHubAdmin clientId={clientId} />)}
 
       {current === 'timeline' && <Milestones clientId={clientId} />}
 
       {/*
-        Contracts and invoices share a tab because they are the two documents
-        that put a number in front of a client, and a studio member looking for
-        "what did we agree and what have they paid" should not have to decide
-        which half of the answer they want. Contracts come first: a contract is
-        the thing that exists, and an invoice is an artefact of one.
+        Contracts and invoices share a section because they are the two
+        documents that put a number in front of a client, and a studio member
+        looking for "what did we agree and what have they paid" should not have
+        to decide which half of the answer they want. Contracts come first: a
+        contract is the thing that exists, and an invoice is an artefact of one.
       */}
       {current === 'contracts' && (<>
         <ContractBuilder clientId={clientId} onChanged={onContractsChanged} />
@@ -716,9 +658,14 @@ export default function ClientDetail({ clientId, tab }: {
       </>)}
 
       {current === 'settings' && (<>
+        {/* The record, the mark, and who may see them. Everything about *who
+            this client is* is here now, rather than repeated above the
+            navigation on all ten sections — and the sidebar's "Edit client"
+            action is a link to this page, not a mode that hides it. */}
+        <ClientRecord client={client} onSaved={invalidate} />
         {/* The mark beside their name everywhere, managed in one place. Inside
-            the client's own page, so the logo is a thing you set once for the
-            studio rather than per surface. */}
+            the client's own workspace, so the logo is a thing you set once for
+            the studio rather than per surface. */}
         <ClientLogo client={client} />
         <StudioOnly>
           <PortalAccess clientId={clientId} clientName={client.name} contacts={contacts} />

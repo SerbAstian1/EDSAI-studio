@@ -111,6 +111,20 @@
   --radius: 4px;
   --radius-lg: 6px;
   --sidebar-w: 216px;
+  /* The second rail: a client's own sections, beside the studio's. Wider than
+     the studio rail because its labels are sentences — "Contracts & Invoices",
+     "Discovery & Strategy" — and narrower than a third of the window, because
+     a rail that wide stops being a rail and starts being a second content
+     column. Past `--workspace-break` it becomes a bar rather than a column. */
+  --client-sidebar-w: 240px;
+  --workspace-break: 1100px;
+  /* The height of the chrome that is above the content on every screen: the
+     header, or — under 900px — the studio rail collapsed into a bar. Sticky
+     offsets and the calendar's own height are both measured against it, so
+     "below the chrome" is one number rather than a guess repeated. A hair under
+     the real 61px, so a bar that meets it covers the join rather than leaving
+     a gap. */
+  --chrome-h: 60px;
   --step: 4px;
   /* One height for every control that can sit beside another: button, input,
      select, header search, icon buttons, avatar. Nine steps. Neighbours that
@@ -272,6 +286,34 @@ h3 {
 
 .muted { color: var(--text-muted); }
 
+/* The name of the page, on a page that has a rail naming it beside it. One
+   level below `h2` on purpose: with the client's identity in the sidebar and
+   the section in the rail, a third display-sized heading at the top of the
+   content would be the loudest thing on a page whose job is a contact table. */
+.page-title {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+  margin: 0 0 calc(var(--step) * -1);
+}
+
+/* A heading inside a card, and the one control that belongs on the same line as
+   it. A card with a title and an action is the pattern the record panel and
+   every settings surface use, and it is written down once here rather than as a
+   dozen inline styles. */
+.card-title { font-size: var(--text-base); margin: 0; }
+.card > .row:first-child > .card-title + * { margin-left: auto; }
+.row-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  margin-left: auto;
+  padding: 4px 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  min-height: 0;
+}
+.row-edit:hover:not([disabled]) { color: var(--text-primary); border-color: var(--border-strong); }
+
 /* For text a screen reader needs and an eye does not: the full weekday behind
    a one-letter column heading, the name of a day behind its number. Clipped to a
    pixel rather than `display: none`, which would remove it from the
@@ -424,6 +466,13 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 
 .shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
 
+/* How far in from the left edge the content column starts, which is what the
+   fixed status bar has to clear. One variable, set by whoever added a column:
+   a third rail is a line here rather than an offset in three places. */
+.shell { --shell-inset: var(--sidebar-w); }
+.shell[data-workspace="client"] { --shell-inset: calc(var(--sidebar-w) + var(--client-sidebar-w)); }
+@media (max-width: 900px) { .shell { --shell-inset: 0; } }
+
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -520,6 +569,68 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 
 .main { min-width: 0; display: flex; flex-direction: column; }
 
+/* — the client workspace —————————————————————————————————————————————
+   Three columns, and only while a client is open: studio rail, the client's
+   own rail, content. Both rails are sticky columns that scroll independently,
+   so reading a long client record does not drag the studio's navigation with it
+   and the studio rail is never pushed under the content.
+
+   Below `--workspace-break` the second rail stops being a column and becomes a
+   disclosure bar, for the same reason the studio rail does at 900px: two fixed
+   columns plus content have a minimum width, and a page with a minimum width
+   wider than the screen is a page the browser zooms out to fit. Nothing is
+   removed — every section is still one tap away, in the same order. */
+.workspace {
+  display: grid;
+  grid-template-columns: var(--client-sidebar-w) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  align-items: start;
+}
+
+.client-sidebar {
+  background: var(--surface-sunken);
+  border-right: 1px solid var(--border);
+  padding: var(--space-page) calc(var(--step) * 2.5) var(--space-page) calc(var(--step) * 3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section);
+  /* The same geometry as the studio rail, deliberately: pinned to the top of the
+     viewport, a screen tall, scrolling on its own. Two rails that scroll
+     differently read as two applications. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.client-sidebar-head { display: grid; gap: calc(var(--step) * 2); }
+/* The disclosure that replaces the whole rail on a narrow screen. Hidden on a
+   desktop, where the rail is always there and a button that opens it would be
+   a second way to do what clicking an item does. */
+.client-sidebar-toggle { display: none; }
+
+.client-sidebar-identity { display: flex; align-items: center; gap: calc(var(--step) * 3); }
+.client-sidebar-names { min-width: 0; display: grid; gap: 1px; }
+.client-sidebar-names .label { margin: 0; }
+/* The name wraps to two lines rather than truncating: a rail is 240px and a
+   client called "University of the Philippines Design School" is real. The rail
+   scrolls for exactly this. */
+.client-sidebar-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.client-sidebar-status { display: flex; align-items: center; gap: calc(var(--step) * 2); }
+.client-sidebar-status .overflow { margin-left: auto; }
+.client-sidebar-error { margin: 0; font-size: var(--text-xs); }
+
+.client-sidebar-menu { display: grid; gap: 1px; align-content: start; }
+.client-sidebar-menu .nav-item { min-height: 32px; }
+.client-sidebar-menu .nav-rule { margin: var(--step) 0; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -535,6 +646,21 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .topbar nav a[aria-current="page"] { background: var(--surface); color: var(--text-primary); }
 
 .content { padding: var(--space-page); max-width: 1440px; width: 100%; }
+
+/* The calendar is the one screen that is a window rather than a page, so it is
+   the one screen allowed to break the measure and to fill the height. The bar
+   and the strip are fixed; the grid takes everything else, and it does that by
+   filling its parent rather than by being told a number of pixels — a calendar
+   that has to be told how tall it is is one that is wrong on the next monitor.
+   Scrolling stays on the document, so the bar leaves with the grid rather than
+   floating over it. */
+.main > .content[data-screen="calendar"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  max-width: none;
+  min-height: 0;
+}
 
 /*
  * Phones.
@@ -1987,7 +2113,7 @@ button.choice.chosen {
 .status-bar {
   position: fixed;
   bottom: 0;
-  left: var(--sidebar-w);
+  left: var(--shell-inset);
   right: 0;
   z-index: 20;
   display: flex;
@@ -2289,13 +2415,19 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   white-space: nowrap;
 }
 
-/* Three sizes, in steps of four, because a fourth is a decision rather than a
-   variant. `sm` sits beside body text and in a table row, `md` in a card, `lg`
-   in a client's own header — and all three are multiples of the base step, so
-   they land on the same grid as the controls beside them. */
+/* Four sizes, in steps of four, because each is a decision rather than a
+   variant. `xs` is a mark on a calendar event card — a way of naming a meeting
+   at a glance on a chip two lines tall, so it is 18px rather than 32 and sits
+   half a step off the base grid on purpose. `sm` sits beside body text and in
+   a table row, `md` in a card, `lg` in a client's own header — the other three
+   are multiples of the base step, so they land on the same grid as the controls
+   beside them. */
+.client-identity.is-xs { gap: calc(var(--step) * 1.5); }
+.client-identity.is-xs .client-mark { width: 18px; height: 18px; border-radius: 3px; }
 .client-identity.is-sm .client-mark { width: calc(var(--step) * 8); height: calc(var(--step) * 8); }
 .client-identity.is-md .client-mark { width: calc(var(--step) * 10); height: calc(var(--step) * 10); }
 .client-identity.is-lg .client-mark { width: calc(var(--step) * 12); height: calc(var(--step) * 12); }
+.client-identity.is-xs .client-mark-initials { font-size: 9px; letter-spacing: 0; }
 .client-identity.is-sm .client-mark-initials { font-size: var(--text-xs); }
 .client-identity.is-md .client-mark-initials { font-size: var(--text-sm); }
 .client-identity.is-lg .client-mark-initials { font-size: var(--text-base); }
@@ -2486,6 +2618,81 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 .status-bar::-webkit-scrollbar { display: none; }
 .status-bar > *, .status-bar-actions { flex: none; }
 .status-bar-actions { flex-wrap: nowrap; }
+
+/* The client's rail stops being a column. It becomes the same compact bar the
+   studio rail becomes, one level down: a button naming the section you are in,
+   and the full list under it. Nothing is dropped — ten sections in, ten out —
+   because a section that exists only on a wide screen is a section most people
+   have never seen. */
+@media (max-width: 1100px) {
+  .shell[data-workspace="client"] { --shell-inset: var(--sidebar-w); }
+
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+
+  .client-sidebar {
+    position: sticky;
+    /* Below the studio rail's own bar under 900px, and at the top of the page
+       above it — where there is a column to the left rather than a bar above. */
+    top: var(--chrome-h);
+    z-index: 30;
+    height: auto;
+    overflow: visible;
+    padding: calc(var(--step) * 2) var(--space-page) calc(var(--step) * 2);
+    gap: calc(var(--step) * 2);
+    background: var(--surface);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .client-sidebar-head {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--step) * 3);
+    flex-wrap: wrap;
+  }
+  /* The mark and the name stay — they are the workspace's title, and a bar
+     labelled "Documents" with no indication of whose documents is a bar in the
+     wrong application. The status and the overflow follow them. */
+  .client-sidebar-identity { min-width: 0; }
+  .client-sidebar-names { display: none; }
+  .client-sidebar-status { margin-left: auto; }
+  .client-sidebar-error { flex: 1 1 100%; }
+
+  .client-sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    order: -1;
+    color: var(--text-secondary);
+  }
+  .client-sidebar-toggle span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .client-sidebar-toggle:hover { color: var(--text-primary); }
+  .client-sidebar-toggle svg:last-child { transition: transform var(--transition); }
+  .client-sidebar-toggle svg:last-child.open { transform: rotate(180deg); }
+
+  .client-sidebar-menu {
+    display: none;
+    margin-top: calc(var(--step) * 2);
+    padding-top: calc(var(--step) * 2);
+    border-top: 1px solid var(--border);
+  }
+  .client-sidebar-menu.open { display: grid; }
+  .client-sidebar-menu .nav-item { min-height: 0; padding: 8px 10px; }
+}
+
+@media (max-width: 900px) {
+  .shell[data-workspace="client"] { --shell-inset: 0; }
+  .client-sidebar { top: calc(var(--chrome-h) + env(safe-area-inset-top)); }
+  /* Two bars stacked: the studio's and this one. The studio's stays on top,
+     because it is the one that answers "where am I in the studio" and the other
+     is one level down. */
+  .client-sidebar .client-mark { width: calc(var(--step) * 7); height: calc(var(--step) * 7); }
+}
 
 @media (max-width: 900px) {
   .sidebar {
@@ -2776,11 +2983,204 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 /* The studio's own time: no hue, so it never reads as a client's. */
 .cal-internal { --cal-h: 0; --cal-s: 0%; }
 
-.cal-toolbar { gap: var(--space-block); }
-.cal-range { margin: 0; font-size: var(--text-lg); }
-.cal-range::before { content: '← '; color: var(--text-muted); font-weight: 400; }
+/* -- the window ------------------------------------------------------------
+   The calendar is the one screen whose answer is a picture — which day is
+   crowded, where the deadlines pile up — so it takes the height of the viewport
+   and the month grid inside it takes the rest. Everything the reference layout
+   has is on one line above that grid, in this order: the month, a search, the
+   three paging buttons, the view switch, and the one button that adds
+   something.
 
-.cal-legend { gap: calc(var(--step) * 2); }
+   The bar does not reorder, and on any window with room for it, it does not take
+   a second row. That is a constraint, not a preference: a control that moves
+   between rows as the window narrows is a control somebody has to hunt for. So
+   the search narrows before anything else gives way, the paging buttons keep
+   their position, and only on a phone — where a month grid is seven columns of
+   40px anyway and this bar is being read on a desk later — does the view switch
+   drop to a line of its own, at the end, in the order it was already in. */
+
+.calendar-page {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 3);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cal-bar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 3);
+  flex-wrap: wrap;
+  padding-bottom: calc(var(--step) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* The gap that pushes the controls right is a real element rather than a margin
+   on one of them, so the group stays together as the window narrows. */
+.cal-bar-spacer { flex: 1 1 auto; min-width: 0; }
+
+.cal-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  flex: 0 1 232px;
+  min-width: 0;
+  height: var(--control);
+  padding: 0 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+.cal-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+.cal-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.cal-search input:focus { outline: none; }
+.cal-search input::placeholder { color: var(--text-muted); }
+/* The clear button below is the one affordance for this, so the browser's own is
+   hidden rather than left to appear on some platforms and not others. */
+.cal-search input::-webkit-search-cancel-button { display: none; }
+.cal-search-clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px; height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+}
+.cal-search-clear:hover:not([disabled]) { color: var(--text-primary); background: var(--surface); }
+
+.cal-nav { display: flex; align-items: center; gap: var(--step); flex: none; }
+.cal-nav button[aria-label] { width: var(--control); padding: 0; justify-content: center; }
+
+/* Month / Week / Day as one segmented control rather than three buttons, so it
+   reads as a setting with a position rather than as three equal actions. */
+.cal-views {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.cal-views button {
+  min-height: 28px;
+  padding: 0 calc(var(--step) * 3);
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.cal-views button:hover:not([disabled]) { color: var(--text-primary); }
+.cal-views button[aria-pressed="true"] {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-1);
+}
+
+.cal-new { flex: none; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .cal-bar { gap: calc(var(--step) * 2); }
+  .cal-title { font-size: var(--text-lg); }
+  .cal-search { flex: 1 1 120px; }
+  .cal-new { padding-inline: calc(var(--step) * 2.5); }
+}
+
+/* On a phone the view switch takes a line of its own, at the end. It is the
+   only control on the bar that can go, and the grid it governs is not going to
+   be read here anyway. */
+@media (max-width: 560px) {
+  .cal-bar-spacer { display: none; }
+  .cal-views { order: 1; flex: 1 1 100%; justify-content: center; }
+  .cal-search { order: 0; flex: 1 1 100%; }
+  .cal-title { flex: 1 1 100%; }
+}
+
+/* The selected day, as a line under the bar rather than a panel down the side.
+   A side panel would take the width the month grid needs to stay readable, and
+   the month grid is the reason to be here. */
+.cal-strip {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 3);
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 3);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.cal-strip[data-empty] { border-style: dashed; }
+.cal-strip-day { margin: 0; font-size: var(--text-sm); }
+.cal-strip-empty { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }
+.cal-strip-list {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  flex-wrap: wrap;
+  margin: 0; padding: 0;
+  list-style: none;
+}
+.cal-strip-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  min-height: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid hsl(var(--cal-h) var(--cal-s) 46%);
+  border-radius: 999px;
+  background: color-mix(in srgb, hsl(var(--cal-h) var(--cal-s) 46%) 12%, var(--surface));
+  font-size: var(--text-xs);
+}
+.cal-strip-entry:hover:not([disabled]) { border-color: var(--border-strong); border-left-color: hsl(var(--cal-h) var(--cal-s) 46%); }
+.cal-strip-time { color: var(--text-muted); font-size: 11px; }
+.cal-strip-title { font-weight: 500; }
+
+.cal-legend { gap: calc(var(--step) * 2); flex-wrap: wrap; }
+.cal-tally { margin-left: auto; font-size: var(--text-xs); white-space: nowrap; }
+
+/* The grid, taking every pixel the bar and the strip have left.
+   `overflow: auto` rather than `hidden`: the grid stretches to fill, and if the
+   window is too short for a fifteen-hour week or a crowded month, the grid
+   scrolls rather than the last row of the calendar being cut off with no way to
+   reach it. A calendar that hides its own last week is worse than one that
+   scrolls. */
+.cal-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.cal-body > * { flex: 1 1 auto; min-height: 0; }
+
+.cal-empty, .cal-busiest {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.cal-busiest { font-variant-numeric: tabular-nums; }
 
 .cal-key {
   display: inline-flex;
@@ -2806,14 +3206,23 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   background: hsl(var(--cal-h) var(--cal-s) 46%);
 }
 
-/* A chip: one tinted pill with a full-strength rule down its leading edge. */
+/* A chip: one tinted pill with a full-strength rule down its leading edge, and
+   two lines — the mark and the title above, the time and the client below.
+
+   The mark is not decoration. A month of a studio's calendar is mostly meetings
+   that belong to somebody else, so "whose is this" is the question a reader
+   answers while scanning, and it is answered fastest by a square of colour they
+   already recognise from the client list. The name is still on the second line,
+   which keeps the chip readable when the mark is the wrong shape for the client
+   or the logo has not loaded. */
 .cal-chip {
   display: flex;
-  align-items: baseline;
-  gap: calc(var(--step) * 1.5);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
   width: 100%;
   min-width: 0;
-  padding: 2px 6px 2px 5px;
+  padding: 3px 6px 4px 5px;
   border: 1px solid var(--border);
   border-left: 3px solid hsl(var(--cal-h) var(--cal-s) 46%);
   border-radius: var(--radius);
@@ -2821,12 +3230,24 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   color: var(--text-primary);
   text-align: left;
   font-size: var(--text-xs);
-  line-height: 1.4;
+  line-height: 1.35;
   overflow: hidden;
 }
 .cal-chip:hover:not([disabled]) { border-color: var(--border-strong); box-shadow: var(--shadow-1); }
+.cal-chip-line {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  min-width: 0;
+}
 .cal-chip-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cal-chip-whose { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.cal-chip-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .cal-more {
   padding: 1px 4px;
@@ -2842,6 +3263,11 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 
 .cal-month {
   width: 100%;
+  /* Fills the height the body hands it, so a month with three meetings and a
+     month with thirty both draw a full calendar. A grid that is only as tall as
+     its contents makes the busiest week of the year look the same size as the
+     quietest one. */
+  height: 100%;
   table-layout: fixed;
   border-collapse: collapse;
   background: var(--surface-elevated);
@@ -2858,15 +3284,33 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 }
 .cal-month td {
   vertical-align: top;
-  padding: calc(var(--step) * 1.5);
+  padding: 0;
   border-top: 1px solid var(--border);
   border-left: 1px solid var(--border);
 }
+/* The cell's own padding is on the inner div rather than the cell, so the div
+   can be the full height of the cell and still carry the padding — a `td` with
+   padding and a child with `height: 100%` adds them together and the last row
+   grows a padding's worth taller than the rest. */
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  min-height: calc(var(--step) * 12);
+  padding: calc(var(--step) * 1.5);
+  cursor: pointer;
+}
+.cal-month td:hover .cal-cell { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .cal-month td:first-child { border-left: 0; }
 .cal-month tr:first-child td { border-top: 0; }
 .cal-month td[data-outside] { background: var(--surface); }
 .cal-month td[data-outside] .cal-day-number { color: var(--text-muted); }
 .cal-month td[data-today] { background: color-mix(in srgb, var(--accent) 7%, var(--surface-elevated)); }
+/* The selected day is a ring rather than a fill: the fill is already carrying
+   "today" on one cell, and a cell that is both is a cell whose two states are
+   indistinguishable. */
+.cal-month td[data-selected] { box-shadow: inset 0 0 0 1px var(--accent); }
 
 .cal-day-head { display: flex; justify-content: flex-end; margin-bottom: 2px; }
 .cal-day-number {
@@ -2886,6 +3330,8 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   color: var(--accent-on);
   font-weight: 500;
 }
+.cal-month td[data-selected] .cal-day-number { color: var(--accent-ink); font-weight: 600; }
+.cal-month td[data-today][data-selected] .cal-day-number { color: var(--accent-on); }
 .cal-month td .cal-chip { margin-bottom: 2px; }
 
 /* -- week and day --------------------------------------------------------- */
@@ -2895,7 +3341,10 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
    column it labels. `--cal-days` is the number of columns the component is
    actually drawing: seven for a week, one for a day. */
 .cal-time {
-  overflow-x: auto;
+  /* Both axes: a week is seven columns of 88px minimum, and a day is fifteen
+     hours of 52px, so either can be taller or wider than the window it was
+     handed. */
+  overflow: auto;
   background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -2913,13 +3362,18 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   text-align: center;
   border-left: 1px solid var(--border);
   font-size: var(--text-xs);
+  background: none;
 }
+.cal-time-day:hover:not([disabled]) { background: var(--surface); }
+.cal-time-day[data-selected] { box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-time-day .label { margin: 0; }
 .cal-time-day strong { font-family: var(--font-display); font-size: var(--text-base); }
 .cal-time-day[data-today] strong { color: var(--accent-ink); }
+.cal-time-day[data-today][data-selected] strong { color: var(--accent-ink); }
 
 .cal-allday { border-bottom: 1px solid var(--border); }
 .cal-allday-col { padding: calc(var(--step) * 1.5); border-left: 1px solid var(--border); }
+.cal-allday-col[data-selected] { box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-allday-col .cal-chip { margin-bottom: 2px; }
 
 .cal-gutter {
@@ -2936,6 +3390,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 .cal-hours span { height: var(--cal-hour-h); transform: translateY(-0.55em); }
 
 .cal-time-col { position: relative; border-left: 1px solid var(--border); }
+.cal-time-col[data-selected] { box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-slot {
   display: block;
   width: 100%;
@@ -2948,8 +3403,15 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 .cal-slot:hover:not([disabled]) { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
 .cal-placed { position: absolute; display: block; overflow: hidden; }
-.cal-chip-timed { height: 100%; align-items: flex-start; flex-direction: column; gap: 0; }
-.cal-chip-time { display: none; color: var(--text-muted); font-size: 10px; }
+/* A placed entry is a box with room to breathe, not a two-line chip, so the
+   client line goes and only the mark stays beside the title. */
+.cal-chip-timed { height: 100%; align-items: flex-start; flex-direction: column; gap: 0; justify-content: space-between; }
+.cal-chip-timed .cal-chip-line { align-self: stretch; }
+/* The box it sits in has its own time on it, and two times on one entry is
+   noise. The mark stays: it is the one thing on a placed entry that says whose
+   meeting it is without being read. */
+.cal-chip-timed .cal-chip-meta { display: none; }
+.cal-chip-time { display: none; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .cal-placed:hover .cal-chip-time,
 .cal-placed:focus-within .cal-chip-time { display: block; }
 
@@ -2983,14 +3445,15 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 @media (max-width: 900px) {
   /* A month survives a phone because its cells hold a number and a line of
      text; a week does not, so the day and week views scroll sideways rather
-     than compressing seven days into seven slivers. The month drops the client
-     name from each chip and keeps the title — on a narrow cell the title is
-     what identifies the entry, and the colour still says whose it is. */
+     than compressing seven days into seven slivers. The month drops the second
+     line of each chip and keeps the mark and the title — on a narrow cell the
+     title is what identifies the entry, and the mark still says whose it is, so
+     nothing is lost that the colour was carrying alone anyway. */
   .cal-month { font-size: 11px; }
-  .cal-month td { padding: 2px; }
-  .cal-month .cal-chip-whose { display: none; }
-  .cal-month .cal-chip { padding: 1px 3px; }
-  .cal-toolbar .cal-range { order: 3; width: 100%; }
+  .cal-month .cal-cell { padding: 2px; min-height: calc(var(--step) * 9); }
+  .cal-month .cal-chip-meta { display: none; }
+  .cal-month .cal-chip { padding: 2px 3px; }
+  .cal-month .cal-chip-line { gap: var(--step); }
   .cal-legend { overflow-x: auto; }
   .event-dialog { padding: calc(var(--step) * 4); }
 }

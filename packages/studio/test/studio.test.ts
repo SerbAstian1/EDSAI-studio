@@ -4,7 +4,7 @@ import { allCommands, search } from '../src/shell/commands.js';
 import { summarise } from '../src/screens/Home.js';
 import type { Run } from '../src/api.js';
 import { parseRoute, activeSection } from '../src/App.js';
-import { CLIENT_TABS, DEFAULT_TAB } from '../src/screens/ClientDetail.js';
+import { CLIENT_SECTIONS, DEFAULT_SECTION, clientHref, clientSectionOf } from '../src/shell/clientNavigation.js';
 import { leadsByStage } from '../src/screens/Acquisition.js';
 import { railClients } from '../src/shell/Sidebar.js';
 import { initialsOf } from '../src/components/ClientIdentity.js';
@@ -34,8 +34,9 @@ import {
   toHundredths,
 } from '../src/money.js';
 import {
-  addDays, endMinutes, eventsOn, hourRange, isSameMonth, layoutDay, monthGrid, monthTitle,
-  startOfWeek, timeLabel, todayIso, weekDates, weekTitle, weekdayIndex,
+  addDays, clampToRange, dayTitle, endMinutes, eventsOn, hourRange, isSameMonth, layoutDay,
+  matchesEvent, monthGrid, monthTitle, searchEvents, startOfWeek, timeLabel, todayIso,
+  weekDates, weekTitle, weekdayIndex,
 } from '../src/calendar.js';
 import { rangeFor, rangeTitle, stepAnchor, toneClass, toneFor } from '../src/components/CalendarView.js';
 import { busiest, clientsOn } from '../src/screens/Calendar.js';
@@ -315,17 +316,53 @@ describe('routing — clients', () => {
   });
 });
 
-describe('the client’s own tabs', () => {
+describe('the client’s own sections', () => {
   it('offers the ten the plan asks for, in the order the work flows', () => {
-    expect(CLIENT_TABS.map((t) => t.label)).toEqual([
+    expect(CLIENT_SECTIONS.map((t) => t.label)).toEqual([
       'Dashboard', 'Updates', 'Tasks', 'Documents', 'Library',
       'Discovery & Strategy', 'Brand Hub', 'Timeline', 'Contracts & Invoices', 'Settings',
     ]);
   });
 
   it('opens on the dashboard', () => {
-    expect(DEFAULT_TAB).toBe('dashboard');
-    expect(CLIENT_TABS[0]?.id).toBe(DEFAULT_TAB);
+    expect(DEFAULT_SECTION).toBe('dashboard');
+    expect(CLIENT_SECTIONS[0]?.id).toBe(DEFAULT_SECTION);
+  });
+
+  it('keeps every section on the URL the tab bar used to use', () => {
+    // The navigation moved from a strip of tabs to a sidebar, and the one thing
+    // that must not move with it is the address. A bookmarked
+    // `#/clients/acme/contracts` has to open the same section it always did.
+    expect(CLIENT_SECTIONS.map((s) => clientHref('acme', s.id))).toEqual([
+      '#/clients/acme', '#/clients/acme/updates', '#/clients/acme/tasks',
+      '#/clients/acme/documents', '#/clients/acme/library', '#/clients/acme/strategy',
+      '#/clients/acme/hub', '#/clients/acme/timeline', '#/clients/acme/contracts',
+      '#/clients/acme/settings',
+    ]);
+  });
+
+  it('reads a section out of the URL, and falls back to the dashboard', () => {
+    expect(clientSectionOf('contracts')).toBe('contracts');
+    // A link somebody kept after a section was renamed should land on the
+    // client's own page, not on a screen that says it is missing.
+    expect(clientSectionOf('brand-hub')).toBe('dashboard');
+    expect(clientSectionOf(undefined)).toBe('dashboard');
+  });
+
+  it('draws the client’s record after a rule, not in the flow of the work', () => {
+    // Settings is where the record is edited. Listing it beside Timeline reads
+    // as "the next thing to do" to somebody halfway through a project.
+    expect(CLIENT_SECTIONS.filter((s) => s.separate).map((s) => s.id)).toEqual(['settings']);
+  });
+
+  it('gives every section an icon, so the rail reads the same as the studio’s', () => {
+    // Lucide ships components rather than functions, so "is it there" is the
+    // only honest check — a section with no icon renders an empty gutter rather
+    // than failing loudly — and a repeated one would make two sections look like
+    // the same destination.
+    const icons = CLIENT_SECTIONS.map((s) => s.icon);
+    expect(icons.every((icon) => icon !== undefined)).toBe(true);
+    expect(new Set(icons).size).toBe(icons.length);
   });
 });
 
@@ -1084,6 +1121,34 @@ describe('the calendar’s dates', () => {
     expect(rangeTitle(rangeFor('day', '2026-03-04'))).toBe('Wednesday 4 March 2026');
   });
 
+  it('names a single day the same way wherever it is written', () => {
+    // The page title in day view, the label on the selected day and the
+    // accessible name on every day number all read from one function, so they
+    // cannot disagree — and the year comes with it, because a day with no month
+    // title above it is ambiguous in January.
+    expect(dayTitle('2026-03-04')).toBe('Wednesday 4 March 2026');
+    expect(dayTitle('2026-03-04')).toBe(rangeTitle(rangeFor('day', '2026-03-04')));
+    expect(dayTitle('2026-01-01')).toBe('Thursday 1 January 2026');
+  });
+
+  it('carries the selected day along when the page moves under it', () => {
+    // The selected day is the calendar's memory of where the user is. Page
+    // forward a month and a selection left behind is still selected, and the
+    // strip above the grid goes on describing a day nobody can see.
+    const march = rangeFor('month', '2026-03-15');
+    expect(clampToRange('2026-03-20', march.from, march.to)).toBe('2026-03-20');
+    // The March grid runs into April, so a date two days into April is still on
+    // screen and a date ten days in is not.
+    expect(march.to).toBe('2026-04-05');
+    expect(clampToRange('2026-04-02', march.from, march.to)).toBe('2026-04-02');
+    expect(clampToRange('2026-04-10', march.from, march.to)).toBe(march.to);
+    expect(clampToRange('2026-01-20', march.from, march.to)).toBe(march.from);
+    // A month grid is six weeks, so paging to February can hold a March date
+    // and must not clip it away.
+    const february = rangeFor('month', '2026-02-15');
+    expect(clampToRange('2026-03-02', february.from, february.to)).toBe('2026-03-02');
+  });
+
   it('reads today in the viewer’s own timezone, not UTC’s', () => {
     // 23:30 local on the 4th is already the 5th in UTC. A studio booking a call
     // tomorrow must see tomorrow, whatever the server thinks the date is.
@@ -1237,6 +1302,59 @@ describe('the calendar’s own screen', () => {
       event({ id: '3', clientId: 'b' }), event({ id: '4' }),
     ];
     expect(busiest(events)).toEqual([['a', 2], ['b', 1]]);
+  });
+});
+
+describe('the search in the calendar’s bar', () => {
+  const names: Record<string, string> = { a: 'Regal Patisserie', b: 'Campus Turkey' };
+  const whose = (id: string | undefined): string => (id ? names[id] ?? '' : 'Studio');
+
+  it('finds an entry by its title, whoever it belongs to', () => {
+    expect(matchesEvent(event({ title: 'Kickoff' }), 'kick', whose)).toBe(true);
+    expect(matchesEvent(event({ title: 'Kickoff' }), 'review', whose)).toBe(false);
+  });
+
+  it('finds an entry by the client it belongs to, which is the question a month of meetings is really asking', () => {
+    // A month of a studio's calendar is mostly meetings that belong to somebody
+    // else. Searching the title only would make the one useful question — whose
+    // is this — the one that needs scrolling to answer.
+    expect(matchesEvent(event({ clientId: 'a' }), 'regal', whose)).toBe(true);
+    expect(matchesEvent(event({ clientId: 'a' }), 'campus', whose)).toBe(false);
+  });
+
+  it('finds the studio’s own time by its kind, since it has no client to search for', () => {
+    expect(matchesEvent(event({ kind: 'internal' }), 'internal', whose)).toBe(true);
+    expect(matchesEvent(event({ kind: 'deadline' }), 'internal', whose)).toBe(false);
+  });
+
+  it('finds an entry by where it is, and by what was written down about it', () => {
+    expect(matchesEvent(event({ location: 'Ortigas' }), 'ortigas', whose)).toBe(true);
+    expect(matchesEvent(event({ notes: 'bring the moodboards' }), 'moodboards', whose)).toBe(true);
+  });
+
+  it('needs every word to match somewhere, in any order', () => {
+    const regal = event({ clientId: 'a', title: 'Menu review' });
+    expect(matchesEvent(regal, 'regal menu', whose)).toBe(true);
+    expect(matchesEvent(regal, 'menu regal', whose)).toBe(true);
+    expect(matchesEvent(regal, 'regal campus', whose)).toBe(false);
+  });
+
+  it('ignores case and the spaces somebody types around a word', () => {
+    expect(matchesEvent(event({ title: 'Kickoff' }), '  KICKOFF  ', whose)).toBe(true);
+  });
+
+  it('keeps everything when the box is empty, because an empty search is not a filter', () => {
+    const events = [event({ id: 'a' }), event({ id: 'b' })];
+    expect(searchEvents(events, '', whose).map((e) => e.id)).toEqual(['a', 'b']);
+    expect(searchEvents(events, '   ', whose).map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('narrows a set rather than losing the order it was given', () => {
+    const events = [
+      event({ id: 'a', clientId: 'a' }), event({ id: 'b', clientId: 'b' }),
+      event({ id: 'c', clientId: 'a', title: 'Second' }),
+    ];
+    expect(searchEvents(events, 'regal', whose).map((e) => e.id)).toEqual(['a', 'c']);
   });
 });
 

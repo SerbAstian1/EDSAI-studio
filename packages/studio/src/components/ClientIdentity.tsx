@@ -49,14 +49,16 @@ export function initialsOf(name: string): string {
   return (first + second).toUpperCase();
 }
 
-export type IdentitySize = 'sm' | 'md' | 'lg';
+export type IdentitySize = 'xs' | 'sm' | 'md' | 'lg';
 
 export interface ClientIdentityProps {
   /** A client record, or the two fields of one — whichever the caller has. */
   client: { name: string; logoAssetId?: string };
   /**
-   * `sm` a table row or the sidebar rail, `md` a card, `lg` a client's own
-   * header. Kept to three because a fourth size is a decision, not a variant.
+   * `xs` a calendar event card, `sm` a table row or the sidebar rail, `md` a
+   * card, `lg` a workspace header. `xs` exists because the calendar has to name
+   * whose meeting it is on a chip two lines tall, and shrinking `sm` with CSS
+   * from outside would be a second set of rules for the same mark.
    */
   size?: IdentitySize;
   /** Whether the name is rendered beside the mark. Off for a mark on its own. */
