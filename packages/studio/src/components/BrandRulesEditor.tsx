@@ -19,7 +19,7 @@ import { allowedColors } from './brandModules.js';
  */
 
 export const EMPTY_RULES: BrandRules = {
-  colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [],
+  colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [], logos: {},
 };
 
 

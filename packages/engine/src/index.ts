@@ -16,6 +16,7 @@ export * from './deliverables.js';
 export * from './documents.js';
 export * from './figma-source.js';
 export * from './brand-hub.js';
+export * from './brand-canvas.js';
 export * from './milestones.js';
 export * from './events.js';
 export * from './strategy.js';

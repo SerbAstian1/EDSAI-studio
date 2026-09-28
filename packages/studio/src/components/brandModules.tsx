@@ -1,6 +1,6 @@
 import { createElement, lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { Grid3x3, LayoutTemplate, PenTool, type LucideIcon } from 'lucide-react';
-import type { BrandModule, BrandRules, BrandValue } from '../api.js';
+import { Grid3x3, LayoutTemplate, PenTool, Frame, type LucideIcon } from 'lucide-react';
+import type { BrandModule, BrandColorPolicy, BrandLogoRule, BrandRules, BrandValue } from '../api.js';
 import type { DocumentPage } from '../api.js';
 import type { Format as TemplateFormat } from './TemplateMaker.js';
 
@@ -108,6 +108,21 @@ const MODULES: Record<string, ModuleEntry> = {
   poster: {
     load: TEMPLATE,
     icon: LayoutTemplate,
+    ready: () => true,
+    waiting: '',
+  },
+  /**
+   * The workbench, and the one entry that brings its own interface.
+   *
+   * The other three are laid out by a shared `Workspace` of stage and panel.
+   * A canvas needs a tool rail, two side panels and a much larger editing
+   * surface, so it registers here exactly as the others do and then supplies its
+   * own shell — the registry decides *whether* the hub offers it and the studio
+   * decided *what it is*, and neither of those decisions belongs to the editor.
+   */
+  'brand-canvas': {
+    load: () => import('../editor/BrandCanvas.js').then((m) => ({ default: m.default })),
+    icon: Frame,
     ready: () => true,
     waiting: '',
   },
@@ -247,9 +262,52 @@ export function brandRulesOf(rules: Partial<BrandRules> | undefined): BrandRules
   return {
     colors: rules?.colors ?? [],
     allowCustomColor: rules?.allowCustomColor ?? false,
+    ...(rules?.colorPolicy ? { colorPolicy: rules.colorPolicy } : {}),
     fonts: rules?.fonts ?? [],
     allowCustomFont: rules?.allowCustomFont ?? false,
     exports: rules?.exports ?? [],
+    logos: rules?.logos ?? {},
+  };
+}
+
+/**
+ * The colour policy that applies, whether or not one was written down.
+ *
+ * The fallback is the old boolean rather than a default of `'strict'`, matching
+ * the engine: a hub that has always allowed custom colours keeps allowing them,
+ * and all it gains is a warning on one it did not name. Defaulting to `strict`
+ * would take away a permission clients already had, which is the direction that
+ * gets a release rolled back.
+ */
+export function colorPolicyOf(rules: BrandRules | undefined): BrandColorPolicy {
+  if (rules?.colorPolicy) return rules.colorPolicy;
+  return rules?.allowCustomColor ? 'guided' : 'strict';
+}
+
+/** Whether a colour outside the brand is a refusal or only a warning. */
+export function colorRefused(rules: BrandRules | undefined): boolean {
+  return colorPolicyOf(rules) === 'strict';
+}
+
+/**
+ * What a brand permits of one logo, or nothing when it permits everything.
+ *
+ * `undefined` rather than a filled-in default, so a caller can tell "the brand
+ * wrote no rule" from "the brand wrote a rule that allows anything" — and only
+ * the first is a reason to leave a logo alone.
+ */
+export function logoRuleOf(
+  rules: BrandRules | undefined,
+  assetId: string,
+): BrandLogoRule | undefined {
+  const rule = rules?.logos?.[assetId];
+  if (!rule) return undefined;
+  return {
+    allowDistortion: rule.allowDistortion ?? false,
+    allowRecolor: rule.allowRecolor ?? false,
+    backgrounds: rule.backgrounds ?? [],
+    ...(typeof rule.minWidth === 'number' ? { minWidth: rule.minWidth } : {}),
+    ...(typeof rule.maxRotation === 'number' ? { maxRotation: rule.maxRotation } : {}),
   };
 }
 

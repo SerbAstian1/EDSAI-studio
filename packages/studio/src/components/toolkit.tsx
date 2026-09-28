@@ -109,12 +109,7 @@ export async function renderPng(svg: string, width: number, height: number): Pro
   const inlined = await inlineImages(svg);
   const url = URL.createObjectURL(new Blob([inlined], { type: 'image/svg+xml' }));
   try {
-    const image = new Image();
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error('The design could not be drawn for export.'));
-      image.src = url;
-    });
+    const image = await loadImage(url);
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     canvas.getContext('2d')?.drawImage(image, 0, 0, width, height);
@@ -124,6 +119,54 @@ export async function renderPng(svg: string, width: number, height: number): Pro
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * The same drawing as JPEG.
+ *
+ * **A separate encoder because JPEG has no alpha.** `canvas.toBlob('image/jpeg')`
+ * on a transparent canvas produces black, not transparency — the alpha is
+ * discarded and whatever was behind shows through as black. So the sheet's own
+ * ground is laid down first, which is also what the design should be: the
+ * artboard background is part of the artwork, not part of the transparency.
+ *
+ * JPEG is offered because a client posting a campaign image wants a file a
+ * social platform will not recompress into a worse one, and PNG at poster
+ * resolution is many megabytes of exactly that.
+ */
+export async function renderJpg(svg: string, width: number, height: number, quality = 0.92): Promise<Blob> {
+  const inlined = await inlineImages(svg);
+  const url = URL.createObjectURL(new Blob([inlined], { type: 'image/svg+xml' }));
+  try {
+    const image = await loadImage(url);
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('The design could not be drawn for export.');
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const jpg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!jpg) throw new Error('The design could not be encoded as JPEG.');
+    return jpg;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export async function exportJpg(svg: string, basename: string, width: number, height: number): Promise<void> {
+  saveBlob(await renderJpg(svg, width, height), `${basename}.jpg`);
+}
+
+/** A drawn SVG, loaded, with the browser's own failure to draw surfaced. */
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('The design could not be drawn for export.'));
+    image.src = url;
+  });
+  return image;
 }
 
 /** Hand a finished file to the person who made it. */

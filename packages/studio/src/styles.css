@@ -3646,3 +3646,568 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .doc-frame { height: 60vh; min-height: 320px; }
   .preset-values { grid-template-columns: 1fr 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BRAND CANVAS — the design editor
+   ══════════════════════════════════════════════════════════════════════════
+
+   **Dark in both themes, and that is deliberate.** Everything else in the studio
+   is a reading surface: it holds documents and records, and a person spends
+   minutes on it. This is a workbench, and a workbench is neutral on purpose so
+   the artwork is the only coloured thing in the room. A designer judging a
+   client's orange against a themed panel cannot trust what they are seeing, so
+   the canvas carries its own values rather than inheriting the document theme —
+   `color-scheme: dark` is set with it so native controls, scrollbars and the
+   colour picker follow. A person who has chosen a light theme elsewhere in the
+   studio gets a light studio and a dark canvas, which is also how Figma, Adobe
+   and every other tool of this kind behave.
+
+   **The hierarchy is the spec's, literally** (§58): the artboard is the loudest
+   surface, panels are low-contrast utility, inspector labels are muted and their
+   values are not, and orange means "this is selected" and nothing else.
+*/
+
+/* The editor's own scale, in one place, so the panels stay subordinate. */
+.cv {
+  --cv-chrome: #1A1C20;
+  --cv-panel: #16181B;
+  --cv-panel-2: #1E2126;
+  --cv-raise: #262A30;
+  --cv-pasteboard: #101215;
+  --cv-line: #2C3037;
+  --cv-line-soft: #23262B;
+  --cv-ink: #ECEDEF;
+  --cv-ink-2: #A8ADB5;
+  --cv-ink-3: #757B84;
+  --cv-accent: var(--aw-orange);
+  --cv-accent-soft: rgba(235, 94, 40, 0.16);
+  --cv-accent-line: rgba(235, 94, 40, 0.55);
+  --cv-ok: #5FB98A;
+  --cv-warn: #D8A857;
+  --cv-bad: #E8796C;
+  --cv-rail-w: 52px;
+  --cv-left-w: 264px;
+  --cv-right-w: 268px;
+
+  color-scheme: dark;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--cv-chrome);
+  color: var(--cv-ink);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* A control inside the canvas is restyled wholesale, because the base button and
+   input rules assume a document surface and a 36px target — both wrong here. */
+.cv button {
+  font-size: var(--text-xs);
+  min-height: 26px;
+  padding: 0 8px;
+  gap: 5px;
+  background: var(--cv-panel-2);
+  border: 1px solid var(--cv-line);
+  border-radius: var(--radius);
+  color: var(--cv-ink);
+  font-weight: 500;
+  box-shadow: none;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.cv button:hover:not([disabled]) { background: var(--cv-raise); border-color: var(--cv-ink-3); box-shadow: none; }
+.cv button:focus-visible,
+.cv input:focus-visible,
+.cv select:focus-visible,
+.cv textarea:focus-visible,
+.cv [tabindex]:focus-visible { outline: 2px solid var(--cv-accent); outline-offset: 1px; }
+.cv button[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.cv input, .cv textarea, .cv select {
+  font-size: var(--text-xs);
+  min-height: 26px;
+  padding: 0 7px;
+  background: var(--cv-pasteboard);
+  border: 1px solid var(--cv-line);
+  border-radius: var(--radius);
+  color: var(--cv-ink);
+}
+.cv input:hover:not([disabled]), .cv select:hover:not([disabled]) { border-color: var(--cv-ink-3); }
+.cv input[disabled], .cv select[disabled], .cv textarea[disabled] { opacity: 0.45; cursor: not-allowed; }
+.cv input[type="color"] { padding: 0; border: 1px solid var(--cv-line); background: none; width: 26px; height: 26px; }
+.cv .muted { color: var(--cv-ink-3); }
+
+/* ───────────────────────────────────────────────────────── the three bars */
+
+.cv-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 2);
+  background: var(--cv-chrome);
+  border-bottom: 1px solid var(--cv-line);
+  min-height: 48px;
+}
+.cv-top__left { display: flex; align-items: center; gap: calc(var(--step) * 1.5); min-width: 0; }
+.cv-top__right { display: flex; align-items: center; justify-content: flex-end; gap: calc(var(--step) * 1.5); }
+.cv-top__centre { display: flex; align-items: center; justify-content: center; gap: calc(var(--step) * 1.5); }
+
+/* The mark is a chip, not a logo: it says which tool this is and nothing more. */
+.cv-top__mark {
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: var(--radius);
+  background: var(--cv-accent-soft);
+  color: var(--cv-accent);
+  border: 1px solid var(--cv-accent-line);
+  flex: 0 0 auto;
+}
+.cv-top__title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cv-top__name {
+  min-height: 22px; height: 22px; padding: 0 4px;
+  background: transparent; border-color: transparent;
+  font-size: var(--text-sm); font-weight: 600;
+  color: var(--cv-ink); max-width: 260px;
+}
+.cv-top__name:hover { border-color: var(--cv-line); background: var(--cv-pasteboard); }
+.cv-top__name::placeholder { color: var(--cv-ink-3); font-weight: 400; }
+.cv-top__sub { color: var(--cv-ink-3); font-size: 11px; white-space: nowrap; }
+
+/* Undo and redo read their state from the editor, so a button that cannot act is
+   dark rather than absent — a tool that moves in the bar is disorienting. */
+.cv-icon {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; min-height: 26px; padding: 0;
+  background: transparent; border-color: transparent; color: var(--cv-ink-2);
+}
+.cv-icon:hover:not([disabled]) { background: var(--cv-panel-2); color: var(--cv-ink); }
+.cv-icon--tiny { width: 20px; height: 20px; min-height: 20px; border-radius: 3px; }
+.cv-icon--faint { color: var(--cv-ink-3); }
+
+.cv-button--primary { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--accent-on); font-weight: 600; }
+.cv-button--primary:hover:not([disabled]) { filter: brightness(1.08); background: var(--cv-accent); border-color: var(--cv-accent); }
+
+.cv-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+  border: 1px solid var(--cv-line);
+  background: var(--cv-panel-2);
+  color: var(--cv-ink-2);
+  white-space: nowrap;
+}
+.cv-badge--clean { color: var(--cv-ok); border-color: rgba(95, 185, 138, 0.4); background: rgba(95, 185, 138, 0.1); }
+.cv-badge--watch { color: var(--cv-warn); border-color: rgba(216, 168, 87, 0.4); background: rgba(216, 168, 87, 0.1); }
+.cv-badge--off-brand { color: var(--cv-bad); border-color: rgba(232, 121, 108, 0.42); background: rgba(232, 121, 108, 0.12); }
+
+.cv-top__error {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 6px;
+  margin: 0; padding: 6px 10px;
+  font-size: var(--text-xs);
+  color: var(--cv-bad);
+  background: rgba(232, 121, 108, 0.1);
+  border: 1px solid rgba(232, 121, 108, 0.35);
+  border-radius: var(--radius);
+}
+.cv-top__hint { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); color: var(--cv-ink-3); }
+
+.cv-status {
+  display: flex; align-items: center; justify-content: space-between; gap: calc(var(--step) * 2);
+  padding: 0 calc(var(--step) * 2);
+  min-height: 28px;
+  background: var(--cv-chrome);
+  border-top: 1px solid var(--cv-line);
+  font-size: 11px; color: var(--cv-ink-3);
+}
+.cv-status__left { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-status__right { display: flex; align-items: center; gap: calc(var(--step) * 2); }
+.cv-status__chip {
+  min-height: 20px; padding: 0 8px;
+  font-size: 11px; border-radius: 999px;
+  background: transparent; border-color: var(--cv-line); color: var(--cv-ink-3);
+}
+.cv-status__chip.is-on { color: var(--cv-accent); border-color: var(--cv-accent-line); background: var(--cv-accent-soft); }
+.cv-status__zoom, .cv-status__save { color: var(--cv-ink-3); font-size: 11px; white-space: nowrap; }
+.cv-status__save:empty { display: none; }
+
+/* ──────────────────────────────────────────────────────── the body grid */
+
+/* Rail, left pair, stage, inspector. The stage takes what is left, and is the
+   only cell allowed to scroll internally — the panels have their own. */
+.cv-body {
+  display: grid;
+  grid-template-columns: var(--cv-rail-w) var(--cv-left-w) minmax(0, 1fr) var(--cv-right-w);
+  min-height: 0;
+  min-width: 0;
+}
+.cv-left { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; min-width: 0; border-right: 1px solid var(--cv-line); }
+.cv-left__library { min-height: 0; overflow: hidden; display: flex; }
+.cv-left__layers { min-height: 0; overflow: hidden; display: flex; border-top: 1px solid var(--cv-line); }
+
+.cv-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: calc(var(--step) * 1.5) 0;
+  background: var(--cv-chrome);
+  border-right: 1px solid var(--cv-line);
+}
+.cv-rail__item {
+  position: relative;
+  display: grid; place-items: center;
+  width: 34px; height: 34px; min-height: 34px; padding: 0;
+  background: transparent; border-color: transparent; color: var(--cv-ink-2);
+}
+.cv-rail__item:hover:not([disabled]) { background: var(--cv-panel-2); color: var(--cv-ink); }
+.cv-rail__item.is-on { background: var(--cv-accent-soft); color: var(--cv-accent); }
+/* The active tool is also the one that will respond to a click on the sheet, so
+   it is marked by a bar as well as a fill — a state that reads in peripheral
+   vision, which is where the hand is. */
+.cv-rail__item.is-on::before {
+  content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px;
+  width: 2px; border-radius: 1px; background: var(--cv-accent);
+}
+.cv-rail__gap { flex: 1 1 auto; min-height: 8px; }
+
+/* ───────────────────────────────────────────────────────────── the stage */
+
+/* The pasteboard is the darkest thing here — darker than every panel — so the
+   artboard is unambiguously the brightest surface on screen (§28, §58). */
+.cv-stage {
+  position: relative;
+  min-width: 0; min-height: 0;
+  background: var(--cv-pasteboard);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+  background-size: 32px 32px;
+  overflow: hidden;
+  touch-action: none;
+}
+.cv-stage__scroll { position: absolute; inset: 0; overflow: auto; }
+.cv-stage__pad { display: grid; place-items: center; min-width: 100%; min-height: 100%; width: max-content; }
+
+.cv-artboard {
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), 0 18px 48px rgba(0, 0, 0, 0.55);
+  /* `contain` keeps a text layer's own shadow and blur from painting outside the
+     sheet in the editor, which is where the export clips anyway (§28). */
+  overflow: hidden;
+}
+.cv-artboard__art { position: absolute; inset: 0; }
+.cv-artboard__art svg { display: block; width: 100%; height: 100%; }
+
+/* Everything drawn on top of the design lives here and nowhere else, so the
+   artboard's own markup stays identical to the exported file. */
+.cv-overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+.cv-overlay > * { pointer-events: auto; }
+.cv-hit { position: absolute; outline: 1px solid var(--cv-accent); outline-offset: -1px; }
+.cv-hit--hover { outline-color: rgba(235, 94, 40, 0.55); }
+.cv-frame { position: absolute; outline: 1.5px solid var(--cv-accent); outline-offset: -1px; }
+.cv-frame.is-locked { outline: 1.5px dashed var(--cv-ink-2); }
+.cv-handle {
+  position: absolute;
+  width: 10px; height: 10px;
+  background: var(--cv-panel-2);
+  border: 1.5px solid var(--cv-accent);
+  border-radius: 2px;
+}
+.cv-handle--nw, .cv-handle--se { border-radius: 3px 1px 1px 3px; }
+.cv-handle--ne, .cv-handle--sw { border-radius: 1px 3px 3px 1px; }
+.cv-handle--n, .cv-handle--s { width: 12px; height: 8px; border-radius: 2px; }
+.cv-handle--e, .cv-handle--w { width: 8px; height: 12px; border-radius: 2px; }
+.cv-handle:hover { background: var(--cv-accent); }
+.cv-guide { stroke: #4FA3FF; stroke-width: 1; shape-rendering: crispEdges; }
+.cv-marquee {
+  position: absolute;
+  background: rgba(235, 94, 40, 0.1);
+  border: 1px solid var(--cv-accent);
+}
+
+/* ───────────────────────────────────────────────────── the library panel */
+
+.cv-library, .cv-layers {
+  display: flex; flex-direction: column;
+  width: 100%; min-height: 0;
+  background: var(--cv-panel);
+  overflow: hidden;
+}
+.cv-library__search { padding: calc(var(--step) * 1.5); border-bottom: 1px solid var(--cv-line-soft); }
+.cv-library { overflow-y: auto; }
+.cv-quick { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--step)) * 0.5; padding: calc(var(--step) * 1.5) calc(var(--step) * 1.5) 0; }
+.cv-quick__item { justify-content: flex-start; }
+.cv-quick__item.is-on { color: var(--cv-accent); border-color: var(--cv-accent-line); background: var(--cv-accent-soft); }
+
+.cv-shelf { padding: calc(var(--step) * 1.5); }
+.cv-shelf + .cv-shelf { border-top: 1px solid var(--cv-line-soft); }
+.cv-shelf__note, .cv-shelf__icon-note {
+  display: flex; align-items: flex-start; gap: 5px;
+  margin: 0 0 calc(var(--step));
+  font-size: 11px; color: var(--cv-ink-3);
+}
+.cv-shelf__icon-note { margin: calc(var(--step)) 0 0; }
+.cv-shelf__colours { display: flex; flex-wrap: wrap; gap: calc(var(--step)); }
+.cv-colour-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--cv-ink-3); }
+.cv-colour-chip__swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--cv-line); }
+.cv-fonts { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.cv-fonts li { font-size: 12px; color: var(--cv-ink-2); }
+
+.cv-file {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center; gap: calc(var(--step));
+  width: 100%; height: auto; min-height: 42px;
+  padding: 4px; margin-bottom: 3px;
+  text-align: left;
+  background: transparent; border-color: transparent; color: var(--cv-ink-2);
+}
+.cv-file:hover:not([disabled]) { background: var(--cv-panel-2); border-color: var(--cv-line); }
+.cv-file__thumb {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  background: var(--cv-pasteboard);
+  border: 1px solid var(--cv-line-soft);
+  border-radius: 3px; overflow: hidden;
+}
+.cv-file__thumb img { max-width: 100%; max-height: 100%; display: block; }
+.cv-file__name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-file__lock { color: var(--cv-warn); flex: 0 0 auto; }
+
+.cv-empty { margin: 0; padding: calc(var(--step) * 3) calc(var(--step) * 2); font-size: 11px; color: var(--cv-ink-3); text-align: center; }
+
+/* ───────────────────────────────────────────────────── the layers panel */
+
+.cv-layers { overflow-y: auto; }
+.cv-layer {
+  display: flex; align-items: center; gap: 4px;
+  min-height: 26px; padding: 0 4px 0 0;
+  border-radius: 3px;
+  color: var(--cv-ink-2);
+  font-size: var(--text-xs);
+}
+.cv-layer:hover { background: var(--cv-panel-2); }
+.cv-layer.is-selected { background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); color: var(--cv-ink); }
+.cv-layer.is-hidden .cv-layer__text { opacity: 0.45; text-decoration: line-through; }
+.cv-layer__caret { display: grid; place-items: center; width: 16px; height: 22px; min-height: 22px; padding: 0; background: none; border: 0; color: var(--cv-ink-3); }
+.cv-layer__icon { flex: 0 0 auto; color: var(--cv-ink-3); }
+.cv-layer__name { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; min-height: 22px; padding: 0 2px; }
+.cv-layer__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-layer__thumb { flex: 0 0 auto; width: 20px; height: 20px; border: 1px solid var(--cv-line-soft); border-radius: 2px; background: var(--cv-pasteboard); overflow: hidden; }
+.cv-layer__thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.cv-layer__tools { display: flex; gap: 1px; flex: 0 0 auto; opacity: 0; }
+.cv-layer:hover .cv-layer__tools, .cv-layer.is-selected .cv-layer__tools { opacity: 1; }
+
+.cv-layers__foot { margin-top: auto; padding: calc(var(--step)) calc(var(--step) * 1.5); border-top: 1px solid var(--cv-line-soft); }
+.cv-order { display: flex; align-items: center; justify-content: space-between; }
+.cv-layers__count { font-size: 11px; color: var(--cv-ink-3); }
+
+/* ──────────────────────────────────────────────────────── the inspector */
+
+.cv-inspector {
+  min-height: 0; overflow-y: auto;
+  background: var(--cv-panel);
+  border-left: 1px solid var(--cv-line);
+  padding: calc(var(--step)) 0 calc(var(--step) * 4);
+}
+
+.cv-group { border-bottom: 1px solid var(--cv-line-soft); }
+.cv-group__title {
+  margin: 0; padding: calc(var(--step) * 1.5) calc(var(--step) * 1.5) calc(var(--step));
+  font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--cv-ink-3);
+}
+.cv-group--brand .cv-group__title { color: var(--cv-accent); }
+.cv-group__body { display: flex; flex-direction: column; gap: calc(var(--step) * 1.25); padding: 0 calc(var(--step) * 1.5) calc(var(--step) * 2); }
+
+.cv-row { display: grid; gap: calc(var(--step) * 1.25); }
+.cv-row--1 { grid-template-columns: 1fr; }
+.cv-row--2 { grid-template-columns: 1fr 1fr; }
+.cv-row--3 { grid-template-columns: repeat(3, 1fr); }
+.cv-row--4 { grid-template-columns: repeat(4, 1fr); }
+
+/* Label above, value below — so a column of rows lines its values up and the
+   eye can compare X with X (§58: labels muted, values not). */
+.cv-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cv-field--wide { width: 100%; }
+.cv-field__label { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cv-ink-3); }
+.cv-field__hint { font-size: 10px; line-height: 1.4; color: var(--cv-ink-3); }
+/* The unit rides in the field's hint line rather than inside the input, so the
+   box stays exactly the width of its neighbours and a row of numbers aligns. */
+.cv-number { display: block; }
+.cv-input--number { text-align: right; }
+.cv-input--area { min-height: 60px; padding: 6px 7px; line-height: 1.45; resize: vertical; }
+.cv-input--hex { font-size: 11px; }
+.cv-input--hex.is-brand { border-color: rgba(95, 185, 138, 0.5); }
+.cv-number__unit { position: absolute; right: 7px; font-size: 10px; color: var(--cv-ink-3); pointer-events: none; }
+.cv-select { cursor: pointer; }
+.cv-slider { width: 100%; accent-color: var(--cv-accent); height: 18px; cursor: pointer; }
+
+.cv-colour { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: calc(var(--step)); }
+.cv-colour__picker { width: 26px; height: 26px; min-height: 26px; padding: 0; border: 1px solid var(--cv-line); border-radius: 3px; background: none; cursor: pointer; }
+.cv-colour__tag {
+  padding: 1px 5px; border-radius: 2px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--cv-ok); background: rgba(95, 185, 138, 0.12);
+}
+
+.cv-choice { display: flex; flex-wrap: wrap; gap: 3px; }
+.cv-choice__item { flex: 1 1 auto; min-width: 0; justify-content: center; }
+.cv-choice__item.is-on { color: var(--cv-accent); border-color: var(--cv-accent-line); background: var(--cv-accent-soft); }
+
+.cv-toggle { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 6px; cursor: pointer; }
+.cv-toggle.is-locked { cursor: not-allowed; opacity: 0.5; }
+.cv-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.cv-toggle__box {
+  display: grid; place-items: center;
+  width: 15px; height: 15px;
+  border: 1px solid var(--cv-ink-3); border-radius: 3px;
+  background: var(--cv-pasteboard); color: transparent;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.cv-toggle input:checked + .cv-toggle__box { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--accent-on); }
+.cv-toggle input:focus-visible + .cv-toggle__box { outline: 2px solid var(--cv-accent); outline-offset: 2px; }
+.cv-toggle__label { font-size: var(--text-xs); color: var(--cv-ink-2); }
+
+.cv-readout {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 4px 7px;
+  background: var(--cv-pasteboard); border: 1px solid var(--cv-line-soft); border-radius: var(--radius);
+  font-size: 11px;
+}
+.cv-readout--good { color: var(--cv-ok); border-color: rgba(95, 185, 138, 0.35); }
+.cv-readout--bad { color: var(--cv-bad); border-color: rgba(232, 121, 108, 0.4); background: rgba(232, 121, 108, 0.08); }
+
+.cv-note { display: flex; align-items: flex-start; gap: 5px; margin: 0; font-size: 11px; line-height: 1.45; color: var(--cv-ink-3); }
+.cv-note--bad { color: var(--cv-bad); }
+.cv-note svg { flex: 0 0 auto; margin-top: 1px; }
+
+.cv-file-preview { display: flex; align-items: center; gap: var(--step); }
+.cv-file-preview__thumb {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  background: var(--cv-pasteboard); border: 1px solid var(--cv-line-soft); border-radius: 3px; overflow: hidden;
+}
+.cv-file-preview__thumb img { max-width: 100%; max-height: 100%; display: block; }
+.cv-file-preview__name { display: flex; flex-direction: column; font-size: 11px; color: var(--cv-ink-2); overflow: hidden; text-overflow: ellipsis; }
+.cv-file-preview__flag { font-size: 10px; color: var(--cv-warn); }
+
+.cv-issue {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: 0; padding: calc(var(--step) * 1.5);
+  border: 1px solid var(--cv-line-soft); border-left-width: 2px;
+  border-radius: var(--radius);
+  background: var(--cv-pasteboard);
+  font-size: 11px; line-height: 1.45;
+}
+.cv-issue__title { display: flex; align-items: center; gap: 5px; margin: 0; font-weight: 600; color: var(--cv-ink); }
+.cv-issue__title svg { flex: 0 0 auto; }
+.cv-issue__detail, .cv-issue__fix { margin: 0; color: var(--cv-ink-3); }
+.cv-issue__fix { color: var(--cv-ink-2); }
+.cv-issue--error { border-left-color: var(--cv-bad); }
+.cv-issue--error .cv-issue__title { color: var(--cv-bad); }
+.cv-issue--warn { border-left-color: var(--cv-warn); }
+.cv-issue--warn .cv-issue__title { color: var(--cv-warn); }
+.cv-issue--ok { border-left-color: var(--cv-ok); color: var(--cv-ok); }
+.cv-issue__action { align-self: flex-start; margin-top: 2px; }
+
+.cv-action { align-self: flex-start; }
+.cv-action--primary { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--accent-on); font-weight: 600; }
+.cv-action--primary:hover:not([disabled]) { filter: brightness(1.08); background: var(--cv-accent); border-color: var(--cv-accent); }
+
+.cv-disclosure { border-bottom: 1px solid var(--cv-line-soft); }
+.cv-disclosure__head {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  min-height: 30px; padding: 0 var(--step);
+  background: transparent; border: 0; border-radius: 0;
+  color: var(--cv-ink-2); font-weight: 600; font-size: 11px;
+  text-align: left; justify-content: flex-start;
+}
+.cv-disclosure__head:hover { background: var(--cv-panel-2); color: var(--cv-ink); }
+.cv-disclosure__caret { flex: 0 0 auto; color: var(--cv-ink-3); transition: transform var(--transition); }
+.cv-disclosure__caret.is-open { transform: rotate(90deg); }
+.cv-disclosure__count { margin-left: auto; color: var(--cv-ink-3); font-size: 10px; }
+.cv-disclosure__body { padding: 0 var(--step) var(--step); }
+
+/* ────────────────────────────────────────────────────── the sheets (modal) */
+
+.cv-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  padding: var(--space-page);
+  background: rgba(8, 9, 11, 0.72);
+  backdrop-filter: blur(3px);
+}
+.cv-sheet {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 560px; max-height: 88vh;
+  background: var(--cv-panel-2);
+  border: 1px solid var(--cv-line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.cv-sheet--wide { max-width: 940px; }
+.cv-sheet__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-block); padding: var(--space-block) var(--space-card); border-bottom: 1px solid var(--cv-line-soft); }
+.cv-sheet__head p { margin: 0; }
+.cv-sheet__head .cv-icon { flex: 0 0 auto; margin: -2px -4px 0 0; }
+.cv-sheet__body { padding: var(--space-card); overflow-y: auto; min-height: 0; }
+.cv-sheet__foot { display: flex; align-items: center; justify-content: flex-end; gap: calc(var(--step) * 1.5); padding: var(--space-block) var(--space-card); border-top: 1px solid var(--cv-line-soft); }
+
+/* The create sheet: sizes on the left, the template and its live preview right. */
+.cv-create { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: var(--space-card); }
+.cv-create__sizes { min-width: 0; }
+.cv-create__group + .cv-create__group { margin-top: var(--space-block); }
+.cv-create__group-name { margin: 0 0 var(--step); font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--cv-ink-3); }
+.cv-create__size-grid { display: flex; flex-direction: column; gap: 3px; }
+.cv-create__size { justify-content: flex-start; text-align: left; }
+.cv-create__size.is-on, .cv-create__template.is-on { color: var(--cv-accent); border-color: var(--cv-accent-line); background: var(--cv-accent-soft); }
+.cv-create__size-label { font-weight: 600; }
+.cv-create__right { display: flex; flex-direction: column; gap: var(--space-block); min-width: 0; }
+.cv-create__templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: calc(var(--step) * 1.5); }
+.cv-create__template { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: calc(var(--step) * 1.5); text-align: left; }
+.cv-create__preview { display: flex; flex-direction: column; gap: var(--step); align-items: center; }
+.cv-create__preview-label { margin: 0; font-size: 11px; color: var(--cv-ink-3); }
+/* The preview is scaled to fit rather than laid out at size, and is the same
+   renderer the export uses — what a designer sees here is what they get. */
+.cv-create__canvas { display: grid; place-items: center; width: 100%; max-height: 300px; }
+.cv-create__canvas svg { max-width: 100%; max-height: 300px; height: auto; box-shadow: 0 0 0 1px var(--cv-line); }
+
+.cv-export { display: flex; flex-direction: column; gap: var(--space-block); }
+.cv-export__detail { margin: 0; font-size: var(--text-xs); color: var(--cv-ink-3); }
+
+/* ─────────────────────────────────────────────────────────── responsive */
+
+/* Below the editor's own breakpoint the panels stop being columns: the library
+   and layers fold to a strip under the stage, and the inspector becomes a drawer
+   of its own. The stage keeps the whole remaining area, because it is the one
+   part that is unusable when it is small. */
+@media (max-width: 1180px) {
+  .cv { --cv-left-w: 216px; --cv-right-w: 240px; }
+  .cv-create { grid-template-columns: 190px minmax(0, 1fr); }
+}
+@media (max-width: 960px) {
+  .cv-body { grid-template-columns: var(--cv-rail-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .cv-left { grid-row: 2; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); border-right: 0; border-top: 1px solid var(--cv-line); max-height: 34vh; }
+  .cv-left__layers { border-top: 0; border-left: 1px solid var(--cv-line); }
+  .cv-inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--cv-line); max-height: 40vh; }
+  .cv-create { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .cv-top { grid-template-columns: minmax(0, 1fr); gap: var(--step); }
+  .cv-top__right { justify-content: flex-start; flex-wrap: wrap; }
+  .cv-top__name { max-width: none; }
+  .cv-left { grid-template-columns: 1fr; grid-template-rows: auto auto; max-height: none; }
+  .cv-left__layers { border-left: 0; border-top: 1px solid var(--cv-line); }
+  .cv-quick { grid-template-columns: 1fr 1fr; }
+}
+
+/* A hand has no hover and no right-click affordance, so the layers' icon row and
+   the choice buttons cannot rely on either. */
+@media (pointer: coarse) {
+  .cv-layer__tools { opacity: 1; }
+  .cv button { min-height: 32px; }
+  .cv-icon { width: 32px; height: 32px; min-height: 32px; }
+  .cv-rail__item { width: 40px; height: 40px; min-height: 40px; }
+  .cv-rail { padding: var(--step) 0; }
+}
+

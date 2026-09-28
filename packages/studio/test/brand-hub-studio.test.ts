@@ -170,7 +170,7 @@ describe('reading a module configuration off a hub', () => {
 describe('the rules a generator obeys', () => {
   it('are unrestricted by default, which is what keeps every existing hub working', () => {
     expect(brandRulesOf(undefined)).toEqual({
-      colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [],
+      colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [], logos: {},
     });
   });
 

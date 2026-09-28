@@ -346,17 +346,49 @@ export interface BrandModuleConfig {
 }
 
 /**
+ * How much room a brand gives a client to leave the palette.
+ *
+ * Mirrors the engine's `BrandColorPolicy`. `guidled` is the one that earns its
+ * keep: a client who may pick any colour still needs to be told when the one
+ * they picked is not the brand's.
+ */
+export type BrandColorPolicy = 'open' | 'guided' | 'strict';
+
+/**
+ * What a brand permits of its own logo, keyed by asset id.
+ *
+ * A rule about "the logo" is not a rule — a brand has a dark variant for a
+ * light ground and a light one for a dark — so the rules are addressed by file.
+ * Every field absent means no restriction, which is the same posture every
+ * other list on `BrandRules` takes and for the same reason.
+ */
+export interface BrandLogoRule {
+  /** Smallest width in px this logo may be placed at. */
+  minWidth?: number;
+  /** Largest absolute rotation in degrees. */
+  maxRotation?: number;
+  allowDistortion: boolean;
+  allowRecolor: boolean;
+  /** Background hexes this logo is approved against. Empty means any. */
+  backgrounds: string[];
+}
+
+/**
  * The rules that keep generated work inside the brand.
  *
  * Every list is "the designer named them", so an empty list means "fall back to
- * what the brand already has" rather than "nothing is allowed".
+ * the brand's own palette" rather than "nothing is allowed".
  */
 export interface BrandRules {
   colors: string[];
   allowCustomColor: boolean;
+  /** Absent means: whatever `allowCustomColor` already said. */
+  colorPolicy?: BrandColorPolicy;
   fonts: string[];
   allowCustomFont: boolean;
   exports: string[];
+  /** Logo restrictions, by asset id. Empty leaves every logo alone. */
+  logos: Record<string, BrandLogoRule>;
 }
 
 export interface BrandHubConfig {
@@ -483,6 +515,153 @@ export interface PatternConfiguration {
   background: string;
   offsetX: number;
   offsetY: number;
+}
+
+/* ---------------------------------------------------------- design canvas */
+
+/**
+ * What a Design Canvas saves: one artboard and its layers, structured.
+ *
+ * The wire types of the engine's `brand-canvas.ts`, restated here the way every
+ * other server shape in this file is — the Studio cannot import the engine, and
+ * a type that has to be kept in step by hand is still better than `unknown`
+ * where the whole editor is written against it.
+ *
+ * **A document, not a picture.** Nothing here is flattened: a saved design comes
+ * back as layers that can still be moved, which is the whole reason a canvas
+ * tool is worth having over an export button.
+ */
+export interface CanvasDocument {
+  version: 1;
+  artboard: Artboard;
+  nodes: CanvasNode[];
+}
+
+/**
+ * The sheet a design is drawn on.
+ *
+ * **The file's own pixels, and they never change because the editor zoomed.**
+ * Zoom is a view; a design that exports at a different size from the one it was
+ * drawn at is the most common way a canvas tool loses a client's trust, so
+ * nothing in the document is derived from the current zoom.
+ */
+export interface Artboard {
+  width: number;
+  height: number;
+  background: string;
+}
+
+export type CanvasNodeType =
+  | 'text' | 'image' | 'shape' | 'logo' | 'illustration' | 'pattern' | 'texture' | 'group';
+
+export type CanvasBlend = 'normal' | 'multiply' | 'screen' | 'overlay' | 'soft-light';
+
+export interface CanvasEffects {
+  opacity: number;
+  blur: number;
+  shadow: { enabled: boolean; x: number; y: number; blur: number; color: string; opacity: number };
+  blend: CanvasBlend;
+}
+
+export interface CanvasTextProperties {
+  text: string;
+  fontFamily: string;
+  fontWeight: number;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+  align: 'left' | 'center' | 'right';
+  transform: 'none' | 'uppercase' | 'lowercase';
+  color: string;
+}
+
+export interface CanvasImageProperties {
+  assetId: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  fit: 'fill' | 'contain' | 'cover';
+  cornerRadius: number;
+  adjustments: { brightness: number; contrast: number; saturation: number };
+}
+
+export interface CanvasIllustrationProperties {
+  assetId: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  fit: 'fill' | 'contain' | 'cover';
+  cornerRadius: number;
+  tint: string;
+  flip: boolean;
+}
+
+export interface CanvasLogoProperties {
+  assetId: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  /** The file's own proportions, recorded when placed, so distortion is measurable. */
+  sourceAspect: number;
+  variant: string;
+}
+
+export interface CanvasPatternProperties {
+  assetId: string;
+  tile: number;
+  rotation: number;
+  offsetX: number;
+  offsetY: number;
+  color: string;
+}
+
+export interface CanvasTextureProperties {
+  assetId: string;
+  scale: number;
+  opacity: number;
+  blend: CanvasBlend;
+  color: string;
+}
+
+export interface CanvasShapeProperties {
+  shape: 'rectangle' | 'rounded-rectangle' | 'ellipse' | 'line' | 'arrow' | 'polygon';
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  cornerRadius: number;
+  /** Polygon points as fractions of the node's box. */
+  points: number[];
+}
+
+/**
+ * One layer, with only the properties its own type declares.
+ *
+ * A union rather than one object with everything optional: the inspector is
+ * written per type, and the compiler is what stops a fill control being offered
+ * for a logo or a font size for a picture.
+ */
+export type CanvasNode =
+  | ({ type: 'text'; properties: CanvasTextProperties } & CanvasNodeBase)
+  | ({ type: 'image'; properties: CanvasImageProperties } & CanvasNodeBase)
+  | ({ type: 'shape'; properties: CanvasShapeProperties } & CanvasNodeBase)
+  | ({ type: 'logo'; properties: CanvasLogoProperties } & CanvasNodeBase)
+  | ({ type: 'illustration'; properties: CanvasIllustrationProperties } & CanvasNodeBase)
+  | ({ type: 'pattern'; properties: CanvasPatternProperties } & CanvasNodeBase)
+  | ({ type: 'texture'; properties: CanvasTextureProperties } & CanvasNodeBase)
+  | ({ type: 'group'; properties: Record<string, never> } & CanvasNodeBase);
+
+export interface CanvasNodeBase {
+  id: string;
+  /** The group this sits in, or null for the artboard itself. */
+  parentId: string | null;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Degrees, about the node's own centre. */
+  rotation: number;
+  /** Set by a template the studio locked; a client cannot move or change it. */
+  locked: boolean;
+  hidden: boolean;
+  effects: CanvasEffects;
 }
 
 /** One of the eight fixed document slots, held or empty. */

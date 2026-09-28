@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assetsInDesign } from './brand-canvas.js';
 
 /**
  * Brand Hub: the optional place a client keeps *using* the brand.
@@ -40,12 +41,13 @@ const HEX_OR_NONE = HEX.or(z.literal(''));
  * `available` is false for a tool that is named but not yet built, so the
  * studio can see what is coming without being able to switch on nothing.
  *
- * **What a tool is, and is not.** Every tool here makes *variations* of
- * work the studio designed by hand and put in the client's files: a
- * pattern tiled differently, illustration parts arranged differently, a
- * template with its words changed. A tool never draws, never generates,
- * and never lets a client edit a master. The designer designs; the tool
- * lets the client keep using what was designed, and export the result.
+ * **What a tool is, and is not.** Every tool here is a *renderer and a set of
+ * controls* over work the studio designed by hand and put in the client's
+ * files: a pattern tiled differently, illustration parts arranged differently, a
+ * template with its words changed, a canvas the brand's own assets are laid out
+ * on. A tool never draws, never generates, and never lets a client edit a
+ * master. The designer designs; the tool lets the client keep using what was
+ * designed, and export the result.
  */
 /* -------------------------------------------------------------- brand DNA */
 
@@ -165,6 +167,42 @@ export const BrandModuleConfig = z.object({
 export type BrandModuleConfig = z.infer<typeof BrandModuleConfig>;
 
 /**
+ * How much room a brand gives a client to leave the palette.
+ *
+ * Three answers rather than the `allowCustomColor` boolean, because "you may
+ * use another colour" and "another colour is a mistake worth a warning" are
+ * different instructions, and a client who can pick any colour still needs to
+ * be told when the one they picked is not the brand's. `GUIDED` is the one that
+ * says both.
+ */
+export const BrandColorPolicy = z.enum(['open', 'guided', 'strict']);
+export type BrandColorPolicy = z.infer<typeof BrandColorPolicy>;
+
+/**
+ * What a brand permits of its own logo.
+ *
+ * Keyed by asset id, because a rule about "the logo" is not a rule: a brand has
+ * a dark variant for a light ground and a light one for a dark, and the rule
+ * that matters is usually about which of them may go where. Every field is
+ * optional and every one of them, absent, means no restriction — the same
+ * posture as every other list on this object, and for the same reason: a rule
+ * nobody wrote is not a rule that forbids.
+ */
+export const BrandLogoRule = z.object({
+  /** Smallest width in px this logo may be placed at. */
+  minWidth: z.number().min(0).max(2000).optional(),
+  /** Largest absolute rotation in degrees. */
+  maxRotation: z.number().min(0).max(180).optional(),
+  /** Whether it may be squashed or stretched away from its own proportions. */
+  allowDistortion: z.boolean().default(false),
+  /** Whether the brand's colour may be replaced by another. */
+  allowRecolor: z.boolean().default(false),
+  /** Background hexes this logo is approved against. Empty means any. */
+  backgrounds: z.array(HEX).default([]),
+});
+export type BrandLogoRule = z.infer<typeof BrandLogoRule>;
+
+/**
  * The rules that keep generated work inside the brand.
  *
  * Every list is "the designer named them", and an empty list means "fall back
@@ -176,13 +214,44 @@ export const BrandRules = z.object({
   colors: z.array(HEX).default([]),
   /** Whether a client may reach a colour that is not on the list. */
   allowCustomColor: z.boolean().default(false),
+  /**
+   * Optional, and derived when absent.
+   *
+   * Absent is the case for every hub written before this existed, and it means
+   * "behave exactly as `allowCustomColor` said" — so adding this field cannot
+   * change the experience of an existing client. Stating it is how a brand asks
+   * for warnings without refusals.
+   */
+  colorPolicy: BrandColorPolicy.optional(),
   /** Font family names. Empty means the whole brand's type is fair game. */
   fonts: z.array(z.string().min(1).default('')).default([]),
   allowCustomFont: z.boolean().default(false),
   /** Export formats. Empty means whatever the tool itself offers. */
   exports: z.array(z.string().min(1)).default([]),
+  /** Logo restrictions, by asset id. Empty means the logo is left alone. */
+  logos: z.record(z.string().min(1), BrandLogoRule).default({}),
 });
 export type BrandRules = z.infer<typeof BrandRules>;
+
+/**
+ * The colour policy that applies, whether or not one was written down.
+ *
+ * The fallback is the old boolean rather than a default of `'strict'`: a hub
+ * with `allowCustomColor: true` has always let a client reach any colour, and
+ * reading that as `GUIDED` rather than `OPEN` costs it only a warning on a
+ * colour it deliberately permitted — whereas defaulting to `STRICT` would take
+ * away a permission a client already had, which is the direction that gets a
+ * release rolled back.
+ */
+export function colorPolicyOf(rules: BrandRules | undefined): BrandColorPolicy {
+  if (rules?.colorPolicy) return rules.colorPolicy;
+  return rules?.allowCustomColor ? 'guided' : 'strict';
+}
+
+/** Whether a colour outside the brand is a refusal or only a warning. */
+export function colorRefused(rules: BrandRules | undefined): boolean {
+  return colorPolicyOf(rules) === 'strict';
+}
 
 /** Everything the studio configures about a hub beyond which tools it offers. */
 export const BrandHubConfig = z.object({
@@ -191,7 +260,7 @@ export const BrandHubConfig = z.object({
 });
 export type BrandHubConfig = z.infer<typeof BrandHubConfig>;
 
-export const EMPTY_CONFIG: BrandHubConfig = { modules: {}, rules: { colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [] } };
+export const EMPTY_CONFIG: BrandHubConfig = { modules: {}, rules: { colors: [], allowCustomColor: false, fonts: [], allowCustomFont: false, exports: [], logos: {} } };
 
 /* --------------------------------------------------------- the tool registry */
 
@@ -260,6 +329,32 @@ export const BRAND_TOOLS = [
       { id: 'align', label: 'Aligned', control: 'choice', presetOnly: false },
       { id: 'logoCorner', label: 'Logo corner', control: 'choice', presetOnly: false },
       { id: 'scrim', label: 'Darken photo', control: 'dial', presetOnly: true },
+    ],
+  },
+  {
+    /**
+     * The workbench: a free canvas the brand's own assets are put on.
+     *
+     * **The one tool here that is not a variation of something the studio
+     * designed by hand**, and that is deliberate rather than a lapse. Every
+     * other entry makes arrangements of approved files; this one makes
+     * arrangements of everything else this hub has, and it is still bounded —
+     * by the artboard, by the rules, and by the fact that a node can only ever
+     * be one of the types `brand-canvas.ts` declares. What it is not is free:
+     * it cannot draw, it cannot generate, and a client cannot edit the master
+     * brand through it.
+     *
+     * It is on the `composer` layer because that layer is "put the brand into
+     * something new", which is exactly what it does, and a hub configured with
+     * only the Asset Lab never offers it.
+     */
+    id: 'brand-canvas', name: 'Design Canvas',
+    description: 'Lay the brand out on a real canvas — its logos, colours, type, patterns and photography, placed by hand.',
+    available: true, layer: 'composer', capability: 'template',
+    requires: ['template', 'logo', 'typography'], exports: ['png', 'jpg', 'svg'],
+    parameters: [
+      { id: 'template', label: 'Start from', control: 'choice', presetOnly: false },
+      { id: 'background', label: 'Background', control: 'colour', presetOnly: false },
     ],
   },
 ] as const;
@@ -401,6 +496,7 @@ export type TemplateConfiguration = z.infer<typeof TemplateConfiguration>;
  * means the shape was wrong for the tool.
  */
 export function assetsInConfiguration(toolId: BrandToolId, configuration: unknown): string[] | undefined {
+  if (toolId === 'brand-canvas') return assetsInDesign(configuration);
   if (toolId === 'pattern-studio') {
     const parsed = PatternConfiguration.safeParse(configuration);
     return parsed.success ? [parsed.data.assetId] : undefined;

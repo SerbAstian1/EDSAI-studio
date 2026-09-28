@@ -14,7 +14,7 @@ import {
 describe('brand tools', () => {
   it('every tool listed is built', () => {
     expect(BRAND_TOOLS.every((t) => t.available)).toBe(true);
-    expect(BRAND_TOOLS.map((t) => t.id)).toEqual(['pattern-studio', 'illustration-builder', 'social-post', 'poster']);
+    expect(BRAND_TOOLS.map((t) => t.id)).toEqual(['pattern-studio', 'illustration-builder', 'social-post', 'poster', 'brand-canvas']);
   });
 
   it('a hub is enabled only when active', () => {
@@ -28,7 +28,7 @@ describe('brand tools', () => {
   it('every tool names a capability the DNA is allowed to carry, and a layer', () => {
     // The two halves of the hub, and the visual system each module serves.
     expect(toolsInLayer('asset-lab').map((t) => t.id)).toEqual(['pattern-studio', 'illustration-builder']);
-    expect(toolsInLayer('composer').map((t) => t.id)).toEqual(['social-post', 'poster']);
+    expect(toolsInLayer('composer').map((t) => t.id)).toEqual(['social-post', 'poster', 'brand-canvas']);
   });
 });
 
@@ -229,7 +229,7 @@ describe('what the brand allows', () => {
 
 describe('resolving modules for an audience', () => {
   const all = hub(['pattern', 'illustration', 'template'],
-    ['pattern-studio', 'illustration-builder', 'social-post', 'poster']);
+    ['pattern-studio', 'illustration-builder', 'social-post', 'poster', 'brand-canvas']);
 
   it('gives the studio every module, including any that are not built', () => {
     const modules = resolveModules(all, 'studio');
@@ -286,7 +286,7 @@ describe('resolving modules for an audience', () => {
   it('separates the two layers for a screen that shows them apart', () => {
     expect(resolveLayer(all, 'asset-lab').map((m) => m.id))
       .toEqual(['pattern-studio', 'illustration-builder']);
-    expect(resolveLayer(all, 'composer').map((m) => m.id)).toEqual(['social-post', 'poster']);
+    expect(resolveLayer(all, 'composer').map((m) => m.id)).toEqual(['social-post', 'poster', 'brand-canvas']);
   });
 
   it('resolves a hub that does not exist as a hub with nothing on', () => {
