@@ -1,9 +1,12 @@
 import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Compass, FolderPlus, Play, type LucideIcon } from 'lucide-react';
+import { Compass, FolderPlus, Play, Trash2, type LucideIcon } from 'lucide-react';
 import { api, type OnboardingSummary } from '../api.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu, { type MenuItem } from '../components/OverflowMenu.js';
+import { ClientIdentity } from '../components/ClientIdentity.js';
+import { requestConfirmation } from '../components/ConfirmDialog.js';
+import { reportNotice } from '../notices.js';
 import { go } from '../components/actions.js';
 
 /**
@@ -40,6 +43,40 @@ export default function Discovery(): ReactElement {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteOnboarding(id),
+    onSuccess: (result) => {
+      // The bare prefix, so the per-client list and this one are both re-read —
+      // `['onboardings', id]` alone would leave this very table stale, holding a
+      // row for an onboarding that is gone.
+      void queryClient.invalidateQueries({ queryKey: ['onboardings'] });
+      void queryClient.invalidateQueries({ queryKey: ['client', result.clientId] });
+      reportNotice('Onboarding deleted. You can now start a fresh one for that client.');
+    },
+  });
+
+  /**
+   * Confirm, then delete.
+   *
+   * The dialog exists because the destructive-looking action and the destructive
+   * action are the same button here otherwise, and because "delete onboarding"
+   * reads like "delete client" to anyone who has not read the store. It says
+   * plainly what survives.
+   */
+  const confirmDelete = (o: OnboardingSummary): void => {
+    const name = o.clientName ?? 'this client';
+    void requestConfirmation({
+      title: 'Delete onboarding?',
+      message: `This will permanently delete the onboarding data for ${name}.`
+        + ' The client and their other projects, documents, assets, invoices and brand'
+        + ' information will not be deleted. You can create a new onboarding for this'
+        + ' client afterward.',
+      confirmLabel: 'Delete onboarding',
+    }).then((confirmed) => {
+      if (confirmed) remove.mutate(o.id);
+    });
+  };
+
   if (isPending) return <p className="muted">Loading discovery…</p>;
   if (error) {
     return <ErrorPanel title="Could not load discovery" error={error} onRetry={() => { void refetch(); }} />;
@@ -53,16 +90,29 @@ export default function Discovery(): ReactElement {
     const open: MenuItem & { icon: LucideIcon } = {
       label: 'Open discovery', icon: Compass, onSelect: () => go(`#/clients/${o.clientId}/strategy`),
     };
+    // Present in every state, and last: `OverflowMenu` sorts `danger` items to
+    // the bottom on its own, so this lands under the state-specific work rather
+    // than beside it. Resetting a client's discovery has to be possible from an
+    // accepted onboarding too — that is the brief-the-studio-wrong case.
+    const removeItem: MenuItem = {
+      label: remove.isPending && remove.variables === o.id ? 'Deleting…' : 'Delete onboarding',
+      icon: Trash2,
+      danger: true,
+      // One at a time, so a second click cannot become a second request.
+      disabled: remove.isPending,
+      studioOnly: true,
+      onSelect: () => confirmDelete(o),
+    };
     if (o.status === 'submitted') {
       return [open, { label: 'Turn into a project', icon: FolderPlus, disabled: accept.isPending, studioOnly: true,
-        onSelect: () => accept.mutate(o.id) }];
+        onSelect: () => accept.mutate(o.id) }, removeItem];
     }
     if (o.status === 'accepted' && o.projectId) {
       const projectId = o.projectId;
       return [open, { label: 'Start a run from these answers', icon: Play, studioOnly: true,
-        onSelect: () => go(`#/new/${projectId}`) }];
+        onSelect: () => go(`#/new/${projectId}`) }, removeItem];
     }
-    return [open];
+    return [open, removeItem];
   };
 
   return (
@@ -98,7 +148,18 @@ export default function Discovery(): ReactElement {
                 <tr key={onboarding.id}>
                   <td data-label="Client">
                     <a href={`#/clients/${onboarding.clientId}`}>
-                      <strong>{onboarding.clientName ?? onboarding.clientId}</strong>
+                      {/* The mark earns its place here: this table is the one view
+                          where a person scans many clients at once looking for
+                          the one they mean, and a row of near-identical names
+                          with a status column beside them is the hardest kind of
+                          thing to read. */}
+                      <ClientIdentity
+                        size="sm"
+                        client={{
+                          name: onboarding.clientName ?? onboarding.clientId,
+                          ...(onboarding.logoAssetId ? { logoAssetId: onboarding.logoAssetId } : {}),
+                        }}
+                      />
                     </a>
                   </td>
                   <td data-label="Status">

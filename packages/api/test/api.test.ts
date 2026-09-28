@@ -53,6 +53,40 @@ const json = async (path: string, init?: RequestInit) => {
   return { status: res.status, body: await res.json() as Record<string, never> };
 };
 
+/**
+ * A studio session at a given role, for the permission tests.
+ *
+ * Written straight into the session table rather than through signup, because
+ * `/api/setup` is first-owner-only and there is no second-account path worth
+ * building for a test. Returns the cookie instead of assigning the module-level
+ * one, so a test that fails halfway cannot leave every later test signed in as
+ * somebody else.
+ */
+function studioCookie(role: string): string {
+  const token = `studio-session-${role}-${Math.random().toString(36).slice(2)}`;
+  const { createHash } = require('node:crypto') as typeof import('node:crypto');
+  store.saveSession({
+    digest: createHash('sha256').update(token).digest('hex'),
+    userId: `u-${role}`, kind: 'studio', role,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  return `edsai_session=${token}`;
+}
+
+/** A portal session pinned to one client, for the isolation tests. */
+function portalCookie(clientId: string, role = 'editor'): string {
+  const token = 'logo-portal-token-for-' + clientId;
+  const { createHash } = require('node:crypto') as typeof import('node:crypto');
+  store.saveSession({
+    digest: createHash('sha256').update(token).digest('hex'),
+    userId: 'portal-user', kind: 'portal', clientId, role,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  return `edsai_session=${token}`;
+}
+
 /** A client and project to hang runs on, since a run now needs both. */
 const seedProject = (clientId = 'c-test', projectId = 'p-test') => {
   const now = new Date().toISOString();
@@ -1247,6 +1281,429 @@ describe('an onboarding closes when it is submitted', () => {
       method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'second go' }),
     });
     expect(second.status).toBe(200);
+  });
+});
+
+describe('deleting an onboarding', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+
+  const start = async (name = 'Resettable Co') => {
+    const { body: created } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    const clientId = created['id'] as unknown as string;
+    const { body } = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    return {
+      clientId,
+      token: (body['invite'] as unknown as { token: string }).token,
+      onboardingId: (body['onboarding'] as unknown as { id: string }).id,
+    };
+  };
+
+  it('takes the onboarding, its answers and its links, and says what it took', async () => {
+    const { clientId, token, onboardingId } = await start();
+    await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'f-what', value: 'Boots.' }),
+    });
+    await json(`/api/onboard/${token}`, {
+      method: 'POST', body: JSON.stringify({ questionId: 'e1', value: 'directness' }),
+    });
+
+    const { status, body } = await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' });
+    expect(status).toBe(200);
+    expect(body['removed']).toBe(onboardingId);
+    expect(body['clientId']).toBe(clientId);
+    expect(body['answers']).toBe(2);
+    expect(body['invites']).toBe(1);
+
+    const list = await json(`/api/clients/${clientId}/onboarding`);
+    expect(list.body['onboardings']).toEqual([]);
+    expect(store.getAnswers(onboardingId)).toEqual([]);
+  });
+
+  it('leaves the client, so they can be onboarded again', async () => {
+    const { clientId, onboardingId } = await start();
+    await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' });
+
+    // The client is the point: a delete that took the client with it would be a
+    // way to lose a whole account, and the route is scoped to `/onboardings/:id`.
+    expect((await json(`/api/clients/${clientId}`)).status).toBe(200);
+    const again = await json(`/api/clients/${clientId}/onboarding`, { method: 'POST' });
+    expect(again.status).toBe(201);
+  });
+
+  it('keeps the project an accepted onboarding became', async () => {
+    const { clientId, onboardingId } = await start();
+    const projectId = 'p-from-onboarding';
+    store.saveProject({
+      id: projectId, clientId, name: 'Brand identity', kind: 'brand-identity',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    });
+    store.saveOnboarding({
+      id: onboardingId, clientId, status: 'accepted',
+      createdAt: new Date().toISOString(), projectId,
+    });
+
+    const { status, body } = await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' });
+    expect(status).toBe(200);
+    expect(body['removed']).toBe(onboardingId);
+    // The project is a record in its own right, keyed to the client.
+    expect(store.getProject(projectId)?.name).toBe('Brand identity');
+  });
+
+  it('404s a repeat delete, because the record is already gone', async () => {
+    const { onboardingId } = await start();
+    expect((await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' })).status).toBe(200);
+    // Not 200 and not 500: the first call asked for the outcome it wanted.
+    expect((await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('404s an id that was never real', async () => {
+    expect((await json('/api/onboardings/onb_not-a-thing', { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('kills the link the client was holding, so it opens nothing', async () => {
+    const { token, onboardingId } = await start();
+    const saved = cookie;
+    cookie = '';
+    const before = await json(`/api/onboard/${token}`);
+    cookie = saved;
+    expect(before.status).toBe(200);
+
+    await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' });
+
+    cookie = '';
+    const after = await json(`/api/onboard/${token}`);
+    cookie = saved;
+    // The failure this prevents is a dead link that opens a blank form, which
+    // reads to the client as a bug rather than as a reset.
+    expect(after.status).toBe(404);
+  });
+
+  it('refuses a viewer, and leaves everything in place', async () => {
+    const { clientId, onboardingId } = await start();
+    const { status, body } = await json(`/api/onboardings/${onboardingId}`, {
+      method: 'DELETE', headers: { cookie: studioCookie('viewer') },
+    });
+    expect(status).toBe(403);
+    expect(body['error']).toBe('forbidden');
+
+    expect(store.getOnboarding(onboardingId)).toBeDefined();
+    expect(store.getAnswers(onboardingId)).toBeDefined();
+  });
+
+  it('refuses the client’s own portal session, even for their own onboarding', async () => {
+    const { clientId, onboardingId } = await start();
+    const saved = cookie;
+    cookie = portalCookie(clientId);
+
+    const { status } = await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' });
+    expect(status).toBe(403);
+    cookie = saved;
+    expect(store.getOnboarding(onboardingId)).toBeDefined();
+  });
+
+  it('404s another client’s onboarding, so ids cannot be probed', async () => {
+    const { onboardingId } = await start('One Co');
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+
+    // 404, not 403: a 403 would confirm the id exists.
+    expect((await json(`/api/onboardings/${onboardingId}`, { method: 'DELETE' })).status).toBe(404);
+    cookie = saved;
+    expect(store.getOnboarding(onboardingId)).toBeDefined();
+  });
+
+  it('refuses a session with no cookie at all', async () => {
+    const { onboardingId } = await start();
+    // The origin is set deliberately. A bare `DELETE` with no `Origin` and no
+    // content-type is indistinguishable from a cross-site form post, so the CSRF
+    // layer answers it `403 bad_origin` before authentication is even reached —
+    // which is a different, earlier answer than the one being asserted here.
+    const res = await fetch(`${base}/api/onboardings/${onboardingId}`, {
+      method: 'DELETE', headers: { origin: base },
+    });
+    expect(res.status).toBe(401);
+    expect(store.getOnboarding(onboardingId)).toBeDefined();
+  });
+
+  it('refuses a cross-site delete at the CSRF layer, before it is even authenticated', async () => {
+    const { onboardingId } = await start();
+    const res = await fetch(`${base}/api/onboardings/${onboardingId}`, {
+      method: 'DELETE', headers: { origin: 'https://evil.example', cookie },
+    });
+    expect(res.status).toBe(403);
+    // The owner is signed in and still refused: the answer is about the request,
+    // not about who sent it.
+    expect(store.getOnboarding(onboardingId)).toBeDefined();
+  });
+
+  it('carries the logo through the list, so a card shows the mark', async () => {
+    const { clientId, onboardingId } = await start('Marked Co');
+    await fetch(`${base}/api/clients/${clientId}/logo`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-filename': 'mark.png', cookie },
+      body: PNG,
+    });
+
+    const list = await json(`/api/clients/${clientId}/onboarding`);
+    const rows = list.body['onboardings'] as unknown as { id: string; logoAssetId?: string }[];
+    expect(rows.find((r) => r.id === onboardingId)?.logoAssetId).toBeTruthy();
+  });
+});
+
+describe('client logos', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+  const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+
+  const logoClient = async (name = 'Logo Co') => {
+    const { body } = await json('/api/clients', {
+      method: 'POST', body: JSON.stringify({ name }),
+    });
+    return body['id'] as unknown as string;
+  };
+
+  const upload = async (clientId: string, opts: {
+    bytes?: Buffer; filename?: string; type?: string; cookieOverride?: string;
+  } = {}) => {
+    const res = await fetch(`${base}/api/clients/${clientId}/logo`, {
+      method: 'POST',
+      headers: {
+        'content-type': opts.type ?? 'image/png',
+        'x-filename': opts.filename ?? 'logo.png',
+        cookie: opts.cookieOverride ?? cookie,
+      },
+      body: opts.bytes ?? PNG,
+    });
+    return { status: res.status, body: await res.json() as Record<string, never> };
+  };
+
+  it('points the client at the uploaded mark', async () => {
+    const clientId = await logoClient();
+    const { status, body } = await upload(clientId);
+    expect(status).toBe(201);
+
+    const asset = body['asset'] as unknown as { id: string; kind: string; collection: string; approved: boolean };
+    expect(asset.kind).toBe('logo');
+    expect(asset.collection).toBe('logo');
+    // A client supplying their own mark has nothing to be reviewed for.
+    expect(asset.approved).toBe(true);
+    expect((body['client'] as unknown as { logoAssetId: string }).logoAssetId).toBe(asset.id);
+    expect(store.getClient(clientId)?.logoAssetId).toBe(asset.id);
+  });
+
+  it('accepts every format on the list', async () => {
+    const types = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif', 'image/svg+xml'];
+    for (const type of types) {
+      const clientId = await logoClient(`Logo ${type}`);
+      expect((await upload(clientId, { type })).status, type).toBe(201);
+    }
+  });
+
+  it('refuses a file that is not an image', async () => {
+    const clientId = await logoClient();
+    const html = await upload(clientId, {
+      type: 'text/html', filename: 'mark.html', bytes: Buffer.from('<script>alert(1)</script>'),
+    });
+    expect(html.status).toBe(415);
+    // Nothing recorded, so nothing to clean up by hand.
+    expect(store.getClient(clientId)?.logoAssetId).toBeUndefined();
+  });
+
+  it('refuses an empty upload', async () => {
+    const clientId = await logoClient();
+    expect((await upload(clientId, { bytes: Buffer.alloc(0) })).status).toBe(400);
+  });
+
+  it('refuses a file past the logo cap, which is tighter than the general one', async () => {
+    const clientId = await logoClient();
+    const { status, body } = await upload(clientId, { bytes: Buffer.alloc(3 * 1024 * 1024) });
+    expect(status).toBe(413);
+    expect(body['message']).toContain('2 MB');
+    expect(store.getClient(clientId)?.logoAssetId).toBeUndefined();
+  });
+
+  it('replaces the mark and takes the old record with it', async () => {
+    const clientId = await logoClient();
+    const first = await upload(clientId, { filename: 'one.png' });
+    const firstId = (first.body['asset'] as unknown as { id: string }).id;
+    const firstDigest = (first.body['asset'] as unknown as { digest: string }).digest;
+
+    const second = await upload(clientId, {
+      filename: 'two.png', bytes: Buffer.concat([PNG, Buffer.from('different')]),
+    });
+    expect(second.status).toBe(201);
+    const secondId = (second.body['asset'] as unknown as { id: string }).id;
+    expect(secondId).not.toBe(firstId);
+    expect(second.body['removedPrevious']).toBe(firstId);
+
+    expect(store.getClient(clientId)?.logoAssetId).toBe(secondId);
+    // Gone as a record, not left behind for a list nobody will ever open.
+    expect(store.getAsset(firstId)).toBeUndefined();
+    expect(store.countByDigest(firstDigest)).toBe(0);
+  });
+
+  it('keeps the bytes when another record still points at the same artwork', async () => {
+    const clientId = await logoClient();
+    // The same file uploaded as a library asset first: one file on disk, two
+    // records. Replacing the logo must not unlink bytes the library still has.
+    await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-filename': 'artwork.png', cookie },
+      body: PNG,
+    });
+    const library = store.listAssets(clientId).find((a) => a.filename === 'artwork.png');
+    expect(library).toBeDefined();
+    const shared = library as { digest: string };
+    expect(store.countByDigest(shared.digest)).toBe(1);
+
+    const logo = await upload(clientId, { filename: 'logo.png' });
+    const logoId = (logo.body['asset'] as unknown as { id: string }).id;
+    // Two records, one file.
+    expect(store.countByDigest(shared.digest)).toBe(2);
+    expect((store.getAsset(logoId) as { digest: string }).digest).toBe(shared.digest);
+
+    // Replace it with different bytes: the library's record and file must survive.
+    const { body: second } = await upload(clientId, {
+      filename: 'logo.png', bytes: Buffer.concat([PNG, Buffer.from('x')]),
+    });
+    expect(second['removedPrevious']).toBe(logoId);
+    expect(store.getAsset(logoId)).toBeUndefined();
+    expect(store.countByDigest(shared.digest)).toBe(1);
+    expect(store.listAssets(clientId).some((a) => a.filename === 'artwork.png')).toBe(true);
+  });
+
+  it('treats a traversal filename as a label', async () => {
+    const clientId = await logoClient();
+    const { body } = await upload(clientId, { filename: '../../etc/passwd' });
+    expect((body['asset'] as unknown as { filename: string }).filename).not.toContain('/');
+  });
+
+  it('refuses a viewer, and writes nothing', async () => {
+    const clientId = await logoClient();
+    const { status } = await upload(clientId, { cookieOverride: studioCookie('viewer') });
+    expect(status).toBe(403);
+    // No asset row and no client pointer: the 403 has to arrive before the write,
+    // or a rejected upload is still a file nobody is going to clean up.
+    expect(store.getClient(clientId)?.logoAssetId).toBeUndefined();
+    expect(store.listAssets(clientId)).toEqual([]);
+  });
+
+  it('refuses a viewer’s remove, even when there is nothing to remove', async () => {
+    // The no-op shortcut must not be reachable without a permission check, or a
+    // mutation endpoint answers a caller it should have refused.
+    const clientId = await logoClient();
+    const { status } = await json(`/api/clients/${clientId}/logo`, {
+      method: 'DELETE', headers: { cookie: studioCookie('viewer') },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('refuses another client’s portal session', async () => {
+    const clientId = await logoClient();
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+    expect((await upload(clientId)).status).toBe(404);
+    cookie = saved;
+  });
+
+  it('serves the mark inline, with the image content type', async () => {
+    const clientId = await logoClient();
+    const { body } = await upload(clientId);
+    const id = (body['asset'] as unknown as { id: string }).id;
+
+    const res = await fetch(`${base}/api/assets/${id}/logo`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    // Inline, not `attachment`: this is rendered in every client row.
+    expect(res.headers.get('content-disposition')).not.toContain('attachment');
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(PNG);
+  });
+
+  it('sandboxes an SVG so it cannot script, and says so in the response', async () => {
+    const clientId = await logoClient();
+    const { body } = await upload(clientId, { type: 'image/svg+xml', filename: 'mark.svg', bytes: SVG });
+    const id = (body['asset'] as unknown as { id: string }).id;
+
+    const res = await fetch(`${base}/api/assets/${id}/logo`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/svg+xml');
+    // The whole argument: an SVG served as an image can still carry script, and
+    // the response is the only place that can be made inert.
+    expect(res.headers.get('content-security-policy')).toContain('sandbox');
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(SVG);
+  });
+
+  it('does not sandbox a raster logo, which cannot script', async () => {
+    const clientId = await logoClient();
+    const { body } = await upload(clientId);
+    const id = (body['asset'] as unknown as { id: string }).id;
+    const res = await fetch(`${base}/api/assets/${id}/logo`, { headers: { cookie } });
+    expect(res.headers.get('content-security-policy') ?? '').not.toContain('sandbox');
+  });
+
+  it('refuses to serve a record that is not a logo as one', async () => {
+    // An SVG uploaded as a library file. The download route will hand it over as
+    // a download; the logo route must not, because its whole job is being inline.
+    const clientId = await logoClient();
+    const res = await fetch(`${base}/api/clients/${clientId}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/html', 'x-filename': 'page.html', cookie },
+      body: Buffer.from('<script>alert(1)</script>'),
+    });
+    const { asset } = await res.json() as { asset: { id: string } };
+    const served = await fetch(`${base}/api/assets/${asset.id}/logo`, { headers: { cookie } });
+    expect(served.status).toBe(415);
+  });
+
+  it('refuses another client’s session at the render route', async () => {
+    const clientId = await logoClient();
+    const { body } = await upload(clientId);
+    const id = (body['asset'] as unknown as { id: string }).id;
+    const saved = cookie;
+    cookie = portalCookie('someone-else');
+    expect((await fetch(`${base}/api/assets/${id}/logo`, { headers: { cookie } })).status).toBe(404);
+    cookie = saved;
+  });
+
+  it('removes the mark and falls the client back to initials', async () => {
+    const clientId = await logoClient();
+    const { body: uploaded } = await upload(clientId);
+    const id = (uploaded['asset'] as unknown as { id: string }).id;
+    const digest = (uploaded['asset'] as unknown as { digest: string }).digest;
+
+    const { status, body } = await json(`/api/clients/${clientId}/logo`, { method: 'DELETE' });
+    expect(status).toBe(200);
+    expect(body['removed']).toBe(id);
+    expect((body['client'] as unknown as { logoAssetId?: string }).logoAssetId).toBeUndefined();
+    expect(store.getAsset(id)).toBeUndefined();
+    // Nothing references the bytes now, so the file goes too.
+    expect(store.countByDigest(digest)).toBe(0);
+  });
+
+  it('is idempotent, so a second remove is not an error', async () => {
+    const clientId = await logoClient();
+    await upload(clientId);
+    expect((await json(`/api/clients/${clientId}/logo`, { method: 'DELETE' })).status).toBe(200);
+    expect((await json(`/api/clients/${clientId}/logo`, { method: 'DELETE' })).status).toBe(200);
+  });
+
+  it('refuses a remove with no session', async () => {
+    const clientId = await logoClient();
+    await upload(clientId);
+    // Origin set, so this reaches authentication instead of being turned away by
+    // the CSRF layer first — see the note on the same pattern in the delete suite.
+    const res = await fetch(`${base}/api/clients/${clientId}/logo`, {
+      method: 'DELETE', headers: { origin: base },
+    });
+    expect(res.status).toBe(401);
+    expect(store.getClient(clientId)?.logoAssetId).toBeTruthy();
+  });
+
+  it('leaves a client with no logo alone on remove', async () => {
+    const clientId = await logoClient();
+    expect((await json(`/api/clients/${clientId}/logo`, { method: 'DELETE' })).status).toBe(200);
   });
 });
 

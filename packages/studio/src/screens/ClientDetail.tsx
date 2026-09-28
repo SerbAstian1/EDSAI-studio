@@ -10,6 +10,8 @@ import DocumentShelf from '../components/DocumentShelf.js';
 import DocumentLibrary from '../components/DocumentLibrary.js';
 import BrandHubAdmin from './BrandHubAdmin.js';
 import { OnboardingPanel } from '../components/OnboardingPanel.js';
+import { ClientLogo } from '../components/ClientLogo.js';
+import { ClientIdentity } from '../components/ClientIdentity.js';
 import { TranscriptStrategy } from '../components/TranscriptStrategy.js';
 import { ContractBuilder } from '../components/ContractBuilder.js';
 import Brand from './Brand.js';
@@ -94,6 +96,9 @@ function ClientHeader({ client, dependents, onSaved }: {
     return (
       <div>
         <div className="row">
+          {/* The largest mark in the studio, because this is the one page where
+              there is nothing else to tell you which client you are looking at. */}
+          <ClientIdentity size="lg" showName={false} client={client} />
           <div>
             <p className="label">Client · /{client.slug}</p>
             <h2>{client.name}</h2>
@@ -711,6 +716,10 @@ export default function ClientDetail({ clientId, tab }: {
       </>)}
 
       {current === 'settings' && (<>
+        {/* The mark beside their name everywhere, managed in one place. Inside
+            the client's own page, so the logo is a thing you set once for the
+            studio rather than per surface. */}
+        <ClientLogo client={client} />
         <StudioOnly>
           <PortalAccess clientId={clientId} clientName={client.name} contacts={contacts} />
         </StudioOnly>

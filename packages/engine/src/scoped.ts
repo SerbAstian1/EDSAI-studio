@@ -838,6 +838,36 @@ export class ScopedStore {
   }
 
   /**
+   * Reset a client's discovery: throw the onboarding away so a fresh one can be
+   * started. Deliberately allowed in every state, including `accepted` — an
+   * accepted onboarding is a finished record, and a client whose brief the
+   * studio wants to re-ask is exactly the case this is for.
+   *
+   * What it does *not* touch is the reason the state check is absent rather than
+   * present. The project an accepted onboarding became is not its child: it
+   * carries its own `client_id`, is listed and deleted on its own, and survives
+   * this. The pointer lives on the row being deleted, so there is nothing to
+   * unwind — which is why the store deletes three tables by name and stops.
+   *
+   * Authorization is onboarding's own `client` resource, the same gate
+   * `saveOnboarding` above uses. Hiding the menu item is a courtesy on top of
+   * this, not a substitute for it.
+   *
+   * Throws when the onboarding is not visible to this session, so a caller
+   * cannot delete by guessing ids across clients.
+   *
+   * The counts come back so the caller can say what it removed without
+   * re-reading a record that no longer exists — and, more usefully, so a
+   * "nothing left behind" claim is the database's rather than the UI's.
+   */
+  deleteOnboarding(onboardingId: string): { answers: number; invites: number } {
+    const onboarding = this.store.getOnboarding(onboardingId);
+    if (!onboarding) throw new Error(`No such onboarding: ${onboardingId}`);
+    this.mustWrite('client', onboarding.clientId, 'write');
+    return this.store.deleteOnboarding(onboardingId);
+  }
+
+  /**
    * Answering the discovery questions from inside the studio itself — the
    * same record a client's own invite link writes to, gated the same way
    * (`onboarding`'s own `client` resource) rather than through a second rule

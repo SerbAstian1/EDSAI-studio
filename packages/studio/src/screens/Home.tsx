@@ -4,6 +4,7 @@ import { api, type Run } from '../api.js';
 import { projectCardsFrom, type ProjectCard } from '../pipeline.js';
 import { useBookmarks } from '../bookmarks.js';
 import ProjectMenu from '../components/ProjectMenu.js';
+import { ClientIdentity } from '../components/ClientIdentity.js';
 
 /**
  * Studio home.
@@ -64,25 +65,25 @@ const EXTERNAL_TABS: { label: string; href: string }[] = [
   { label: 'Pipeline', href: '#/runs' },
 ];
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const first = parts[0]?.[0] ?? '';
-  const second = parts.length > 1 ? parts[1]?.[0] ?? '' : parts[0]?.[1] ?? '';
-  return (first + second).toUpperCase();
-}
-
-function ProjectCardView({ card, starred, onToggleStar }: {
+function ProjectCardView({ card, starred, onToggleStar, logoAssetId }: {
   card: ProjectCard;
   starred: boolean;
   onToggleStar: () => void;
+  /** Resolved by the caller from the client record — a card does not own it. */
+  logoAssetId: string | undefined;
 }): ReactElement {
   const percent = Math.round(card.progress * 100);
 
   return (
     <article className="project-card">
       <div className="project-card-head">
-        <span className="project-card-logo" aria-hidden="true">{initialsOf(card.clientName)}</span>
+        {/* The mark, at the size of a card, so a wall of these is scannable by
+            client rather than by reading twelve project names. */}
+        <ClientIdentity
+          size="sm"
+          showName={false}
+          client={{ name: card.clientName, ...(logoAssetId ? { logoAssetId } : {}) }}
+        />
         <div className="project-card-title">
           <span className="client">{card.clientName}</span>
           <strong title={card.projectName}>{card.projectName}</strong>
@@ -170,6 +171,15 @@ export default function Home(): ReactElement {
       })
     : undefined;
 
+  // The client list is already loaded here, so a card's mark costs a map lookup
+  // rather than a request per project — and, more to the point, it is the same
+  // record the client list and the sidebar read, so a logo change lands on the
+  // dashboard at the same moment it lands everywhere else.
+  const logoByClient = new Map(
+    (clientsQuery.data ?? []).flatMap((client) =>
+      client.logoAssetId ? [[client.id, client.logoAssetId] as const] : []),
+  );
+
   return (
     <section className="stack">
       <div>
@@ -237,6 +247,7 @@ export default function Home(): ReactElement {
               card={card}
               starred={bookmarks.has(card.projectId)}
               onToggleStar={() => bookmarks.toggle(card.projectId)}
+              logoAssetId={logoByClient.get(card.clientId)}
             />
           ))}
         </div>

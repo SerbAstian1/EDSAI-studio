@@ -1,8 +1,12 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Trash2 } from 'lucide-react';
 import { api, type OnboardingSummary } from '../api.js';
 import { DiscoveryQuestions } from './DiscoveryQuestions.js';
+import OverflowMenu, { type MenuItem } from './OverflowMenu.js';
+import { requestConfirmation } from './ConfirmDialog.js';
 import { StudioOnly } from '../viewMode.js';
+import { reportNotice } from '../notices.js';
 
 /**
  * The studio's side of onboarding.
@@ -68,6 +72,7 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
   const { data: onboardings, isPending } = useQuery({
     queryKey: ['onboardings', clientId], queryFn: () => api.onboardings(clientId),
   });
+  const client = useQuery({ queryKey: ['client', clientId], queryFn: () => api.client(clientId) });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects });
   const projectName = new Map((projects.data ?? []).map((p) => [p.id, p.name]));
 
@@ -96,7 +101,58 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
     onSuccess: invalidate,
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteOnboarding(id),
+    onSuccess: (result, id) => {
+      // The card answering itself on this one would be left rendering a form
+      // for an onboarding that no longer exists — the write's 404 fires against
+      // a query the panel still holds. Closing it here is the redirect this
+      // surface needs; the panel stays where it is, which is the client's
+      // overview, so there is nowhere to navigate to.
+      setAnswering((current) => (current === id ? undefined : current));
+      invalidate();
+      reportNotice(
+        `Onboarding deleted. You can now start a fresh one for ${client.data?.client.name ?? 'this client'}.`,
+      );
+      void result;
+    },
+  });
+
+  /**
+   * Confirm, then delete — never on the menu click.
+   *
+   * The dialog says what survives, because the question behind this action is
+   * always "does this delete the client?". It does not: the client, their
+   * projects, documents, files, invoices and brand are all still there, and only
+   * the onboarding and its answers are going.
+   */
+  const confirmDelete = (onboarding: OnboardingSummary): void => {
+    const name = client.data?.client.name ?? onboarding.clientName ?? 'this client';
+    void requestConfirmation({
+      title: 'Delete onboarding?',
+      message: `This will permanently delete the onboarding data for ${name}.`
+        + ' The client and their other projects, documents, assets, invoices and brand'
+        + ' information will not be deleted. You can create a new onboarding for this'
+        + ' client afterward.',
+      confirmLabel: 'Delete onboarding',
+    }).then((confirmed) => {
+      if (confirmed) remove.mutate(onboarding.id);
+    });
+  };
+
   if (isPending) return <p className="muted">Loading onboarding…</p>;
+
+  const menuFor = (onboarding: OnboardingSummary): MenuItem[] => [{
+    // In-flight, so the state is legible in the menu rather than only as a
+    // disabled row the person has already opened.
+    label: remove.isPending && remove.variables === onboarding.id
+      ? 'Deleting…' : 'Delete onboarding',
+    icon: Trash2,
+    danger: true,
+    // One delete at a time: a second click cannot produce a second request.
+    disabled: remove.isPending,
+    onSelect: () => confirmDelete(onboarding),
+  }];
 
   return (
     <div className="stack">
@@ -141,21 +197,31 @@ export function OnboardingPanel({ clientId }: { clientId: string }): ReactElemen
                 {(onboarding.status === 'draft' || onboarding.status === 'sent'
                   || onboarding.status === 'in-progress') && (
                   <StudioOnly>
-                    <button style={{ marginLeft: 'auto' }}
-                            onClick={() => setAnswering((id) => id === onboarding.id ? undefined : onboarding.id)}>
+                    <button onClick={() => setAnswering((id) => id === onboarding.id ? undefined : onboarding.id)}>
                       {answering === onboarding.id ? 'Close' : 'Answer here'}
                     </button>
                   </StudioOnly>
                 )}
                 {onboarding.status === 'submitted' && (
                   <StudioOnly>
-                    <button className="primary" style={{ marginLeft: 'auto' }}
+                    <button className="primary"
                             onClick={() => accept.mutate(onboarding.id)}
                             disabled={accept.isPending}>
                       Turn into a project
                     </button>
                   </StudioOnly>
                 )}
+                {/* Destructive, so it is in the overflow rather than on the card:
+                    a reset is a thing you go looking for, not a thing a card
+                    offers you next to the work. It is the only thing on the right
+                    of this row, so the `auto` margin lives here alone — three of
+                    them would split the free space three ways. */}
+                <StudioOnly>
+                  <span style={{ marginLeft: 'auto' }}>
+                    <OverflowMenu label="Actions for this onboarding" size="bar"
+                                  items={menuFor(onboarding)} />
+                  </span>
+                </StudioOnly>
               </div>
 
               {onboarding.progress && (

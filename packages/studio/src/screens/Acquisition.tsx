@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import { api, type Client } from '../api.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
+import { ClientIdentity } from '../components/ClientIdentity.js';
 import { go } from '../components/actions.js';
 
 /**
@@ -31,14 +32,6 @@ export function leadsByStage(clients: readonly Client[]): [string, Client[]][] {
     .filter((client) => client.status === 'prospect' || client.status === 'dormant')
     .sort((a, b) => a.name.localeCompare(b.name));
   return STAGES.map((stage) => [stage.id, ranked.filter((client) => client.status === stage.id)]);
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const first = parts[0]?.[0] ?? '';
-  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : parts[0]?.[1] ?? '';
-  return (first + second).toUpperCase();
 }
 
 export default function Acquisition(): ReactElement {
@@ -147,10 +140,7 @@ export default function Acquisition(): ReactElement {
               <tr key={client.id}>
                 <td data-label="Lead">
                   <a href={`#/clients/${client.id}`}>
-                    <span className="row" style={{ gap: 8 }}>
-                      <span className="nav-avatar" aria-hidden="true">{initialsOf(client.name)}</span>
-                      <strong>{client.name}</strong>
-                    </span>
+                    <ClientIdentity size="sm" client={client} />
                   </a>
                   <div className="muted mono" style={{ fontSize: 12 }}>/{client.slug}</div>
                 </td>

@@ -26,11 +26,20 @@ const ROLE_LABEL: Record<string, string> = {
   limited: 'Limited access',
 };
 
+/**
+ * The signed-in person's initials.
+ *
+ * Not `initialsOf` from `ClientIdentity`, despite looking like it: this is a
+ * *person*, so the round `.avatar` is right and a client mark would be wrong.
+ * The one thing borrowed is the "no second word means the second letter" rule —
+ * "Aurelia" is `AU` here too, so the same person does not read as `AA` in the
+ * header and `AU` in the sidebar.
+ */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   const first = parts[0]?.[0] ?? '';
-  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : parts[0]?.[1] ?? '';
   return (first + last).toUpperCase();
 }
 

@@ -17,6 +17,7 @@ import { ViewModeProvider, useViewMode } from './viewMode.js';
 import { AppErrorBoundary } from './components/AppErrorBoundary.js';
 import { ConfirmationDialog } from './components/ConfirmDialog.js';
 import { FailureBanner } from './components/FailureBanner.js';
+import { NoticeBanner } from './components/NoticeBanner.js';
 import { LoadingOverlay } from './components/LoadingOverlay.js';
 import { reportFailure } from './failures.js';
 import Home from './screens/Home.js';
@@ -426,6 +427,7 @@ export default function App(): ReactElement {
       <AppErrorBoundary>
         <ConfirmationDialog />
         <FailureBanner />
+        <NoticeBanner />
         <Entry />
       </AppErrorBoundary>
     </QueryClientProvider>

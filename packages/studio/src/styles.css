@@ -60,6 +60,11 @@
   --background: #FBFBFA;
   --surface: #F4F3F1;
   --surface-elevated: #FFFFFF;
+  /* Below `--surface`, for a well *inside* a surface: an empty slot, an
+     unselected segment, a mark's container. One step down from `#F4F3F1` rather
+     than up to white, so a neutral container reads as recessed instead of as a
+     card sitting on the page. */
+  --surface-sunken: #EDEBE8;
 
   /* — semantic text —————————————————————————————————————————————— */
   --text-primary: #16181C;
@@ -159,6 +164,7 @@
   --background: #121316;
   --surface: #1A1C20;
   --surface-elevated: #22252A;
+  --surface-sunken: #141619;
   --text-primary: #EFEFED;
   --text-secondary: #B3B7BD;
   --text-muted: #8B9199;
@@ -179,6 +185,7 @@
     --background: #121316;
     --surface: #1A1C20;
     --surface-elevated: #22252A;
+    --surface-sunken: #141619;
     --text-primary: #EFEFED;
     --text-secondary: #B3B7BD;
     --text-muted: #8B9199;
@@ -1313,19 +1320,9 @@ button.choice.chosen {
   width: 32px; height: 32px; min-height: 32px; display: inline-grid; place-items: center;
   margin-top: 2px;
 }
-.project-card-logo {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--text-secondary);
-  flex: none;
-}
+/* The project's own mark on a card is `ClientIdentity` at `sm` — a client mark,
+   not a project one, and drawn by the one component so a project card and the
+   client list cannot disagree about what a client looks like. */
 .project-card-title { min-width: 0; }
 .project-card-title .client { display: block; font-size: 12px; color: var(--text-muted); }
 .project-card-title strong { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2210,6 +2207,99 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   background: transparent;
 }
 
+/* — the notice banner ————————————————————————————————————————————————
+   The same shape and position as the failure banner, because they answer the
+   same question — "did that write land?" — and a confirmation that appears in a
+   different place from the refusal it replaces reads as a different message.
+   `--success` rather than a neutral grey: a confirmation is the one thing in
+   this interface that gets to say something is fine. */
+.notice-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 2.5) var(--space-page);
+  background: var(--surface-elevated); color: var(--success);
+  border-bottom: 1px solid var(--success);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-3);
+}
+.notice-banner button {
+  margin-left: auto; color: var(--success); border-color: currentColor;
+  background: transparent;
+}
+
+/* — client identity ————————————————————————————————————————————————
+   One component, one look: a client's mark is the same size, shape and ground
+   in the sidebar as in their own header, because it is the same client.
+
+   Three decisions worth stating:
+
+   **A square, not a circle.** A logo is artwork, not a portrait. Cropping one
+   into a circle is cropping a wordmark in half, and `object-fit: contain` with
+   padding is what lets an aspect ratio the studio did not choose sit inside a
+   box the studio did. The round mark in the header (`.avatar`) is a *person*,
+   and stays round.
+
+   **A neutral ground, always.** `--surface-elevated` with a hairline border,
+   never the accent: a white-background mark on orange and a black-background
+   mark on orange are both unreadable, and the studio cannot know which it is
+   looking at. Light on light, dark on dark, the logo is visible either way, and
+   the initials fallback below reads on the same ground.
+
+   **Initials take the accent.** When there is no mark, the square *is* the
+   client's colour in this interface, and it takes the same `--accent` /
+   `--accent-on` pair the header avatar already uses. */
+.client-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--step) * 2.5);
+  min-width: 0;
+}
+.client-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.client-mark-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Contain, not cover: a mark keeps its aspect ratio and its whole shape. */
+  object-fit: contain;
+  /* Room for a mark whose own artwork runs to its edges. */
+  padding: calc(var(--step) * 0.75);
+}
+.client-mark-initials { line-height: 1; }
+.client-identity[data-has-logo="no"] .client-mark {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+}
+.client-identity-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Three sizes, in steps of four, because a fourth is a decision rather than a
+   variant. `sm` sits beside body text and in a table row, `md` in a card, `lg`
+   in a client's own header — and all three are multiples of the base step, so
+   they land on the same grid as the controls beside them. */
+.client-identity.is-sm .client-mark { width: calc(var(--step) * 8); height: calc(var(--step) * 8); }
+.client-identity.is-md .client-mark { width: calc(var(--step) * 10); height: calc(var(--step) * 10); }
+.client-identity.is-lg .client-mark { width: calc(var(--step) * 12); height: calc(var(--step) * 12); }
+.client-identity.is-sm .client-mark-initials { font-size: var(--text-xs); }
+.client-identity.is-md .client-mark-initials { font-size: var(--text-sm); }
+.client-identity.is-lg .client-mark-initials { font-size: var(--text-base); }
+
 /* — confirmation and recovery ——————————————————————————————————— */
 
 .confirmation-backdrop {
@@ -2582,6 +2672,9 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .failure-banner { align-items: flex-start; padding: calc(var(--step) * 3) calc(var(--step) * 4); }
   .failure-banner span { min-width: 0; overflow-wrap: anywhere; }
   .failure-banner button { flex: none; }
+  .notice-banner { align-items: flex-start; padding: calc(var(--step) * 3) calc(var(--step) * 4); }
+  .notice-banner span { min-width: 0; overflow-wrap: anywhere; }
+  .notice-banner button { flex: none; }
   .error-page { margin: calc(var(--step) * 6) calc(var(--step) * 3); }
 }
 
@@ -2907,7 +3000,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 
 /* A held control is shown, not hidden, and looks held.
    The designer took it away deliberately and the client can still read the
-   value they were given, so the range greys rather than vanishing � a control
+   value they were given, so the range greys rather than vanishing � a control
    that disappears reads as a bug in the tool. */
 .dial.locked { opacity: 0.62; }
 .dial.locked .label::after {
@@ -2942,7 +3035,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 .dna-chip:hover { border-color: var(--border-strong); }
 .dna-chip.on, .dna-chip:has(input:checked) { border-color: var(--accent); background: var(--surface); }
 /* A capability with no tool built yet. Greyed and unclickable, because naming
-   it grants nothing � but still listed, so a designer recording "grain-led"
+   it grants nothing � but still listed, so a designer recording "grain-led"
    today finds it there when the Grain FX ships. */
 .dna-chip.soon { opacity: 0.5; cursor: default; border-style: dashed; }
 .dna-chip.soon:hover { border-color: var(--border); }

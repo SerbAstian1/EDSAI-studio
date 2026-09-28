@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SECTIONS, BLOCKS, blockSectionIds, sectionsIn } from '../src/shell/navigation.js';
 import { allCommands, search } from '../src/shell/commands.js';
 import { summarise } from '../src/screens/Home.js';
@@ -7,6 +7,10 @@ import { parseRoute, activeSection } from '../src/App.js';
 import { CLIENT_TABS, DEFAULT_TAB } from '../src/screens/ClientDetail.js';
 import { leadsByStage } from '../src/screens/Acquisition.js';
 import { railClients } from '../src/shell/Sidebar.js';
+import { initialsOf } from '../src/components/ClientIdentity.js';
+import {
+  NOTICE_MS, clearNotice, currentNotice, reportNotice, subscribeToNotices,
+} from '../src/notices.js';
 import {
   histogram, issueCounts, orderIssues, progress, targetSummary, weakestScore,
 } from '../src/scorecard.js';
@@ -1251,5 +1255,121 @@ describe('the calendar as a section', () => {
   it('runs from the command palette', () => {
     const go = allCommands().find((c) => c.id === 'go:calendar');
     expect(go?.available).toBe(true);
+  });
+});
+
+describe('a client’s initials', () => {
+  it('takes the first and the last word, which is what a person reads', () => {
+    expect(initialsOf('Campus Turkey')).toBe('CT');
+    expect(initialsOf('Sweet Haven Bakery')).toBe('SB');
+    expect(initialsOf('Morrow')).toBe('MO');
+  });
+
+  it('takes first and last rather than first and second', () => {
+    // The distinction the duplicates disagreed about: the sidebar said `TG` and
+    // a project card said `TD` for the same client on the same screen.
+    expect(initialsOf('The Daily Grind')).toBe('TG');
+  });
+
+  it('gives a one-word name its own second letter rather than doubling the first', () => {
+    // `AA` reads as a typo. `AU` reads as a name.
+    expect(initialsOf('Aurelia')).toBe('AU');
+    expect(initialsOf('Aurelia')).not.toBe('AA');
+  });
+
+  it('is upper case, and ignores the casing it was given', () => {
+    expect(initialsOf('morrow')).toBe('MO');
+    expect(initialsOf('mOrRoW')).toBe('MO');
+  });
+
+  it('survives the spacing a name arrives with', () => {
+    // Names come from a form. Leading, trailing and doubled spaces are all
+    // something somebody will type at some point.
+    expect(initialsOf('  Sweet   Haven  ')).toBe('SH');
+    expect(initialsOf('Sweet\tHaven\nBakery')).toBe('SB');
+  });
+
+  it('has something to show for a name with nothing in it', () => {
+    // A blank row is worse than a wrong one: an empty circle in a client list
+    // reads as a missing image rather than as a client whose name is blank.
+    expect(initialsOf('')).toBe('?');
+    expect(initialsOf('   ')).toBe('?');
+  });
+
+  it('does not throw on a single character', () => {
+    // `parts[0][1]` is undefined here. A blank mark would be a crash in a list.
+    expect(initialsOf('X')).toBe('X');
+  });
+});
+
+describe('the confirmation notice', () => {
+  it('says the thing that happened', () => {
+    clearNotice();
+    reportNotice('Onboarding deleted — you can now start a fresh one.');
+    expect(currentNotice()?.message).toContain('Onboarding deleted');
+  });
+
+  it('re-shows on a second identical message, rather than looking unchanged', () => {
+    // Two deletes in a row say the same words. Without a changing marker the
+    // banner would render identically and read as though nothing had happened.
+    // Asserted with the clock frozen, because the marker is a counter precisely
+    // so that two notices inside the same millisecond still differ.
+    clearNotice();
+    reportNotice('Logo removed.');
+    const first = currentNotice()?.at;
+    reportNotice('Logo removed.');
+    expect(currentNotice()?.at).not.toBe(first);
+    clearNotice();
+  });
+
+  it('restarts the clock rather than being cut short by the first timer', () => {
+    vi.useFakeTimers();
+    try {
+      clearNotice();
+      reportNotice('First.');
+      vi.advanceTimersByTime(NOTICE_MS - 100);
+      reportNotice('Second.');
+      // Past the first message's deadline but not the second's.
+      vi.advanceTimersByTime(200);
+      expect(currentNotice()?.message).toBe('Second.');
+      vi.advanceTimersByTime(NOTICE_MS);
+      expect(currentNotice()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+      clearNotice();
+    }
+  });
+
+  it('clears itself, because a confirmation only matters while it is there', () => {
+    // The opposite of a failure, which must never remove itself. A stale
+    // "Logo removed" sitting under the header is worse than no notice.
+    vi.useFakeTimers();
+    try {
+      reportNotice('Logo removed.');
+      vi.advanceTimersByTime(NOTICE_MS);
+      expect(currentNotice()).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+      clearNotice();
+    }
+  });
+
+  it('tells its subscribers, and stops when they go', () => {
+    clearNotice();
+    const seen: (string | undefined)[] = [];
+    const unsubscribe = subscribeToNotices(() => { seen.push(currentNotice()?.message); });
+
+    reportNotice('One.');
+    clearNotice();
+    unsubscribe();
+    reportNotice('Two.');
+
+    // Unsubscribed, so the last one is never heard.
+    expect(seen).toEqual(['One.', undefined]);
+  });
+
+  it('leaves nothing pending for the next test to trip over', () => {
+    clearNotice();
+    expect(currentNotice()).toBeUndefined();
   });
 });

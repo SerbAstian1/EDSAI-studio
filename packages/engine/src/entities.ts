@@ -46,6 +46,20 @@ export const Client = z.object({
   slackUrl: z.string().optional(),
   /** A standing Google Meet room for this client. */
   meetUrl: z.string().optional(),
+  /**
+   * The client's own mark, as an id into the `assets` table.
+   *
+   * A reference and not bytes or a path. The file is content-addressed on disk
+   * by `AssetStore` already, and the bytes a browser needs are served from the
+   * download route — so a logo is a file like any other, with the one extra job
+   * of being looked at constantly, which is why the client record points at it
+   * rather than every screen that draws a client name re-resolving it.
+   *
+   * Optional because most clients arrive without one, and the identity
+   * component falls back to initials rather than making the field mandatory for
+   * a record that has not been designed yet.
+   */
+  logoAssetId: z.string().min(1).optional(),
   status: ClientStatus.default('prospect'),
   createdAt: z.string(),
   updatedAt: z.string(),

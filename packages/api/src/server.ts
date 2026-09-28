@@ -18,7 +18,8 @@ import {
   ScopedStore, ensureLocalProject, slugify,
   QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject, discoveryBrief,
   measure, applyEdit, seedFromRun, forClient, EditRefused,
-  MemoryAssetStore, MAX_ASSET_BYTES, safeContentType, safeFilename, mustDownload, kindFor,
+  MemoryAssetStore, MAX_ASSET_BYTES, MAX_LOGO_BYTES, isLogoContentType, logoContentType,
+  logoNeedsSandbox, safeContentType, safeFilename, mustDownload, kindFor,
   PORTAL_KEY_DAYS, portalUserId,
   AXES, AXIS_MIN, AXIS_MAX, axis, matrixFor,
   orderMilestones, invoiceStatus, invoiceTotals, invoiceAmounts, lineAmountCents,
@@ -1118,6 +1119,259 @@ export class ApiServer {
             'x-content-type-options': 'nosniff',
             'content-disposition': `${disposition}; filename="${safeFilename(asset.filename)}"`,
             'cache-control': 'private, max-age=300',
+          });
+          res.end(bytes);
+        },
+      },
+
+      /* -------------------------------------------------------- client logos */
+
+      /**
+       * Upload or replace a client's logo.
+       *
+       * A separate route rather than "upload an asset, then PATCH the client
+       * with its id", because the record update and the upload have to agree:
+       * a client pointing at an asset row that was never written shows a broken
+       * mark, and a client whose `logoAssetId` was written before the bytes
+       * landed does the same. Here the file is stored, the record is written,
+       * and the previous logo is cleaned up, as one handler — the client is
+       * never left in an intermediate state, and a second concurrent upload
+       * cannot interleave with the first's cleanup.
+       *
+       * The bytes go through the same `AssetStore` and the same `assets` table
+       * as every other file, at the same `contentType`, `digest` and
+       * `safeFilename` handling. Nothing here is a second storage pipeline: it
+       * is the upload route with the extra promise attached that this file is
+       * *the* client mark.
+       *
+       * Replacing a logo deletes the old record rather than orphaning it. Only
+       * when nothing else references that digest, though — `countByDigest`
+       * exists for exactly this, and the same bytes uploaded as a library file
+       * are one file on disk and two records; unlinking those bytes would break
+       * the library.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/logo$/,
+        body: 'raw',
+        run: ({ req, res, params, scoped, raw }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const client = scoped.getClient(clientId);
+          if (!client) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          // Two gates, both asked *before* the first byte is written.
+          //
+          // `asset` rather than `client` alone: a logo is a file first, and a
+          // role allowed to add files for a client but not to edit the client
+          // record itself should not be able to repoint its identity. The `client`
+          // gate is asked as well, not because the two differ today — they do
+          // not, both being `write` — but because the handler writes both kinds of
+          // record, and a handler that stored the asset and *then* discovered it
+          // could not write the client row would leave a file on disk that no
+          // cleanup path knows about: the 403 arrives after the write, not before.
+          // Asking both up front makes the failure cost nothing.
+          if (!scoped.canWrite('asset', clientId) || !scoped.canWrite('client', clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot change that client’s logo.',
+            });
+            return;
+          }
+
+          const bytes = raw ?? Buffer.alloc(0);
+          if (bytes.byteLength === 0) {
+            send(res, 400, { error: 'bad_request', message: 'That logo had no content.' });
+            return;
+          }
+          // A tighter cap than the general one, stated in the message, because
+          // a person who picked a 12 MB file for a logo would rather be told
+          // than have it silently accepted and served in every header.
+          if (bytes.byteLength > MAX_LOGO_BYTES) {
+            send(res, 413, {
+              error: 'too_large',
+              message: `A logo can be up to ${Math.round(MAX_LOGO_BYTES / 1024 / 1024)} MB. `
+                + 'A larger file is probably the artwork rather than the mark — export it '
+                + 'as PNG, WebP or SVG.',
+            });
+            return;
+          }
+
+          const header = (name: string): string =>
+            String(req.headers[name] ?? '').slice(0, 300);
+          const filename = safeFilename(decodeHeader(header('x-filename')) || 'logo');
+          const contentType = header('content-type') || 'application/octet-stream';
+          if (!isLogoContentType(contentType)) {
+            send(res, 415, {
+              error: 'bad_type',
+              message: 'A logo has to be an image. PNG, JPEG, WebP, AVIF, GIF or SVG.',
+            });
+            return;
+          }
+
+          const previousId = client.logoAssetId;
+          const digest = this.assets.put(bytes);
+          const asset = {
+            id: newId('asset'),
+            clientId,
+            digest,
+            filename,
+            // Set explicitly rather than left to `kindFor`'s guess: a file named
+            // `brand.png` would otherwise be filed as photography and never
+            // surface in a logo search.
+            kind: 'logo' as const,
+            contentType,
+            bytes: bytes.byteLength,
+            collection: 'logo',
+            // A client's own mark is not studio review material. Nothing reaches
+            // a client here that they did not supply themselves.
+            approved: true,
+            uploadedAt: new Date().toISOString(),
+          };
+          scoped.saveAsset(asset);
+          scoped.saveClient({ ...client, logoAssetId: asset.id, updatedAt: new Date().toISOString() });
+
+          let removedPrevious: string | undefined;
+          if (previousId && previousId !== asset.id) {
+            const previous = this.store.getAsset(previousId);
+            if (previous && previous.clientId === clientId) {
+              scoped.deleteAsset(previousId);
+              removedPrevious = previousId;
+              // Content-addressed storage means the same bytes can be behind
+              // another record — the library copy of the same artwork, say — so
+              // the file itself only goes when nothing is left pointing at it.
+              if (this.store.countByDigest(previous.digest) === 0) {
+                this.assets.remove(previous.digest);
+              }
+            }
+          }
+
+          send(res, 201, { asset, client: scoped.getClient(clientId), removedPrevious });
+        },
+      },
+
+      /**
+       * Remove a client's logo and fall the client back to initials.
+       *
+       * Reversible and complete: the client keeps its id, its projects and its
+       * history, and only the pointer to the mark goes. The asset record goes
+       * with it for the same reason it does on replace, so a logo removed twice
+       * does not leave a file nobody can reach.
+       */
+      {
+        method: 'DELETE', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/logo$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const clientId = params['clientId'] ?? '';
+          const client = scoped.getClient(clientId);
+          if (!client) {
+            send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
+            return;
+          }
+          // Authorized before the "there is nothing to remove" shortcut, not
+          // after. A 200 to a viewer for a delete that changed nothing is still
+          // a delete that answered them, and it tells them the shape of the
+          // route; a mutation endpoint that answers an unauthorized caller at
+          // all is the thing to avoid, idempotent or not. Same two gates as
+          // upload, for the same reason: both records are written below.
+          if (!scoped.canWrite('asset', clientId) || !scoped.canWrite('client', clientId)) {
+            send(res, 403, {
+              error: 'forbidden', message: 'This session cannot change that client’s logo.',
+            });
+            return;
+          }
+          if (!client.logoAssetId) {
+            // Already the state the caller asked for. Not an error, and the
+            // reason a double click is inert.
+            send(res, 200, { removed: undefined, client });
+            return;
+          }
+
+          const logoAssetId = client.logoAssetId;
+          const logo = this.store.getAsset(logoAssetId);
+          const { logoAssetId: _dropped, ...rest } = client;
+          scoped.saveClient({ ...rest, updatedAt: new Date().toISOString() } as typeof client);
+
+          // Scoped, not raw: the asset belongs to the same client the logo gate
+          // was checked against, and going through the boundary means the record
+          // cannot be deleted by a session that could not have written it.
+          if (logo && logo.clientId === clientId) {
+            scoped.deleteAsset(logoAssetId);
+            if (this.store.countByDigest(logo.digest) === 0) this.assets.remove(logo.digest);
+          }
+          send(res, 200, { removed: logoAssetId, client: scoped.getClient(clientId) });
+        },
+      },
+
+      /**
+       * Serve a client logo for display.
+       *
+       * The download route above is right for a file and wrong for a mark: it
+       * answers "here are the bytes, as a download", which is what an SVG logo
+       * must not be. This one exists because a logo is rendered constantly and
+       * inline, in every client row in the studio and the portal alike, and
+       * because being able to make an SVG inert is worth one extra route rather
+       * than a rule the rest of the system has to stop trusting.
+       *
+       * The headers are the whole security argument:
+       *
+       *   - `content-type` is restricted to the logo list, so an uploaded
+       *     `payload.html` cannot be served as a document from this origin.
+       *   - `nosniff` stops the browser going looking for a better type.
+       *   - `Content-Security-Policy: sandbox` on an SVG, with no
+       *     `allow-scripts` and no `allow-same-origin`, means that even opened
+       *     directly in a tab it cannot run script, post anywhere, or touch the
+       *     session cookie that shares its origin. `default-src 'none'` closes
+       *     the fetch side for a raster logo for the same reason it is cheap.
+       *   - `inline`, not `attachment`: the point of the route is to be an
+       *     `<img src>`.
+       *
+       * Long private caching, and `immutable`, because a logo's bytes are
+       * addressed by digest — a changed logo is a different id, so a cached
+       * entry can never be stale. The client's `updatedAt` is in `Vary` so a
+       * shared cache cannot serve one session's client to another.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/assets\/(?<assetId>[\w-]+)\/logo$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const asset = scoped.getAsset(params['assetId'] ?? '');
+          if (!asset) {
+            send(res, 404, { error: 'not_found', message: 'No such logo for this session.' });
+            return;
+          }
+          const type = logoContentType(asset.contentType);
+          if (!type) {
+            // A record that survived as a logo but whose type is not one. A
+            // 400 rather than a best-effort response, so the client component's
+            // broken-image handler takes over instead of this rendering as
+            // something it is not.
+            send(res, 415, {
+              error: 'bad_type',
+              message: 'That file cannot be displayed as a logo.',
+            });
+            return;
+          }
+          const bytes = this.assets.get(asset.digest);
+          if (!bytes) {
+            send(res, 410, {
+              error: 'gone',
+              message: 'The record is here but the file is not. It was removed from storage.',
+            });
+            return;
+          }
+
+          const csp = logoNeedsSandbox(asset.contentType)
+            ? "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+            : "default-src 'none'; style-src 'unsafe-inline'";
+          res.writeHead(200, {
+            'content-type': type,
+            'content-length': bytes.byteLength,
+            'content-security-policy': csp,
+            'x-content-type-options': 'nosniff',
+            'content-disposition': `inline; filename="${safeFilename(asset.filename)}"`,
+            'cache-control': 'private, max-age=3600, immutable',
+            vary: 'Cookie',
           });
           res.end(bytes);
         },
@@ -3703,13 +3957,23 @@ on ${escapeHtml(contract.signedAt.slice(0, 10))}.</p>`
         run: ({ res, params, scoped }) => {
           if (!scoped) return;
           const clientId = params['clientId'] ?? '';
-          if (!scoped.getClient(clientId)) {
+          const client = scoped.getClient(clientId);
+          if (!client) {
             send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
             return;
           }
           send(res, 200, {
+            // The mark rides along on every row because the client is the same
+            // one for all of them, so it is read once here rather than per
+            // row — and for the same reason as the studio-wide route below: an
+            // onboarding does not own a client's logo, and the pointer lives in
+            // one place. This is the client's *own* page, which is exactly where
+            // the mark is wanted, so leaving it off here meant the surface that
+            // most obviously wanted it was the one that did not have it.
+            ...(client.logoAssetId ? { logoAssetId: client.logoAssetId } : {}),
             onboardings: scoped.listOnboardings(clientId).map((onboarding) => ({
               ...onboarding,
+              ...(client.logoAssetId ? { logoAssetId: client.logoAssetId } : {}),
               progress: progressOf(this.store.getAnswers(onboarding.id)),
             })),
           });
@@ -3726,11 +3990,20 @@ on ${escapeHtml(contract.signedAt.slice(0, 10))}.</p>`
         method: 'GET', pattern: /^\/api\/onboardings$/,
         run: ({ res, scoped }) => {
           if (!scoped) return;
-          const onboardings = scoped.listOnboardings().map((onboarding) => ({
-            ...onboarding,
-            clientName: scoped.getClient(onboarding.clientId)?.name ?? onboarding.clientId,
-            progress: progressOf(this.store.getAnswers(onboarding.id)),
-          }));
+          const onboardings = scoped.listOnboardings().map((onboarding) => {
+            const client = scoped.getClient(onboarding.clientId);
+            return {
+              ...onboarding,
+              clientName: client?.name ?? onboarding.clientId,
+              // Resolved from the client record at read time rather than stored
+              // here. An onboarding does not own a client's mark, and copying the
+              // id onto this row would be a second copy to keep in step — which
+              // is how a table ends up on a logo the client list has moved on
+              // from. The client is already being read here for the name.
+              ...(client?.logoAssetId ? { logoAssetId: client.logoAssetId } : {}),
+              progress: progressOf(this.store.getAnswers(onboarding.id)),
+            };
+          });
           send(res, 200, { onboardings });
         },
       },
@@ -3971,6 +4244,60 @@ on ${escapeHtml(contract.signedAt.slice(0, 10))}.</p>`
             scoped.saveOnboarding({ ...onboarding, status: 'in-progress' });
           }
           send(res, 200, { progress: progressOf(scoped.getAnswers(onboarding.id)) });
+        },
+      },
+
+      /**
+       * Reset a client's discovery.
+       *
+       * The reason this exists at all: an onboarding is the one record in the
+       * studio that could not be thrown away. A client who was onboarded against
+       * a brief the studio has since rejected, or a discovery that went out to
+       * the wrong person, had no way back — only expiry, 30 days later. This is
+       * the reset the flow was missing, and it makes a client immediately
+       * eligible to be onboarded again.
+       *
+       * Allowed in every state including `accepted`. The project an accepted
+       * onboarding became is a record in its own right and is left alone; what
+       * goes is the onboarding, its answers, and its invite links.
+       *
+       * Two responses, and they mean different things to a caller:
+       *
+       *   404 — no such onboarding *for this session*. Deliberately the same
+       *         answer as a nonexistent one, so the route cannot be used to
+       *         probe which onboarding ids exist across clients.
+       *   403 — it exists and this session may read it but not write. That one
+       *         is thrown by the boundary (`scoped.deleteOnboarding`) rather than
+       *         checked here, because the policy is enforced where data is
+       *         touched rather than at each route that might forget.
+       *
+       * A repeat delete lands on 404, not on an error: the record is gone, which
+       * is the outcome the first call asked for. The client is not deleted, and
+       * no id is reused, so a double click is inert rather than harmful.
+       */
+      {
+        method: 'DELETE', pattern: /^\/api\/onboardings\/(?<id>[\w-]+)$/,
+        run: ({ res, params, scoped }) => {
+          if (!scoped) return;
+          const onboarding = scoped.getOnboarding(params['id'] ?? '');
+          if (!onboarding) {
+            send(res, 404, {
+              error: 'not_found', message: 'No onboarding by that id is visible to this session.',
+            });
+            return;
+          }
+          // The scoped call, not `this.store`: the record was *read* through
+          // the boundary, so the write goes through it too. A `viewer` can
+          // read this onboarding and would get 404 for someone else's, so the
+          // 403 that stops them has to come from `scoped.deleteOnboarding`'s own
+          // `mustWrite` — a route that checked the read and then reached for
+          // the raw store would hand every viewer a working delete button.
+          const removed = scoped.deleteOnboarding(onboarding.id);
+          send(res, 200, {
+            removed: onboarding.id,
+            clientId: onboarding.clientId,
+            ...removed,
+          });
         },
       },
 

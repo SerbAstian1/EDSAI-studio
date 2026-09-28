@@ -200,6 +200,12 @@ export interface Client {
   slackUrl?: string;
   /** This client's standing Google Meet room, opened in a new tab. */
   meetUrl?: string;
+  /**
+   * The client's own mark, as an id into the asset library. Resolved to a URL by
+   * `ClientIdentity` — never resolved by a screen directly, so every surface
+   * reads the current logo from the canonical client record.
+   */
+  logoAssetId?: string;
   status: 'prospect' | 'active' | 'dormant' | 'archived';
   createdAt: string;
   updatedAt: string;
@@ -233,6 +239,9 @@ export interface OnboardingSummary {
   clientId: string;
   /** Only present on the studio-wide read — the per-client one has no need to repeat it. */
   clientName?: string;
+  /** The client's current mark, resolved from their record on the studio-wide
+   * read only. Never stored on the onboarding — see the route. */
+  logoAssetId?: string;
   status: 'draft' | 'sent' | 'in-progress' | 'submitted' | 'accepted';
   createdAt: string;
   submittedAt?: string;
@@ -667,6 +676,39 @@ async function upload(
   return (body as { asset: Asset }).asset;
 }
 
+/**
+ * Upload or replace a client's logo.
+ *
+ * A different route from `uploadAsset` even though both send raw bytes, because
+ * the server has to do two things together: store the file *and* repoint the
+ * client at it. Uploading to the library and then PATCHing the client leaves a
+ * window where the client points at nothing, or where the old file is left
+ * behind with nothing referencing it.
+ *
+ * The same `content-type: application/octet-stream` problem applies, so this
+ * does not go through `call` either.
+ */
+async function uploadLogo(
+  clientId: string,
+  file: File,
+): Promise<{ asset: Asset; client: Client; removedPrevious?: string }> {
+  const res = await fetch(`/api/clients/${clientId}/logo`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'content-type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  const body: unknown = await res.json().catch(() => undefined);
+  if (!res.ok) {
+    const detail = body as { message?: string } | undefined;
+    throw new ApiError(res.status, detail?.message ?? `That logo was not accepted (${res.status}).`, []);
+  }
+  return body as { asset: Asset; client: Client };
+}
+
 export interface PortalKey {
   id: string;
   clientId: string;
@@ -1029,6 +1071,17 @@ export const api = {
       `/api/clients/${clientId}/onboarding`, { method: 'POST' }),
   acceptOnboarding: (onboardingId: string) =>
     call<{ project: Project }>(`/api/onboarding/${onboardingId}/accept`, { method: 'POST' }),
+  /**
+   * Throw an onboarding away so a fresh one can be started.
+   *
+   * Removes the record, its answers and its invite links, in one transaction on
+   * the server. The client, and everything else belonging to them, is not
+   * touched — including the project an accepted onboarding became. A second
+   * call is a 404, not an error, so a double click is inert.
+   */
+  deleteOnboarding: (onboardingId: string) =>
+    call<{ removed: string; clientId: string; removedAnswers: number; removedInvites: number }>(
+      `/api/onboardings/${onboardingId}`, { method: 'DELETE' }),
 
   /** The discovery form, answered from inside the studio — the invite
    * token's own endpoints, reached through the session instead. */
@@ -1181,6 +1234,18 @@ export const api = {
   deleteAsset: (assetId: string) =>
     call<{ removed: string }>(`/api/assets/${assetId}`, { method: 'DELETE' }),
   downloadPath: (assetId: string) => `/api/assets/${assetId}/download`,
+
+  /**
+   * Where a client's mark is displayed from.
+   *
+   * Deliberately not `downloadPath`. A logo is rendered inline, in every client
+   * row, so it needs the route that serves it `image/svg+xml` with a sandbox
+   * policy rather than the one that answers "here is your file, as a download".
+   */
+  logoPath: (assetId: string) => `/api/assets/${assetId}/logo`,
+  uploadLogo,
+  removeLogo: (clientId: string) =>
+    call<{ removed?: string; client: Client }>(`/api/clients/${clientId}/logo`, { method: 'DELETE' }),
 
   rubric: () => call<RubricSummary>('/api/rubric'),
   runs: () => call<{ runs: Run[] }>('/api/runs').then((r) => r.runs),

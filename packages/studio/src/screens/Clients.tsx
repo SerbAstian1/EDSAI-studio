@@ -5,6 +5,7 @@ import { api, type ApiError, type Client } from '../api.js';
 import { requestConfirmation } from '../components/ConfirmDialog.js';
 import { ErrorPanel } from '../components/ErrorPanel.js';
 import OverflowMenu from '../components/OverflowMenu.js';
+import { ClientIdentity } from '../components/ClientIdentity.js';
 import { go } from '../components/actions.js';
 
 /**
@@ -127,7 +128,9 @@ export default function Clients(): ReactElement {
             {clients.map((client) => (
               <tr key={client.id}>
                 <td data-label="Client">
-                  <a href={`#/clients/${client.id}`}><strong>{client.name}</strong></a>
+                  <a href={`#/clients/${client.id}`}>
+                    <ClientIdentity size="sm" client={client} />
+                  </a>
                   <div className="muted mono" style={{ fontSize: 12 }}>/{client.slug}</div>
                   {refused?.id === client.id && (
                     <div className="err" style={{ fontSize: 13, marginTop: 4 }}>{refused.message}</div>

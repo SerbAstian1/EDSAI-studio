@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactElement } from 'react';
 import { ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import { api, type Client } from '../api.js';
+import { ClientIdentity, initialsOf } from '../components/ClientIdentity.js';
 import {
   BLOCKS, findSection, sectionsIn, type Block, type Section,
 } from './navigation.js';
@@ -55,14 +56,6 @@ function Item({ section, current, onNavigate }: {
   );
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const first = parts[0]?.[0] ?? '';
-  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : parts[0]?.[1] ?? '';
-  return (first + second).toUpperCase();
-}
-
 /**
  * Who is on the rail.
  *
@@ -103,7 +96,10 @@ function ClientBlock({ block, clients, currentClientId, onNavigate }: {
           aria-current={currentClientId === client.id ? 'page' : undefined}
           onClick={onNavigate}
         >
-          <span className="nav-avatar" aria-hidden="true">{initialsOf(client.name)}</span>
+          {/* The rail is where a client is recognised at a glance among a dozen
+              other people, so it gets the real mark when there is one and the
+              same initials fallback as everywhere else when there is not. */}
+          <ClientIdentity size="sm" showName={false} client={client} />
           <span className="nav-client-name">{client.name}</span>
         </a>
       ))}

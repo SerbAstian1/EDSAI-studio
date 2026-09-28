@@ -173,6 +173,76 @@ export function mustDownload(claimed: string): boolean {
   return safeContentType(claimed) === 'application/octet-stream';
 }
 
+/* ------------------------------------------------------------------ logos */
+
+/**
+ * A client's own mark gets its own rules, and they are not the file rules.
+ *
+ * A file is a file: the general answer above is to render the safe types and
+ * download everything else. A logo is different in two ways. It is *displayed
+ * constantly* — every client row, every header, the sidebar — so it is the one
+ * asset the product cannot degrade to a download prompt, and the SVG exclusion
+ * that protects a one-off attachment would break the most common logo format
+ * there is. And it is the one file a person uploads without being asked to
+ * think about types, which is the profile the SVG exclusion was written for.
+ *
+ * So logos are allowed to be SVG, and are served from a route that can make an
+ * SVG inert: `image/svg+xml` with `Content-Security-Policy: sandbox` and
+ * `X-Content-Type-Options: nosniff`. `sandbox` with no `allow-scripts` is the
+ * part that matters — an SVG navigated to directly in a tab still renders, and
+ * still cannot run script, post to its origin, or read the session cookie that
+ * shares it. The general download route above keeps its stricter answer; this is
+ * a second, narrower rendering path for the one asset class that needs one, not
+ * a loosening of the rule the rest of the system depends on.
+ */
+
+/** 2 MB. A logo is a few KB; anything near the general cap is not one. */
+export const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
+/**
+ * What may be a client logo.
+ *
+ * Raster formats are already inline-safe. SVG is added deliberately, and
+ * `image/svg+xml` is served as itself rather than coerced to
+ * `application/octet-stream` — see the note above for why that is safe here and
+ * only here.
+ */
+const LOGO_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/svg+xml',
+]);
+
+/** The base type of a claim, lower-cased, with any `; charset=` stripped. */
+function baseType(claimed: string): string {
+  return claimed.split(';')[0]?.trim().toLowerCase() ?? '';
+}
+
+/** Whether these bytes are allowed to become a client's logo. */
+export function isLogoContentType(claimed: string): boolean {
+  return LOGO_TYPES.has(baseType(claimed));
+}
+
+/**
+ * What a logo is served as when it is displayed.
+ *
+ * A claimed type outside the list returns `''`, which the route turns into a
+ * 400 rather than a broken image — the same reason an unknown type is
+ * downloadable rather than rendered above.
+ */
+export function logoContentType(claimed: string): string {
+  const type = baseType(claimed);
+  return LOGO_TYPES.has(type) ? type : '';
+}
+
+/**
+ * Whether serving this logo needs the sandbox.
+ *
+ * Only SVG, and only because it is the one type here that can carry script.
+ * A raster logo served with the headers below is inert by construction.
+ */
+export function logoNeedsSandbox(claimed: string): boolean {
+  return baseType(claimed) === 'image/svg+xml';
+}
+
 /**
  * Characters a filename may not carry into a header.
  *

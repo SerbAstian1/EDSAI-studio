@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS clients (
   notes TEXT,
   slack_url TEXT,
   meet_url TEXT,
+  logo_asset_id TEXT,
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -650,6 +651,11 @@ export class RunStore {
     if (!columns('clients').includes('meet_url')) {
       this.db.exec('ALTER TABLE clients ADD COLUMN meet_url TEXT');
     }
+    // A client's logo is an asset, not a blob: old rows read as `undefined`,
+    // which is what they meant — a client that had no logo uploaded.
+    if (!columns('clients').includes('logo_asset_id')) {
+      this.db.exec('ALTER TABLE clients ADD COLUMN logo_asset_id TEXT');
+    }
     if (!columns('projects').includes('figma_url')) {
       this.db.exec('ALTER TABLE projects ADD COLUMN figma_url TEXT');
     }
@@ -750,17 +756,18 @@ export class RunStore {
     Client.parse(client);
     this.db.prepare(`
       INSERT INTO clients (id, name, slug, website, industry, location, notes, slack_url,
-                           meet_url, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           meet_url, logo_asset_id, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name, slug = excluded.slug, website = excluded.website,
         industry = excluded.industry, location = excluded.location, notes = excluded.notes,
         slack_url = excluded.slack_url, meet_url = excluded.meet_url,
+        logo_asset_id = excluded.logo_asset_id,
         status = excluded.status, updated_at = excluded.updated_at
     `).run(
       client.id, client.name, client.slug, client.website ?? null, client.industry ?? null,
       client.location ?? null, client.notes ?? null, client.slackUrl ?? null,
-      client.meetUrl ?? null, client.status,
+      client.meetUrl ?? null, client.logoAssetId ?? null, client.status,
       client.createdAt, client.updatedAt,
     );
   }
@@ -1609,6 +1616,55 @@ export class RunStore {
     this.db.prepare('DELETE FROM onboarding_invites WHERE onboarding_id = ?').run(onboardingId);
   }
 
+  /**
+   * Remove an onboarding, and only what belongs to that one.
+   *
+   * Three tables, named explicitly, in one transaction. The explicitness is the
+   * point: this schema declares no foreign keys and enables no `PRAGMA
+   * foreign_keys`, so every relationship in it is a bare `*_id` column and a
+   * cascade would have to be spelled out anyway. Naming them is also what keeps
+   * the boundary honest — `onboardings.project_id` is a *pointer*, not
+   * ownership, and a project the studio created for itself and that happens to
+   * be referenced here survives its onboarding being deleted. Everything the
+   * onboarding actually owned, goes:
+   *
+   *   - `onboarding_invites`  the capability links, so a deleted onboarding's
+   *                           link stops opening a form rather than opening a
+   *                           blank one
+   *   - `onboarding_answers`  the answers, which are the onboarding's whole
+   *                           reason to exist
+   *   - `onboardings`         the record itself
+   *
+   * Nothing outside those three is touched. Positioning, the discovery brief
+   * and the axes settled are all *derived* from the answers on read and were
+   * never rows, so there is nothing to clean up for them — deleting the answers
+   * is the whole of it. The client, its projects, documents, assets, invoices
+   * and brand are keyed to `client_id`, not to this record, and are not in scope.
+   *
+   * `BEGIN IMMEDIATE` rather than a deferred transaction so the write lock is
+   * taken up front: two deletes racing, or a delete racing an answer arriving
+   * through a still-live invite, must not interleave into a half-deleted record.
+   * A throw rolls the whole thing back, leaving the onboarding exactly as it
+   * was rather than a record with no answers behind it.
+   */
+  deleteOnboarding(onboardingId: string): { answers: number; invites: number } {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const invites = Number(this.db.prepare(
+        'DELETE FROM onboarding_invites WHERE onboarding_id = ?',
+      ).run(onboardingId).changes ?? 0);
+      const answers = Number(this.db.prepare(
+        'DELETE FROM onboarding_answers WHERE onboarding_id = ?',
+      ).run(onboardingId).changes ?? 0);
+      this.db.prepare('DELETE FROM onboardings WHERE id = ?').run(onboardingId);
+      this.db.exec('COMMIT');
+      return { answers, invites };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /* ------------------------------------------------------------- comparators */
 
   /**
@@ -2142,6 +2198,7 @@ function hydrateClient(row: Record<string, unknown>): ClientType {
     ...(row['notes'] ? { notes: row['notes'] } : {}),
     ...(row['slack_url'] ? { slackUrl: row['slack_url'] } : {}),
     ...(row['meet_url'] ? { meetUrl: row['meet_url'] } : {}),
+    ...(row['logo_asset_id'] ? { logoAssetId: row['logo_asset_id'] } : {}),
     status: row['status'], createdAt: row['created_at'], updatedAt: row['updated_at'],
   });
 }
