@@ -22,7 +22,7 @@ export default function TimelineSection({ client }: { client: Client }): ReactEl
     <section className="stack">
       <div>
         <p className="label mono">03</p>
-        <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Timeline</h1>
+        <h1 className="display portal-page-title">Timeline</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           The project's milestones, laid out end to end.
         </p>

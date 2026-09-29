@@ -180,7 +180,7 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
       <section className="stack">
         <div>
           <p className="label mono">{module?.name ?? editing.toolId}</p>
-          <h1 className="display" style={{ fontSize: 32, margin: 0 }}>{editing.project?.name ?? 'New design'}</h1>
+          <h1 className="display portal-page-title">{editing.project?.name ?? 'New design'}</h1>
         </div>
         {module && (
           <ToolHost
@@ -205,7 +205,7 @@ export default function BrandHubSection({ client, canWrite }: { client: Client; 
         {logo && <img className="hub-logo" src={api.downloadPath(logo.id)} alt="" />}
         <div>
           <p className="label mono">Your brand</p>
-          <h1 className="display" style={{ fontSize: 32, margin: 0 }}>{client.name}</h1>
+          <h1 className="display portal-page-title">{client.name}</h1>
           <p className="muted" style={{ maxWidth: '56ch' }}>
             A digital space for everything to do with your brand — the system, the files, and the tools to keep using them.
           </p>

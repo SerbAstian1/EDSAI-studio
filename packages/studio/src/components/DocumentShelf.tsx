@@ -4,34 +4,20 @@ import {
   BookOpen, Compass, ExternalLink, FileSignature, FileText, Link2, Presentation,
   Receipt, Sparkles, Trash2, X, type LucideIcon,
 } from 'lucide-react';
-import { api, type ClientDocument } from '../api.js';
+import { api, type ClientDocument, type Contract, type Invoice } from '../api.js';
+import { isFigmaUrl } from '../figmaLinks.js';
+import { clientHref } from '../shell/clientNavigation.js';
 import { requestConfirmation } from './ConfirmDialog.js';
 import { ErrorPanel } from './ErrorPanel.js';
-import FigmaEmbed, { isFigmaUrl } from './FigmaEmbed.js';
 import OverflowMenu from './OverflowMenu.js';
+import PresentationViewer from './PresentationViewer.js';
 
 /**
- * The shelf: eight documents every engagement has, as eight large buttons.
+ * The fixed engagement shelf.
  *
- * Three on the commercial side — proposal, contract, invoice — and five on
- * the brand side, from the strategy through the two speed-run presentations
- * to the final presentation and the guidelines. The same shelf in the same
- * order for every client, so "the contract" is always the second tile.
- *
- * Pressing a tile expands it *in place*, accordion-style, rather than sending
- * anyone to Figma and rather than moving the answer to the bottom of the shelf
- * where a grid puts it far from the question. The panel spans the width of the
- * row it was asked from, so it reads as belonging to the tile that is open and
- * not to whichever tile happens to sit under it. One document is open at a
- * time; pressing its tile again, or the ×, closes it. A tile with nothing
- * linked opens the link form in the same place, so pressing a tile always
- * answers the tile you pressed.
- *
- * A linked tile is filled and a tile with nothing behind it is a dashed
- * outline, so the state of the engagement is legible before anything is
- * pressed. The studio sees every tile and can link, relink or clear one. A
- * client sees the same shelf with the empty tiles greyed out and unpressable —
- * the shape of what is coming, not a list that grows without warning.
+ * Contract and invoice are first-class EDSAI records, not pasted links. The
+ * remaining Figma-backed slots are saved with a frame manifest and always open
+ * in the bounded presentation viewer: one frame at a time, with Previous/Next.
  */
 
 const ICONS: Record<string, LucideIcon> = {
@@ -72,25 +58,26 @@ function LinkForm({ clientId, doc, onDone }: {
     },
   });
   return (
-    <form className="shelf-form stack" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+    <form className="shelf-form stack" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
       <label className="field">
         <span className="label">Figma link for {doc.label}</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} autoFocus
+        <input value={url} onChange={(event) => setUrl(event.target.value)} autoFocus
                placeholder="https://www.figma.com/design/…" aria-invalid={url.trim() !== '' && !ok} />
         <span className={url.trim() && !ok ? 'err' : 'muted'} style={{ fontSize: 12 }}>
           {url.trim() && !ok
             ? 'Only figma.com links can be previewed.'
-            : 'Previews here and in the client’s portal. Nobody is sent to Figma.'}
+            : 'EDSAI reads the frames now, then shows one frame at a time here and in the portal.'}
         </span>
       </label>
       <label className="field">
         <span className="label">Note (optional)</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="v2, after the March review" />
+        <input value={note} onChange={(event) => setNote(event.target.value)}
+               placeholder="v2, after the March review" />
       </label>
       {save.error && <p className="err">{(save.error as Error).message}</p>}
       <div className="row">
         <button type="submit" className="primary" disabled={!ok || save.isPending}>
-          {save.isPending ? 'Saving…' : doc.figmaUrl ? 'Update link' : 'Link document'}
+          {save.isPending ? 'Reading frames…' : doc.figmaUrl ? 'Update document' : 'Link document'}
         </button>
         <button type="button" onClick={onDone}>Cancel</button>
       </div>
@@ -104,8 +91,14 @@ export default function DocumentShelf({ clientId, editable }: {
   editable: boolean;
 }): ReactElement {
   const queryClient = useQueryClient();
-  const { data, isPending, error, refetch } = useQuery({
+  const documents = useQuery({
     queryKey: ['documents', clientId], queryFn: () => api.documents(clientId),
+  });
+  const contracts = useQuery({
+    queryKey: ['contracts', clientId], queryFn: () => api.contracts(clientId),
+  });
+  const invoices = useQuery({
+    queryKey: ['invoices', clientId], queryFn: () => api.invoices(clientId),
   });
   const [open, setOpen] = useState<string | undefined>(undefined);
   const [linking, setLinking] = useState<string | undefined>(undefined);
@@ -118,65 +111,117 @@ export default function DocumentShelf({ clientId, editable }: {
     },
   });
 
-  if (isPending) return <p className="muted">Loading documents…</p>;
-  if (error) {
-    return <ErrorPanel title="Could not load documents" error={error} onRetry={() => { void refetch(); }} />;
+  if (documents.isPending || contracts.isPending || invoices.isPending) {
+    return <p className="muted">Loading documents…</p>;
+  }
+  const queryError = documents.error ?? contracts.error ?? invoices.error;
+  if (queryError || !documents.data || !contracts.data || !invoices.data) {
+    return <ErrorPanel title="Could not load documents"
+      error={queryError ?? new Error('No document data was returned.')}
+      onRetry={() => { void Promise.all([documents.refetch(), contracts.refetch(), invoices.refetch()]); }} />;
   }
 
-  const held = data.filter((d) => d.figmaUrl).length;
+  const isNative = (slot: string): boolean => slot === 'contract' || slot === 'invoice';
+  const nativeRecords = (slot: string): (Contract | Invoice)[] => {
+    if (slot === 'contract') return contracts.data;
+    if (slot === 'invoice') return invoices.data.invoices;
+    return [];
+  };
+  const filled = (doc: ClientDocument): boolean => isNative(doc.slot)
+    ? nativeRecords(doc.slot).length > 0
+    : Boolean(doc.figmaUrl);
+  const held = documents.data.filter(filled).length;
 
   const press = (doc: ClientDocument): void => {
+    if (isNative(doc.slot)) {
+      if (nativeRecords(doc.slot).length === 0) {
+        if (editable) location.href = clientHref(clientId, 'contracts');
+        return;
+      }
+      setLinking(undefined);
+      setOpen((value) => (value === doc.slot ? undefined : doc.slot));
+      return;
+    }
     if (!doc.figmaUrl) {
       if (editable) { setLinking(doc.slot); setOpen(undefined); }
       return;
     }
     setLinking(undefined);
-    setOpen((o) => (o === doc.slot ? undefined : doc.slot));
+    setOpen((value) => (value === doc.slot ? undefined : doc.slot));
   };
 
   return (
     <section className="stack shelf">
       <div className="row">
         <h3 style={{ margin: 0 }}>Documents</h3>
-        <span className="muted mono">{held} of {data.length}</span>
+        <span className="muted mono">{held} of {documents.data.length}</span>
       </div>
 
       {GROUPS.map((group) => (
         <div key={group.id} className="shelf-group">
           <span className="label">{group.label}</span>
           <div className="shelf-tiles">
-            {data.filter((d) => d.group === group.id).map((doc) => {
+            {documents.data.filter((document) => document.group === group.id).map((doc) => {
               const Icon = ICONS[doc.slot] ?? FileText;
               const url = doc.figmaUrl;
-              const linked = url !== undefined;
+              const native = isNative(doc.slot);
+              const records = nativeRecords(doc.slot);
+              const linked = filled(doc);
               const isOpen = open === doc.slot;
               const isLinking = linking === doc.slot;
               const panelId = `shelf-panel-${clientId}-${doc.slot}`;
               return (
                 <Fragment key={doc.slot}>
-                  <button
-                    type="button"
+                  <button type="button"
                     className={`shelf-tile${linked ? ' linked' : ' empty'}${isOpen || isLinking ? ' open' : ''}`}
                     aria-expanded={linked ? isOpen : isLinking}
                     aria-controls={isOpen || isLinking ? panelId : undefined}
                     disabled={!linked && !editable}
-                    onClick={() => press(doc)}
-                  >
+                    onClick={() => press(doc)}>
                     <Icon className="shelf-icon" size={22} strokeWidth={1.5} aria-hidden="true" />
                     <span className="shelf-label">{doc.label}</span>
                     <span className="shelf-meta">
-                      {linked
-                        ? `Figma · ${when(doc.updatedAt)}${doc.note ? ` · ${doc.note}` : ''}`
-                        : editable ? 'Not linked — press to add' : 'Not ready yet'}
+                      {native
+                        ? linked
+                          ? `${records.length} ${doc.slot}${records.length === 1 ? '' : 's'} in EDSAI`
+                          : editable ? `No ${doc.slot}s yet — press to create` : 'Not ready yet'
+                        : linked
+                          ? `${doc.pageCount ?? 0} frame${doc.pageCount === 1 ? '' : 's'} · ${when(doc.updatedAt)}${doc.note ? ` · ${doc.note}` : ''}`
+                          : editable ? 'Not linked — press to add' : 'Not ready yet'}
                     </span>
                   </button>
 
-                  {/* The panel is a sibling of the tile, not a child: a grid
-                      child cannot sit under its own tile without becoming the
-                      width of the row. Spanning the row puts it directly below
-                      the tile that asked for it, with the other tiles of that
-                      row still above. */}
-                  {isOpen && url && (
+                  {isOpen && native && (
+                    <div className="shelf-viewer stack" id={panelId}>
+                      <div className="row">
+                        <strong>{doc.label}</strong>
+                        <span className="muted">Created and managed in EDSAI</span>
+                        <button type="button" className="overflow-button row" style={{ marginLeft: 'auto' }}
+                                aria-label={`Close ${doc.label}`} onClick={() => setOpen(undefined)}>
+                          <X size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="stack" style={{ gap: 8 }}>
+                        {records.map((record) => {
+                          const contract = doc.slot === 'contract' ? record as Contract : undefined;
+                          const invoice = doc.slot === 'invoice' ? record as Invoice : undefined;
+                          const href = contract ? api.contractDocumentUrl(contract.id) : api.invoiceDocumentUrl(record.id);
+                          return (
+                            <a key={record.id} className="card row" href={href} target="_blank" rel="noreferrer">
+                              <FileText size={16} aria-hidden="true" />
+                              <span><strong>{contract?.title ?? invoice?.description}</strong><br />
+                                <span className="muted">{contract?.number ?? invoice?.number} · {record.status}</span>
+                              </span>
+                              <ExternalLink size={15} aria-hidden="true" style={{ marginLeft: 'auto' }} />
+                            </a>
+                          );
+                        })}
+                      </div>
+                      {editable && <a className="link" href={clientHref(clientId, 'contracts')}>Manage contracts &amp; invoices</a>}
+                    </div>
+                  )}
+
+                  {isOpen && !native && url && (
                     <div className="shelf-viewer" id={panelId}>
                       <div className="row">
                         <strong>{doc.label}</strong>
@@ -192,7 +237,7 @@ export default function DocumentShelf({ clientId, editable }: {
                                 onSelect: () => {
                                   void requestConfirmation({
                                     title: `Remove ${doc.label}?`,
-                                    message: 'This clears the linked document from the shelf. You can add it again later.',
+                                    message: 'This clears the linked document and its saved frame list from the shelf.',
                                     confirmLabel: 'Remove link',
                                   }).then((confirmed) => { if (confirmed) clear.mutate(doc.slot); });
                                 } },
@@ -204,11 +249,21 @@ export default function DocumentShelf({ clientId, editable }: {
                           </button>
                         </span>
                       </div>
-                      <FigmaEmbed url={url} title={doc.label} />
+                      {(doc.pages?.length ?? 0) > 0 ? (
+                        <PresentationViewer sourceUrl={url} pages={doc.pages ?? []}
+                                            title={doc.label} fileHref={url} />
+                      ) : (
+                        <div className="empty-state compact stack">
+                          <strong>This legacy link has no frame list.</strong>
+                          <span className="muted">Relink it once to discover its Figma frames and use Previous/Next navigation.</span>
+                          {editable && <button type="button"
+                            onClick={() => { setLinking(doc.slot); setOpen(undefined); }}>Relink document</button>}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {isLinking && editable && (
+                  {isLinking && editable && !native && (
                     <div id={panelId}>
                       <LinkForm clientId={clientId} doc={doc} onDone={() => setLinking(undefined)} />
                     </div>

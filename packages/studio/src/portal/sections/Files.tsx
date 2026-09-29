@@ -37,7 +37,7 @@ export default function FilesSection({ client, canWrite }: { client: Client; can
       <div className="row" style={{ alignItems: 'flex-start' }}>
         <div>
           <p className="label mono">06</p>
-          <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Files &amp; Assets</h1>
+          <h1 className="display portal-page-title">Files &amp; Assets</h1>
           <p className="muted" style={{ maxWidth: '56ch' }}>
             Access and download every project file in one place.
           </p>

@@ -12,6 +12,7 @@ import { isFigmaUrl, type Deliverable } from '../src/deliverables.js';
 import type { BrandHub, BrandProject } from '../src/brand-hub.js';
 import type { Message } from '../src/messages.js';
 import type { Feedback } from '../src/feedback.js';
+import { shelfDocumentId } from '../src/documents.js';
 
 /**
  * The client-portal entities: deliverables, milestones, invoices, messages
@@ -82,8 +83,13 @@ describe('store round-trips', () => {
     expect(docs[0]?.figmaUrl).toContain('c2');
     expect(docs[0]?.note).toBe('v2');
     expect(store.listDocuments('morrow')).toEqual([]);
+    const manifestId = shelfDocumentId('acme', 'contract');
+    store.saveDocumentPages(manifestId, [{
+      documentId: manifestId, order: 1, name: 'Terms', nodeId: '1-1', included: true,
+    }]);
     store.deleteDocument('acme', 'contract');
     expect(store.listDocuments('acme')).toEqual([]);
+    expect(store.listDocumentPages(manifestId)).toEqual([]);
   });
 
   it('refuses a document in a slot that does not exist', () => {

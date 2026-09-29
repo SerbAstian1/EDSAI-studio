@@ -27,7 +27,7 @@ export default function DocumentsSection({ client }: { client: Client }): ReactE
     <section className="stack">
       <div>
         <p className="label mono">01</p>
-        <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Documents</h1>
+        <h1 className="display portal-page-title">Documents</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           Your proposal, contract and invoice, and the brand work as it lands. Press one to read it here.
         </p>

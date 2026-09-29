@@ -102,9 +102,6 @@ export default function Clients(): ReactElement {
               <button className="primary" type="submit" disabled={!name.trim() || create.isPending}>
                 {create.isPending ? 'Creating…' : 'Create client'}
               </button>
-              <span className="muted">
-                The portal address is derived from the name.
-              </span>
             </div>
           </div>
         </form>
@@ -131,7 +128,6 @@ export default function Clients(): ReactElement {
                   <a href={`#/clients/${client.id}`}>
                     <ClientIdentity size="sm" client={client} />
                   </a>
-                  <div className="muted mono" style={{ fontSize: 12 }}>/{client.slug}</div>
                   {refused?.id === client.id && (
                     <div className="err" style={{ fontSize: 13, marginTop: 4 }}>{refused.message}</div>
                   )}

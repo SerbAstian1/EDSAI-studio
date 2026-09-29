@@ -225,6 +225,7 @@
 
 html, body, #root { min-width: 0; max-width: 100%; }
 html { overflow-x: clip; }
+body { overflow-x: hidden; }
 img, picture, video, canvas, svg, iframe { max-width: 100%; }
 button, input, textarea, select { max-width: 100%; }
 .mono, .markdown, dd { overflow-wrap: anywhere; }
@@ -509,11 +510,10 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .rail-toggle[aria-pressed="false"] { color: var(--text-primary); }
 .rail-focus[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 
-.sidebar[data-collapsed="true"] { padding-inline: calc(var(--step) * 1.5); }
+.sidebar[data-collapsed="true"] { padding-inline: calc(var(--step) * 1.5); overflow-x: hidden; }
 .sidebar[data-collapsed="true"] .sidebar-head { align-items: center; gap: var(--step); }
 .sidebar[data-collapsed="true"] .wordmark,
 .sidebar[data-collapsed="true"] .mobile-nav-toggle,
-.sidebar[data-collapsed="true"] .search,
 .sidebar[data-collapsed="true"] .nav-group > .label,
 .sidebar[data-collapsed="true"] .nav-more-summary,
 .sidebar[data-collapsed="true"] .nav-client-name,
@@ -539,7 +539,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .client-sidebar[data-collapsed="true"] .client-sidebar-head { justify-items: center; }
 .client-sidebar[data-collapsed="true"] .client-sidebar-toggle,
 .client-sidebar[data-collapsed="true"] .client-sidebar-names,
-.client-sidebar[data-collapsed="true"] .client-sidebar-status .pill { display: none; }
+.client-sidebar[data-collapsed="true"] .client-sidebar-status { display: none; }
 .client-sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding-inline: 0; font-size: 0; }
 .client-sidebar[data-collapsed="true"] .nav-item .glyph { width: 16px; height: 16px; }
 
@@ -760,6 +760,12 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
     display: block;
   }
   .sidebar-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+  /* A remembered desktop collapse must not remove the only control that opens
+     mobile navigation. At this width collapse is intentionally a visual no-op. */
+  .sidebar[data-collapsed="true"] .sidebar-head {
+    flex-direction: row; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .sidebar[data-collapsed="true"] .mobile-nav-toggle { display: inline-flex; }
   .mobile-nav-toggle {
     display: inline-flex;
     align-items: center;
@@ -803,12 +809,12 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
   }
   table.stacky tbody tr:hover { background: none; }
   table.stacky td {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(72px, 0.34fr) minmax(0, 1fr);
     gap: calc(var(--step) * 3);
-    justify-content: space-between;
-    align-items: baseline;
+    align-items: start;
     border-bottom: 0;
-    padding: 4px 0;
+    padding: 5px 0;
   }
   table.stacky td::before {
     content: attr(data-label);
@@ -819,7 +825,10 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
     flex: none;
   }
   /* A cell with no label is the actions cell: it gets the full width. */
-  table.stacky td:not([data-label]) { justify-content: flex-start; padding-top: calc(var(--step) * 2); }
+  table.stacky td[data-label] > * { justify-self: end; text-align: right; }
+  table.stacky td:not([data-label]) {
+    display: flex; justify-content: flex-start; padding-top: calc(var(--step) * 2);
+  }
   table.stacky td:not([data-label])::before { content: none; }
 }
 
@@ -2244,6 +2253,11 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   padding: calc(var(--step) * 8);
   text-align: center;
 }
+.portal-page-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  letter-spacing: -0.025em;
+}
 
 .portal {
   display: grid;
@@ -2720,7 +2734,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .client-sidebar[data-collapsed="true"] { padding: calc(var(--step) * 2) var(--space-page) calc(var(--step) * 2); }
   .client-sidebar[data-collapsed="true"] .client-sidebar-toggle,
   .client-sidebar[data-collapsed="true"] .client-sidebar-names,
-  .client-sidebar[data-collapsed="true"] .client-sidebar-status .pill { display: revert; }
+  .client-sidebar[data-collapsed="true"] .client-sidebar-status { display: revert; }
   .client-sidebar[data-collapsed="true"] .nav-item { justify-content: flex-start; padding-inline: calc(var(--step) * 2); font-size: 14px; }
   /* And the control that says so is gone, in *both* states. At this width the
      layout has already stopped being columns, so pressing the collapse button
@@ -2826,6 +2840,11 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
     padding: calc(var(--step) * 3) calc(var(--step) * 4);
   }
 
+  /* The pipeline strip duplicates destinations already available in the
+     compact navigation, so smaller screens reclaim that permanent row. */
+  .status-bar { display: none; }
+  .content { padding-bottom: var(--space-page); }
+
   .topbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2927,8 +2946,15 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
     padding: 0 calc(var(--step) * 2.5);
   }
   .header-search .kbd { display: none; }
-  .header-search-text { display: block; font-size: 13px; }
-  .header-identity { margin-left: 0; }
+  .header-search-text { display: none; }
+  .app-header .header-search {
+    flex: 0 0 var(--control);
+    width: var(--control);
+    padding: 0;
+    justify-content: center;
+  }
+  .app-header .header-icon-button { width: var(--control); }
+  .app-header .header-identity { display: none; }
 
   .tabs {
     width: 100%;
@@ -2946,6 +2972,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .gate-screen, .portal-entry { padding: calc(var(--step) * 4); }
   .gate-card, .portal-entry-card { padding: calc(var(--step) * 5); }
   .editorial { font-size: clamp(22px, 7vw, var(--text-xl)); }
+  .portal-page-title { font-size: var(--text-xl); }
 
   .row > input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   .row > textarea,
@@ -3039,6 +3066,22 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .card { padding: calc(var(--step) * 3); }
   .run-controls { align-items: stretch; }
   .run-controls button { flex-basis: 100%; }
+}
+
+/* Component-specific rules above intentionally make compact icon buttons on a
+   mouse. On touch those late declarations must not override the 44px target
+   promised by the base control system. */
+@media (pointer: coarse) {
+  button.rail-toggle,
+  button.header-icon-button,
+  button.bookmark,
+  button.overflow-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  button.tab { min-width: 44px; min-height: 44px; padding-inline: 8px; }
 }
 
 @media (max-height: 520px) and (max-width: 900px) {
@@ -4507,4 +4550,3 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   .cv-rail__item { width: 40px; height: 40px; min-height: 40px; }
   .cv-rail { padding: var(--step) 0; }
 }
-

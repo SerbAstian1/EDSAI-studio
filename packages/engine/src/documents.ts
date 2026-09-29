@@ -34,6 +34,11 @@ export function isDocumentSlot(value: string): value is DocumentSlot {
   return DOCUMENT_SLOTS.some((s) => s.id === value);
 }
 
+/** Stable owner id for the page manifest behind one fixed shelf slot. */
+export function shelfDocumentId(clientId: string, slot: DocumentSlot): string {
+  return `shelf:${clientId}:${slot}`;
+}
+
 export const ClientDocument = z.object({
   clientId: z.string().min(1),
   slot: DocumentSlotId,

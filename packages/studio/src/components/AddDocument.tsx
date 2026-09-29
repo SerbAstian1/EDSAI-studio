@@ -224,7 +224,8 @@ export default function AddDocument({ clientId, onDone }: {
         <label className="field" style={{ flex: '1 1 130px' }}>
           <span className="label">Kind</span>
           <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
-            {DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {DOCUMENT_TYPES.filter((type) => type !== 'contract' && type !== 'invoice')
+              .map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
         </label>
         <label className="field" style={{ flex: '1 1 130px' }}>

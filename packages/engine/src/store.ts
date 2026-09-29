@@ -13,6 +13,7 @@ import { Asset, type Asset as AssetType } from './assets.js';
 import { Deliverable, type Deliverable as DeliverableType } from './deliverables.js';
 import {
   ClientDocument, ClientDocumentEntry, DocumentPage,
+  isDocumentSlot, shelfDocumentId,
   type ClientDocument as ClientDocumentType,
   type ClientDocumentEntry as DocumentEntryType,
   type DocumentPage as DocumentPageType,
@@ -1142,7 +1143,16 @@ export class RunStore {
   }
 
   deleteDocument(clientId: string, slot: string): void {
-    this.db.prepare('DELETE FROM client_documents WHERE client_id = ? AND slot = ?').run(clientId, slot);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM document_pages WHERE document_id = ?')
+        .run(isDocumentSlot(slot) ? shelfDocumentId(clientId, slot) : `shelf:${clientId}:${slot}`);
+      this.db.prepare('DELETE FROM client_documents WHERE client_id = ? AND slot = ?').run(clientId, slot);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   /**

@@ -683,6 +683,9 @@ export interface ClientDocument {
   figmaUrl?: string;
   note?: string;
   updatedAt?: string;
+  /** Frames discovered when this fixed Figma document was linked. */
+  pages?: DocumentPage[];
+  pageCount?: number;
 }
 
 /* ------------------------------------------------------ the documents list */

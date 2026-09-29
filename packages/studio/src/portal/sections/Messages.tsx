@@ -40,7 +40,7 @@ export default function MessagesSection({ client, canWrite }: { client: Client; 
     <section className="stack">
       <div>
         <p className="label mono">08</p>
-        <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Messages</h1>
+        <h1 className="display portal-page-title">Messages</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           Keep the conversation going. Ask questions, share updates, and stay aligned throughout the project.
         </p>

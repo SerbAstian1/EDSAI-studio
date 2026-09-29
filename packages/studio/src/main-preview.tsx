@@ -26,10 +26,7 @@ function Banner(): ReactElement {
   return (
     <div className="preview-bar">
       <strong>Preview</strong>
-      <span>
-        Real screens, real data — captured from a running EDSAI on {when}. There is no
-        server behind this page, so nothing you change is saved.
-      </span>
+      <span>Captured {when}. Changes are not saved.</span>
     </div>
   );
 }

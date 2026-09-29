@@ -16,13 +16,6 @@ import { ClientIdentity } from '../components/ClientIdentity.js';
  * is the corpus's own track name, not a word chosen to look plausible.
  */
 
-function greeting(now: Date): string {
-  const hour = now.getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
 export interface StudioSummary {
   projects: number;
   inProgress: number;
@@ -58,12 +51,6 @@ function Stat({ label, value }: { label: string; value: number }): ReactElement 
 }
 
 type Filter = 'overview' | 'active';
-
-const EXTERNAL_TABS: { label: string; href: string }[] = [
-  { label: 'Clients', href: '#/clients' },
-  { label: 'Brands', href: '#/brands' },
-  { label: 'Pipeline', href: '#/runs' },
-];
 
 function ProjectCardView({ card, starred, onToggleStar, logoAssetId }: {
   card: ProjectCard;
@@ -107,15 +94,18 @@ function ProjectCardView({ card, starred, onToggleStar, logoAssetId }: {
 
       <span className="pill minor">{card.stage}</span>
 
-      <p className="project-card-status">{card.status}</p>
-
-      <div className="project-card-progress">
-        <div className="meter"><i style={{ width: `${percent}%` }} /></div>
-        <div className="row-labels">
-          <span>{card.stage}</span>
-          <span className="mono">{percent}%</span>
-        </div>
-      </div>
+      {card.runId && (
+        <>
+          <p className="project-card-status">{card.status}</p>
+          <div className="project-card-progress">
+            <div className="meter"><i style={{ width: `${percent}%` }} /></div>
+            <div className="row-labels">
+              <span>{card.stage}</span>
+              <span className="mono">{percent}%</span>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="project-card-actions">
         <a href={card.ctaHref}><button className="primary">{card.ctaLabel}</button></a>
@@ -182,13 +172,9 @@ export default function Home(): ReactElement {
 
   return (
     <section className="stack">
-      <div>
-        <p className="label">{greeting(new Date())}</p>
-        <p className="editorial">
-          {summary.brands > 0
-            ? 'Every number in this studio was measured, not asserted.'
-            : 'A brand is not a folder of files. It is a system that can be checked.'}
-        </p>
+      <div className="row">
+        <h1 className="page-title">Overview</h1>
+        <a href="#/new" style={{ marginLeft: 'auto' }}><button className="primary">New run</button></a>
       </div>
 
       <div className="stat-row">
@@ -199,8 +185,7 @@ export default function Home(): ReactElement {
       </div>
 
       <div className="row">
-        <h2>Studio Overview</h2>
-        <a href="#/new" style={{ marginLeft: 'auto' }}><button className="primary">New run</button></a>
+        <h2>Projects</h2>
       </div>
 
       <nav className="tabs" aria-label="Overview">
@@ -208,17 +193,14 @@ export default function Home(): ReactElement {
           type="button" className="tab" aria-current={filter === 'overview' ? 'page' : undefined}
           onClick={() => setFilter('overview')}
         >
-          Overview
+          All
         </button>
         <button
           type="button" className="tab" aria-current={filter === 'active' ? 'page' : undefined}
           onClick={() => setFilter('active')}
         >
-          Active Projects
+          Active
         </button>
-        {EXTERNAL_TABS.map((tab) => (
-          <a key={tab.href} className="tab" href={tab.href}>{tab.label}</a>
-        ))}
       </nav>
 
       {!visible ? (

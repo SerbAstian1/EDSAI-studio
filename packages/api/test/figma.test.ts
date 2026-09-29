@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { buildRubric } from '@edsai/rubric';
-import { RunStore } from '@edsai/engine';
+import { RunStore, shelfDocumentId } from '@edsai/engine';
 import { ApiServer, newId } from '../src/server.js';
 
 /**
@@ -355,6 +355,42 @@ describe('what a Figma refusal becomes', () => {
     figmaResponses = 403;
     const { body } = await refused(403);
     expect(JSON.stringify(body)).not.toMatch(/Disan Internal/);
+  });
+});
+
+describe('the fixed document shelf', () => {
+  const saveClient = () => {
+    const now = new Date().toISOString();
+    store.saveClient({
+      id: 'c-test', name: 'Disan', slug: 'c-test', status: 'active', createdAt: now, updatedAt: now,
+    });
+  };
+
+  it('discovers and returns frames when a Figma shelf document is linked', async () => {
+    saveClient();
+    const linked = await json('/api/clients/c-test/documents/brand-guidelines', {
+      method: 'PUT', body: JSON.stringify({ figmaUrl: LINK }),
+    });
+    expect(linked.status).toBe(200);
+    expect((linked.body['document'] as { pageCount: number }).pageCount).toBe(3);
+
+    const shelf = await json('/api/clients/c-test/documents');
+    const document = (shelf.body['documents'] as { slot: string; pages: unknown[] }[])
+      .find((item) => item.slot === 'brand-guidelines');
+    expect(document?.pages).toHaveLength(3);
+
+    await json('/api/clients/c-test/documents/brand-guidelines', { method: 'DELETE' });
+    expect(store.listDocumentPages(shelfDocumentId('c-test', 'brand-guidelines'))).toEqual([]);
+  });
+
+  it('directs contracts and invoices to their native EDSAI builders', async () => {
+    saveClient();
+    const response = await json('/api/clients/c-test/documents/contract', {
+      method: 'PUT', body: JSON.stringify({ figmaUrl: LINK }),
+    });
+    expect(response.status).toBe(400);
+    expect(response.body['message']).toMatch(/inside EDSAI/);
+    expect(files()).toEqual([]);
   });
 });
 

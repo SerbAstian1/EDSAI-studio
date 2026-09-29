@@ -19,7 +19,7 @@ export default function MilestonesSection({ client }: { client: Client }): React
     <section className="stack">
       <div>
         <p className="label mono">04</p>
-        <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Milestones</h1>
+        <h1 className="display portal-page-title">Milestones</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           Key milestones that mark major progress points in the project.
         </p>

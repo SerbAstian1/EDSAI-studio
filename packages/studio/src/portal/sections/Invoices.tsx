@@ -25,7 +25,7 @@ export default function InvoicesSection({ client }: { client: Client }): ReactEl
     <section className="stack">
       <div>
         <p className="label mono">07</p>
-        <h1 className="display" style={{ fontSize: 32, margin: 0 }}>Invoices</h1>
+        <h1 className="display portal-page-title">Invoices</h1>
         <p className="muted" style={{ maxWidth: '56ch' }}>
           View and download every project invoice and payment history in one place.
         </p>

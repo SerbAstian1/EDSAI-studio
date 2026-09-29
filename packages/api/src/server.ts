@@ -2224,26 +2224,45 @@ export class ApiServer {
           }
           const held = new Map(scoped.listDocuments(clientId).map((d) => [d.slot, d]));
           send(res, 200, {
-            documents: DOCUMENT_SLOTS.map((slot) => ({
-              slot: slot.id, label: slot.label, group: slot.group,
-              ...(held.get(slot.id) ?? {}),
-            })),
+            documents: DOCUMENT_SLOTS.map((slot) => {
+              // Contract and invoice are native EDSAI documents. An old Figma
+              // link can remain in storage during rollout, but it is no longer
+              // a source the shelf advertises or renders.
+              const linked = slot.id === 'contract' || slot.id === 'invoice'
+                ? undefined : held.get(slot.id);
+              const pages = linked ? orderedPages(scoped.listShelfDocumentPages(clientId, slot.id)) : [];
+              return {
+                slot: slot.id, label: slot.label, group: slot.group,
+                ...(linked ?? {}), pages, pageCount: pages.filter((page) => page.included).length,
+              };
+            }),
           });
         },
       },
 
       {
         method: 'PUT', pattern: /^\/api\/clients\/(?<clientId>[\w-]+)\/documents\/(?<slot>[\w-]+)$/,
-        run: ({ res, params, body, scoped }) => {
-          if (!scoped) return;
+        run: async ({ res, params, body, scoped, principal }) => {
+          if (!scoped || !principal) return;
           const clientId = params['clientId'] ?? '';
           const slot = params['slot'] ?? '';
           if (!scoped.getClient(clientId)) {
             send(res, 404, { error: 'not_found', message: 'No such client for this session.' });
             return;
           }
+          // Permission is established before reading Figma. A portal editor
+          // must not be able to aim the studio's credential at an arbitrary
+          // file merely because the eventual database write would be refused.
+          scoped.assertDocumentWrite(clientId);
           if (!isDocumentSlot(slot)) {
             send(res, 404, { error: 'not_found', message: 'No document slot by that name.' });
+            return;
+          }
+          if (slot === 'contract' || slot === 'invoice') {
+            send(res, 400, {
+              error: 'bad_request',
+              message: `${slot === 'contract' ? 'Contracts' : 'Invoices'} are created and managed inside EDSAI.`,
+            });
             return;
           }
           const input = body as { figmaUrl?: string; note?: string };
@@ -2252,12 +2271,23 @@ export class ApiServer {
             send(res, 400, { error: 'bad_request', message: 'Only figma.com links can be previewed in place.' });
             return;
           }
-          const document: ClientDocument = {
-            clientId, slot, figmaUrl, updatedAt: new Date().toISOString(),
-            ...(input.note?.trim() ? { note: input.note.trim() } : {}),
-          };
-          scoped.saveDocument(document);
-          send(res, 200, { document });
+          try {
+            // Resolve frames at link time so every later reader, including a
+            // portal user with no Figma grant, gets a bounded page manifest.
+            const file = await this.figma.readLink(principal.userId, figmaUrl, true);
+            const document: ClientDocument = {
+              clientId, slot, figmaUrl, updatedAt: new Date().toISOString(),
+              ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+            };
+            scoped.saveDocument(document);
+            scoped.saveShelfDocumentPages(clientId, slot, file.pages);
+            const pages = orderedPages(scoped.listShelfDocumentPages(clientId, slot));
+            send(res, 200, {
+              document: { ...document, pages, pageCount: pages.filter((page) => page.included).length },
+            });
+          } catch (error) {
+            this.refuseFigma(res, error);
+          }
         },
       },
 

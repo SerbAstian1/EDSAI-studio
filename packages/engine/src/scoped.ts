@@ -10,7 +10,10 @@ import type { Comparator } from './positioning.js';
 import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 import type { Deliverable } from './deliverables.js';
-import type { ClientDocument, ClientDocumentEntry, DocumentPage } from './documents.js';
+import {
+  isDocumentSlot, shelfDocumentId,
+  type ClientDocument, type ClientDocumentEntry, type DocumentPage,
+} from './documents.js';
 import { figmaSource, figmaUrlProblem } from './figma-source.js';
 import { mergeFrames, type FigmaFrame, type FrameChanges } from './figma-frames.js';
 import {
@@ -464,9 +467,28 @@ export class ScopedStore {
     this.store.saveDocument(document);
   }
 
+  /** Refuse before an API route spends a Figma call on a write it cannot make. */
+  assertDocumentWrite(clientId: string): void {
+    this.mustWrite('document', clientId);
+  }
+
   deleteDocument(clientId: string, slot: string): void {
     this.mustWrite('document', clientId);
     this.store.deleteDocument(clientId, slot);
+  }
+
+  /** Pages discovered for one of the fixed Figma-backed shelf slots. */
+  listShelfDocumentPages(clientId: string, slot: string): DocumentPage[] {
+    if (!this.mayRead('document', clientId) || !isDocumentSlot(slot)) return [];
+    return this.store.listDocumentPages(shelfDocumentId(clientId, slot));
+  }
+
+  saveShelfDocumentPages(clientId: string, slot: string, pages: readonly DocumentPage[]): void {
+    this.mustWrite('document', clientId);
+    if (!isDocumentSlot(slot)) {
+      throw new Forbidden('write', { kind: 'document', clientId }, 'no such document slot');
+    }
+    this.store.saveDocumentPages(shelfDocumentId(clientId, slot), pages);
   }
 
   /**
