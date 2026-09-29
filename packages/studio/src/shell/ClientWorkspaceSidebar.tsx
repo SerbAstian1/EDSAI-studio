@@ -7,6 +7,7 @@ import { requestConfirmation } from '../components/ConfirmDialog.js';
 import OverflowMenu from '../components/OverflowMenu.js';
 import { StudioOnly } from '../viewMode.js';
 import { CLIENT_SECTIONS, clientHref, type ClientSection } from './clientNavigation.js';
+import { RailToggle, useRails } from './rails.js';
 
 /**
  * The second sidebar: the current client's own workspace.
@@ -68,6 +69,7 @@ export function ClientWorkspaceSidebar({
   client, section, dependents, onChanged,
 }: ClientWorkspaceSidebarProps): ReactElement {
   const [open, setOpen] = useState(false);
+  const rails = useRails();
   const menuId = useId();
 
   const remove = useMutation({
@@ -99,7 +101,10 @@ export function ClientWorkspaceSidebar({
   const currentLabel = CLIENT_SECTIONS.find((item) => item.id === section)?.label ?? 'Menu';
 
   return (
-    <aside className="client-sidebar">
+    <aside
+      className={`client-sidebar${rails.focus ? ' rail-away' : ''}`}
+      data-collapsed={rails.client === 'closed' ? 'true' : undefined}
+    >
       <div className="client-sidebar-head">
         {/* A disclosure, not a link. It goes nowhere on its own, so it is a
             button with the state on it — `aria-expanded` and `aria-controls` are
@@ -117,6 +122,11 @@ export function ClientWorkspaceSidebar({
           <span>{currentLabel}</span>
           <ChevronDown className={open ? 'open' : undefined} size={15} aria-hidden="true" />
         </button>
+
+        {/* The same control the studio rail uses, in the same place in the head,
+            so putting a rail away is one thing a person has learned rather than
+            two. */}
+        <RailToggle which="client" title={`${client.name} sidebar`} />
 
         {/* The client's mark, their name, what they do, and where they are. The
             four things that were repeated above the tabs are the four things

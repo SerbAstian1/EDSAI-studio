@@ -17,6 +17,7 @@ import {
   type ClientDocumentEntry as DocumentEntryType,
   type DocumentPage as DocumentPageType,
 } from './documents.js';
+import type { FigmaGrant } from './figma-oauth.js';
 import {
   BrandAsset, BrandHub, BrandProject,
   type BrandAsset as BrandAssetType,
@@ -355,6 +356,8 @@ CREATE TABLE IF NOT EXISTS document_entries (
   source TEXT NOT NULL,
   asset_id TEXT,
   source_url TEXT,
+  figma_file_key TEXT,
+  figma_page_id TEXT,
   thumbnail_asset_id TEXT,
   view_mode TEXT NOT NULL DEFAULT 'document',
   status TEXT NOT NULL DEFAULT 'ready',
@@ -372,13 +375,56 @@ CREATE INDEX IF NOT EXISTS document_entries_by_client ON document_entries (clien
  * PRIMARY KEY (document_id, ord) rather than a rowid, so a manifest cannot
  * contain two pages claiming to be page four, and so a whole manifest is
  * replaced in one transaction instead of being diffed.
+ *
+ * The included flag and the width/height are what frame discovery brought back and
+ * the viewer needs on every open:
+ *
+ *   - "included" is a flag rather than a missing row, so excluding a frame
+ *     keeps its name, its position and its measurements. A designer who
+ *     unticks "Scratch" and ticks it again next quarter gets the frame back
+ *     where it was rather than re-discovering it.
+ *   - width/height are Figma's own numbers for the frame. They are what
+ *     makes "fit this page" arithmetic done before the iframe exists, so the
+ *     stage is right the first time instead of resizing when the frame lands.
+ *   - thumbnail_url is a cache reference: Figma's rendered-image URLs are
+ *     signed and short-lived, so losing this column's contents costs a preview
+ *     in the page overview and nothing else.
  */
 CREATE TABLE IF NOT EXISTS document_pages (
   document_id TEXT NOT NULL,
   ord INTEGER NOT NULL,
   name TEXT NOT NULL,
   node_id TEXT,
+  included INTEGER NOT NULL DEFAULT 1,
+  width REAL,
+  height REAL,
+  thumbnail_url TEXT,
   PRIMARY KEY (document_id, ord)
+);
+
+/*
+ * A studio user's Figma connection.
+ *
+ * The only place a Figma token is stored, and it is not reachable from the
+ * studio: no route returns this table, and the studio-side type is a boolean
+ * saying whether one exists (see figma-oauth.ts). Keyed by our own user id
+ * rather than Figma's, so removing a studio user removes their grant, and so
+ * the users table stays the only identity table in the system.
+ *
+ * The tokens are stored as they arrive rather than encrypted at rest, which is a
+ * deliberate, bounded decision rather than an oversight: the database is already
+ * the thing that must be protected — it holds every client's project records —
+ * and an encryption key beside it in the same process protects nothing. What
+ * matters, and is enforced, is that these columns never cross the API boundary
+ * to a browser.
+ */
+CREATE TABLE IF NOT EXISTS figma_connections (
+  user_id TEXT PRIMARY KEY,
+  figma_user_id TEXT NOT NULL DEFAULT '',
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 /*
@@ -692,8 +738,33 @@ export class RunStore {
       this.db.exec(`ALTER TABLE brand_hubs ADD COLUMN dna TEXT NOT NULL DEFAULT '{"systems":[]}'`);
     }
     if (!columns('brand_hubs').includes('config')) {
-      this.db.exec(`ALTER TABLE brand_hubs ADD COLUMN config TEXT NOT NULL DEFAULT '{"modules":{},"rules":{}}'`);
+      this.db.exec("ALTER TABLE brand_hubs ADD COLUMN config TEXT NOT NULL DEFAULT '{\"modules\":{},\"rules\":{}}'");
     }
+    // A document that was added before Figma could be read now carries the two
+    // facts frame discovery needs, and every page it has is included and
+    // unmeasured. Both defaults are exactly what those rows meant: a manifest
+    // written by a designer listing the pages they wanted is all-included, and a
+    // page with no size simply falls back to fitting without one. No row is
+    // rewritten and no document has to be re-added.
+    if (!columns('document_entries').includes('figma_file_key')) {
+      this.db.exec('ALTER TABLE document_entries ADD COLUMN figma_file_key TEXT');
+    }
+    if (!columns('document_entries').includes('figma_page_id')) {
+      this.db.exec('ALTER TABLE document_entries ADD COLUMN figma_page_id TEXT');
+    }
+    if (!columns('document_pages').includes('included')) {
+      this.db.exec('ALTER TABLE document_pages ADD COLUMN included INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!columns('document_pages').includes('width')) {
+      this.db.exec('ALTER TABLE document_pages ADD COLUMN width REAL');
+    }
+    if (!columns('document_pages').includes('height')) {
+      this.db.exec('ALTER TABLE document_pages ADD COLUMN height REAL');
+    }
+    if (!columns('document_pages').includes('thumbnail_url')) {
+      this.db.exec('ALTER TABLE document_pages ADD COLUMN thumbnail_url TEXT');
+    }
+
 
     this.attachOrphanedRuns();
   }
@@ -1085,17 +1156,21 @@ export class RunStore {
     const row = ClientDocumentEntry.parse(entry);
     this.db.prepare(`
       INSERT INTO document_entries (id, client_id, title, description, document_type, source,
-                                    asset_id, source_url, thumbnail_asset_id, view_mode, status,
+                                    asset_id, source_url, figma_file_key, figma_page_id,
+                                    thumbnail_asset_id, view_mode, status,
                                     page_count, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title, description = excluded.description,
         document_type = excluded.document_type, asset_id = excluded.asset_id,
-        source_url = excluded.source_url, thumbnail_asset_id = excluded.thumbnail_asset_id,
+        source_url = excluded.source_url,
+        figma_file_key = excluded.figma_file_key, figma_page_id = excluded.figma_page_id,
+        thumbnail_asset_id = excluded.thumbnail_asset_id,
         view_mode = excluded.view_mode, status = excluded.status,
         page_count = excluded.page_count, updated_at = excluded.updated_at
     `).run(row.id, row.clientId, row.title, row.description ?? null, row.documentType,
-      row.source, row.assetId ?? null, row.sourceUrl ?? null, row.thumbnailAssetId ?? null,
+      row.source, row.assetId ?? null, row.sourceUrl ?? null,
+      row.figmaFileKey ?? null, row.figmaPageId ?? null, row.thumbnailAssetId ?? null,
       row.viewMode, row.status, row.pageCount ?? null, row.createdBy,
       row.createdAt, row.updatedAt);
   }
@@ -1148,10 +1223,13 @@ export class RunStore {
     try {
       this.db.prepare('DELETE FROM document_pages WHERE document_id = ?').run(documentId);
       const insert = this.db.prepare(`
-        INSERT INTO document_pages (document_id, ord, name, node_id) VALUES (?, ?, ?, ?)
+        INSERT INTO document_pages (document_id, ord, name, node_id, included, width, height, thumbnail_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const page of rows) {
-        insert.run(documentId, page.order, page.name, page.nodeId ?? null);
+        insert.run(documentId, page.order, page.name, page.nodeId ?? null,
+          page.included ? 1 : 0, page.width ?? null, page.height ?? null,
+          page.thumbnailUrl ?? null);
       }
       this.db.exec('COMMIT');
     } catch (error) {
@@ -1164,6 +1242,55 @@ export class RunStore {
     return (this.db.prepare(
       'SELECT * FROM document_pages WHERE document_id = ? ORDER BY ord',
     ).all(documentId) as Record<string, unknown>[]).map(hydrateDocumentPage);
+  }
+
+  /* ------------------------------------------------------- figma connections */
+
+  /**
+   * A studio user's Figma grant, tokens included.
+   *
+   * **Server-side only, and named accordingly.** Nothing above this layer
+   * serialises what this returns: `ScopedStore` deliberately does not expose it,
+   * so the only caller is the API's own Figma routes, and the only thing that
+   * reaches a browser is `figmaStatus`'s boolean. A method named `getToken`
+   * would eventually get called from somewhere else; one named `getFigmaGrant`
+   * on a class whose whole purpose is persistence — and which every route already
+   * holds a reference to — is at least hard to call by accident.
+   */
+  getFigmaGrant(userId: string): FigmaGrant | undefined {
+    const row = this.db.prepare('SELECT * FROM figma_connections WHERE user_id = ?')
+      .get(userId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return {
+      userId: String(row['user_id']),
+      figmaUserId: String(row['figma_user_id'] ?? ''),
+      accessToken: String(row['access_token'] ?? ''),
+      ...(row['refresh_token'] ? { refreshToken: String(row['refresh_token']) } : {}),
+      expiresAt: String(row['expires_at'] ?? ''),
+      updatedAt: String(row['updated_at'] ?? ''),
+    };
+  }
+
+  /** Connect, or replace an existing grant. One row per studio user, always. */
+  saveFigmaGrant(grant: FigmaGrant): void {
+    this.db.prepare(`
+      INSERT INTO figma_connections (user_id, figma_user_id, access_token, refresh_token, expires_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        figma_user_id = excluded.figma_user_id, access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token, expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    `).run(grant.userId, grant.figmaUserId, grant.accessToken,
+      grant.refreshToken ?? null, grant.expiresAt, grant.updatedAt);
+  }
+
+  /**
+   * Disconnect. Also used when a refresh fails: a grant that can no longer be
+   * renewed is not a grant, and leaving it in place would have every later read
+   * fail with a 401 the designer cannot act on rather than a state they can.
+   */
+  deleteFigmaGrant(userId: string): void {
+    this.db.prepare('DELETE FROM figma_connections WHERE user_id = ?').run(userId);
   }
 
   /* -------------------------------------------------------------- milestones */
@@ -2353,6 +2480,8 @@ function hydrateDocumentEntry(row: Record<string, unknown>): DocumentEntryType {
     documentType: row['document_type'], source: row['source'],
     ...(row['asset_id'] ? { assetId: row['asset_id'] } : {}),
     ...(row['source_url'] ? { sourceUrl: row['source_url'] } : {}),
+    ...(row['figma_file_key'] ? { figmaFileKey: row['figma_file_key'] } : {}),
+    ...(row['figma_page_id'] ? { figmaPageId: row['figma_page_id'] } : {}),
     ...(row['thumbnail_asset_id'] ? { thumbnailAssetId: row['thumbnail_asset_id'] } : {}),
     viewMode: row['view_mode'], status: row['status'],
     // `page_count` is written from the manifest, so it is a count of rows that
@@ -2367,6 +2496,12 @@ function hydrateDocumentPage(row: Record<string, unknown>): DocumentPageType {
   return DocumentPage.parse({
     documentId: row['document_id'], order: row['ord'], name: row['name'],
     ...(row['node_id'] ? { nodeId: row['node_id'] } : {}),
+    // SQLite has no boolean, and a row written before this column existed reads
+    // as 1. Anything else — 0, and only 0 — is an excluded frame.
+    included: row['included'] === 0 ? false : true,
+    ...(typeof row['width'] === 'number' ? { width: row['width'] } : {}),
+    ...(typeof row['height'] === 'number' ? { height: row['height'] } : {}),
+    ...(row['thumbnail_url'] ? { thumbnailUrl: row['thumbnail_url'] } : {}),
   });
 }
 

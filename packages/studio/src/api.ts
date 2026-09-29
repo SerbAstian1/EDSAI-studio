@@ -139,6 +139,16 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly reasons: string[] = [],
+    /**
+     * The server's machine-readable error, when it sent one.
+     *
+     * **`message` is for people and this is for branches.** The two are kept
+     * apart deliberately: a Figma failure says "the file is private" and the UI
+     * must decide between offering a connect button and offering a retry, and
+     * deciding that by matching on an English sentence is how a copy edit in the
+     * API package becomes a broken screen.
+     */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -158,11 +168,12 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const body: unknown = text ? tryParse(text) : undefined;
 
   if (!res.ok) {
-    const detail = body as { message?: string; reasons?: string[] } | undefined;
+    const detail = body as { message?: string; reasons?: string[]; error?: string } | undefined;
     throw new ApiError(
       res.status,
       detail?.message ?? `Request failed with ${res.status}.`,
       detail?.reasons ?? [],
+      detail?.error,
     );
   }
   return body as T;
@@ -715,6 +726,17 @@ export interface DocumentEntry {
   assetId?: string;
   /** The Figma link exactly as it was pasted, for `figma`. */
   sourceUrl?: string;
+  /**
+   * The Figma file key, derived server-side from `sourceUrl`.
+   *
+   * Never sent by a caller and never editable: it is the address Figma's API is
+   * asked about, so it is stored beside the link it came from rather than being
+   * re-derived (or, worse, supplied) on every read. Absent on a document added
+   * before Figma could be read, which is why a refresh falls back to re-parsing.
+   */
+  figmaFileKey?: string;
+  /** The Figma canvas (page) the link named, when it named one. */
+  figmaPageId?: string;
   thumbnailAssetId?: string;
   viewMode: DocumentViewMode;
   status: DocumentStatus;
@@ -728,10 +750,10 @@ export interface DocumentEntry {
 /**
  * One page of a presentation, as a Figma frame.
  *
- * The ordered list is recorded by the designer rather than discovered: Figma's
- * public embed gives a document a viewer, not a page list, and EDSAI holds no
- * Figma token and wants none in the browser. `nodeId` is Figma's own deep-link
- * parameter, not a scrape of anything.
+ * The ordered list is *discovered* from the file rather than typed in: the server
+ * asks Figma which top-level frames there are and in what reading order, and
+ * this is what came back plus the two decisions a designer owns. `nodeId` is
+ * Figma's own deep-link parameter, not a scrape of anything.
  */
 export interface DocumentPage {
   documentId: string;
@@ -740,6 +762,25 @@ export interface DocumentPage {
   name: string;
   /** A Figma node id, `12-345`. Absent means "the file as a whole". */
   nodeId?: string;
+  /**
+   * Whether this frame is a page of *this* document.
+   *
+   * False is kept rather than dropped: an excluded frame is still named, still
+   * ordered, and comes back if it is wanted. It is also not one of the deck, so
+   * the viewer pages over included frames only.
+   */
+  included?: boolean;
+  /** The frame's size in Figma pixels, so "fit this page" is arithmetic. */
+  width?: number;
+  height?: number;
+  /**
+   * A rendered preview of the frame, from Figma's own image API.
+   *
+   * A signed, short-lived URL rather than an asset of ours, so it goes stale.
+   * Everything here treats it as a nicety: an expired preview costs a thumbnail
+   * in the page overview and nothing else.
+   */
+  thumbnailUrl?: string;
 }
 
 /** What a designer may set when adding a document. */
@@ -752,8 +793,108 @@ export interface DocumentEntryInput {
   sourceUrl?: string;
   viewMode?: DocumentViewMode;
   status?: DocumentStatus;
-  /** A manifest, for a presentation. The server renumbers it to 1..n. */
-  pages?: { name: string; nodeId?: string }[];
+  /**
+   * A manifest, for a presentation. The server renumbers it to 1..n and keeps
+   * everything else — inclusion, sizes, previews — exactly as sent, so a list
+   * that came from the server can be sent straight back after a reorder.
+   */
+  pages?: {
+    name: string;
+    nodeId?: string;
+    included?: boolean;
+    width?: number;
+    height?: number;
+    thumbnailUrl?: string;
+  }[];
+}
+
+/* ─────────────────────────────────────────────────────────────── figma */
+
+export interface FigmaFrame {
+  nodeId: string;
+  name: string;
+  canvasId: string;
+  canvasName: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  thumbnailUrl?: string;
+}
+
+/**
+ * What the server can say about a Figma connection.
+ *
+ * **A boolean and a flag, and the boolean is the whole of it.** No token, no
+ * expiry, no account id: the server holds those and this is the shape it will
+ * let a browser see. `perUser` is separate because it answers a different
+ * question — whether a *private* file the designer expects to open will be.
+ */
+export interface FigmaStatus {
+  connected: boolean;
+  perUser: boolean;
+  /** Whether this server has an OAuth app, so designers can connect at all. */
+  oauthConfigured: boolean;
+}
+
+/** A read of one Figma file: what is in it, in what order, and how big it is. */
+export interface FigmaReading {
+  fileKey: string;
+  fileName: string;
+  /** The Figma page the link pointed at, when it pointed at one. */
+  canvasId?: string;
+  frames: FigmaFrame[];
+  /** The same frames as a manifest, ready to be sent back as one. */
+  pages: DocumentPage[];
+}
+
+/**
+ * Why a Figma read failed, as the studio switches on it.
+ *
+ * **The server's own vocabulary, plus the two failures that are ours.** The
+ * engine's kinds come back verbatim as `ApiError.code` so this list cannot drift
+ * from what the API actually sends; `bad_request` is a link that never was one,
+ * and `unknown` is anything unforeseen, which is shown as a problem rather than
+ * hidden as an empty list.
+ */
+export type FigmaFailure =
+  | 'not_connected' | 'forbidden' | 'not_found' | 'rate_limited'
+  | 'figma_error' | 'network' | 'no_frames'
+  | 'bad_request' | 'unknown';
+
+/** The failure a failed call was, for branching rather than for display. */
+export function figmaFailureOf(error: unknown): FigmaFailure {
+  if (error instanceof ApiError) {
+    if (error.status === 400) return 'bad_request';
+    return figmaFailureFrom(error.code);
+  }
+  return 'unknown';
+}
+
+/**
+ * A Figma failure from the server's own word for it.
+ *
+ * **The word is checked against a list rather than trusted.** The kind arrives in
+ * a query string after a round trip through a browser, and a reason this function
+ * does not recognise must become `unknown` — a screen that renders a stranger's
+ * string as a heading is a screen somebody else writes. So the allowed values are
+ * enumerated here, once, and everything else is "something went wrong".
+ */
+export function figmaFailureFrom(code: string | null | undefined): FigmaFailure {
+  switch (code) {
+    case 'not_connected': case 'forbidden': case 'not_found': case 'rate_limited':
+    case 'figma_error': case 'network': case 'no_frames':
+      return code;
+    default:
+      return 'unknown';
+  }
+}
+
+/** What changed when a document's frames were re-read from Figma. */
+export interface FrameChanges {
+  added: string[];
+  removed: string[];
+  renamed: { nodeId: string; from: string; to: string }[];
 }
 
 export interface DiscoveryFacts {
@@ -1380,10 +1521,54 @@ export const api = {
    * designer reordering by dragging expresses an intent rather than sending a
    * malformed list.
    */
-  saveDocumentPages: (id: string, pages: { name: string; nodeId?: string }[]) =>
+  saveDocumentPages: (id: string, pages: DocumentEntryInput['pages']) =>
     call<{ pages: DocumentPage[]; pageCount: number }>(`/api/document-entries/${id}/pages`, {
       method: 'PUT', body: JSON.stringify({ pages }),
     }),
+
+  /* ------------------------------------------------------------------ figma */
+
+  /**
+   * Whether Figma can be read at all.
+   *
+   * Not decoration: without a connection the frames panel cannot discover
+   * anything, and a designer looking at an empty "FIGMA FRAMES" list would
+   * reasonably conclude their file is broken rather than that EDSAI has never
+   * been connected.
+   */
+  figmaStatus: () => call<FigmaStatus>('/api/figma/status'),
+  /**
+   * Start connecting. Returns Figma's own authorization URL rather than
+   * redirecting, so the studio is the thing that navigates and a refusal can be
+   * reported in the app the designer started in.
+   */
+  figmaConnect: () =>
+    call<{ url: string }>('/api/figma/connect', { method: 'POST' }).then((r) => r.url),
+  disconnectFigma: () =>
+    call<{ connected: boolean }>('/api/figma/connection', { method: 'DELETE' }),
+  /**
+   * Read the frames behind a pasted Figma link.
+   *
+   * **The URL goes to the server and the file key never comes back to be
+   * substituted.** The studio has no token and makes no Figma request of its
+   * own — this is a manifest it asked for, and the whole point of the endpoint
+   * is that answering it requires a credential only the server has.
+   */
+  discoverFigma: (url: string, thumbnails = true) =>
+    call<FigmaReading>('/api/figma/discover', {
+      method: 'POST', body: JSON.stringify({ url, thumbnails }),
+    }),
+  /**
+   * Re-read a document's file and merge it into the manifest.
+   *
+   * Merged rather than replaced, so a refresh never silently renumbers a deck
+   * that has already been presented. The `changes` are returned because "three
+   * slides went away" is worth saying out loud.
+   */
+  refreshDocumentFrames: (id: string) =>
+    call<{ pages: DocumentPage[]; pageCount: number; changes: FrameChanges; fileName: string }>(
+      `/api/document-entries/${id}/refresh`, { method: 'POST' },
+    ),
   /** The client's discovery, translated: facts a designer reads, and a brief a run reads. */
   discovery: (clientId: string) => call<Discovery>(`/api/clients/${clientId}/discovery`),
   positioning: (clientId: string, x: string, y: string) =>

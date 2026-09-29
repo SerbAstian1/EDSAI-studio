@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api.js';
 import { ClientWorkspaceSidebar } from './ClientWorkspaceSidebar.js';
 import { clientSectionOf, type ClientSection } from './clientNavigation.js';
+import { useRails } from './rails.js';
 
 /**
  * The one place a client's workspace exists.
@@ -31,6 +32,7 @@ export interface ClientWorkspaceProps {
 
 export function ClientWorkspace({ clientId, tab, children }: ClientWorkspaceProps): ReactElement {
   const queryClient = useQueryClient();
+  const rails = useRails();
   const section: ClientSection = clientSectionOf(tab);
 
   const { data, isPending, error } = useQuery({
@@ -51,7 +53,10 @@ export function ClientWorkspace({ clientId, tab, children }: ClientWorkspaceProp
   };
 
   return (
-    <div className="workspace">
+    // The rail state is on this element as well as on the sidebar itself: the
+    // grid that has to give up its column is this one, and reaching up to the
+    // shell for it would tie a client's workspace to the studio's layout.
+    <div className="workspace" data-client-rail={rails.client} data-focus={rails.focus ? 'true' : undefined}>
       {data && (
         <ClientWorkspaceSidebar
           client={data.client}

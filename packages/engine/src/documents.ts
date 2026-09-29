@@ -102,6 +102,25 @@ export const ClientDocumentEntry = z.object({
   assetId: z.string().min(1).optional(),
   /** The Figma link exactly as it was pasted, for `figma`. */
   sourceUrl: z.string().min(1).optional(),
+  /**
+   * The file key out of `sourceUrl`, kept rather than re-parsed on every read.
+   *
+   * Reading it on demand was fine while the only consumer was the embedder,
+   * which is handed a URL. Frame discovery is an API call and an API call needs
+   * a key, so the one fact every read needs is now stored with the row that
+   * already holds the link it came from. Derived, never accepted from a caller:
+   * a stored key that disagreed with the stored URL would send Figma's API a
+   * file this document does not actually point at.
+   */
+  figmaFileKey: z.string().min(1).optional(),
+  /**
+   * The canvas (`figmaPageId`) the link named, when it named one.
+   *
+   * A deep link to a Figma page carries that page's own node id, which is what
+   * keeps a deck on `Brand Presentation` from being read as the working pages on
+   * `Page 1` as well.
+   */
+  figmaPageId: z.string().regex(/^\d+-\d+$/).optional(),
   /** A cover image, when one has been chosen. */
   thumbnailAssetId: z.string().min(1).optional(),
   viewMode: DocumentViewMode.default('document'),
@@ -117,17 +136,19 @@ export type ClientDocumentEntry = z.infer<typeof ClientDocumentEntry>;
 /**
  * One page of a presentation, as a Figma frame.
  *
- * **Why the studio types these rather than the server discovering them.**
- * Figma's public embed gives a document a viewer, not a page list: there is no
- * supported way to ask it "what frames are in this file" without an
- * authenticated API call, and EDSAI holds no Figma token and wants none in the
- * browser. So the ordered list is recorded by the designer, who can see the
- * file, and this record is the manifest. That is the same shape an automated
- * discovery would produce, which is the point — filling it in automatically
- * later is a new writer, not a new shape.
+ * **A page is a frame somebody decided is a page.** Not every frame in a file is
+ * one: a designer keeps scratch frames, an archive and the three abandoned
+ * directions on the same canvas as the eight slides that shipped, and only the
+ * designer knows which eight. So `included` is part of the record rather than a
+ * filter applied on the way to the viewer — an excluded frame is still here,
+ * still named, still ordered, and comes back if it is wanted again. That is
+ * also why `included` defaults to `true`: a manifest written before this field
+ * existed was a designer listing the pages they meant, all of them.
  *
- * A page is addressed by `nodeId`, which is Figma's own deep-link parameter
- * and not a scrape of anything.
+ * The frames are *discovered*, from the file rather than typed in — see
+ * `figma-frames.ts` — and the manifest is what discovery is merged into. A
+ * page is addressed by `nodeId`, which is Figma's own deep-link parameter and
+ * not a scrape of anything.
  */
 export const DocumentPage = z.object({
   documentId: z.string().min(1),
@@ -136,8 +157,29 @@ export const DocumentPage = z.object({
   name: z.string().min(1).max(120),
   /** A Figma node id, `12-345`. Absent means "the file as a whole". */
   nodeId: z.string().regex(/^\d+-\d+$/).optional(),
+  /** Whether this frame is a page of this document. False is kept, not dropped. */
+  included: z.boolean().default(true),
+  /**
+   * The frame's size in Figma pixels, as last discovered.
+   *
+   * Two reasons this is stored rather than measured in the browser: "fit this
+   * page" needs the frame's aspect ratio before the frame has loaded, or the
+   * stage is sized wrong and then snaps; and a page opened from a link, with no
+   * refresh in sight, still fits correctly.
+   */
+  width: z.number().nonnegative().optional(),
+  height: z.number().nonnegative().optional(),
+  /**
+   * A rendered preview of the frame, where one has been fetched.
+   *
+   * A short-lived Figma URL rather than an asset of ours: it is a cache
+   * reference, good until it expires, and losing it costs a thumbnail and
+   * nothing else — the page overview falls back to the frame's name.
+   */
+  thumbnailUrl: z.string().min(1).optional(),
 });
 export type DocumentPage = z.infer<typeof DocumentPage>;
+
 
 /**
  * A document's pages, in order.
@@ -148,6 +190,19 @@ export type DocumentPage = z.infer<typeof DocumentPage>;
  */
 export function orderedPages(pages: readonly DocumentPage[]): DocumentPage[] {
   return [...pages].sort((a, b) => a.order - b.order);
+}
+
+/**
+ * The pages a reader actually gets: ordered, and only the included ones.
+ *
+ * **The one list the viewer navigates.** Not `orderedPages`, because an excluded
+ * frame is a real page of the record and must not be one of the deck — page 3 of
+ * 6 with three excluded frames in between is a deck where Next skips slides and
+ * the counter lies. Every boundary decision in the viewer is made against this,
+ * so there is a single definition of "which page am I on".
+ */
+export function includedPages(pages: readonly DocumentPage[]): DocumentPage[] {
+  return orderedPages(pages).filter((page) => page.included);
 }
 
 /**
@@ -163,14 +218,30 @@ export function orderedPages(pages: readonly DocumentPage[]): DocumentPage[] {
  * here, and that is deliberate: this is where the ambiguity is resolved, and a
  * request that arrives with duplicate orders elsewhere is refused rather than
  * quietly sorted into something the sender did not ask for.
+ *
+ * **Discovery is folded in here rather than after it.** A frame found by
+ * `figma-frames.ts` arrives with its `included` flag, its size and its
+ * thumbnail, and a caller that dropped them on the floor would get a page list
+ * that navigates correctly and then shows no preview and refuses to fit — so the
+ * same rule that regenerates the numbers preserves everything else it was given.
  */
 export function manifestFrom(
   documentId: string,
-  pages: readonly { name: string; nodeId?: string | undefined }[],
+  pages: readonly {
+    name: string;
+    nodeId?: string | undefined;
+    included?: boolean | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    thumbnailUrl?: string | undefined;
+  }[],
 ): DocumentPage[] {
   return pages.map((page, index) => DocumentPage.parse({
     documentId, order: index + 1, name: page.name,
     ...(page.nodeId ? { nodeId: page.nodeId } : {}),
+    ...(page.included === undefined ? {} : { included: page.included }),
+    ...(page.width === undefined ? {} : { width: page.width }),
+    ...(page.height === undefined ? {} : { height: page.height }),
+    ...(page.thumbnailUrl ? { thumbnailUrl: page.thumbnailUrl } : {}),
   }));
 }
-

@@ -14,6 +14,8 @@ import { ClientWorkspace } from './shell/ClientWorkspace.js';
 import { CommandPalette, useCommandPalette } from './shell/CommandPalette.js';
 import { Gate } from './shell/Gate.js';
 import { PLANNED_ROUTES } from './shell/navigation.js';
+import { FocusToggle, RailsProvider, useRails } from './shell/rails.js';
+import { returnAdvice, useFigmaReturn } from './figmaDiscovery.js';
 import { ViewModeProvider, useViewMode } from './viewMode.js';
 import { AppErrorBoundary } from './components/AppErrorBoundary.js';
 import { ConfirmationDialog } from './components/ConfirmDialog.js';
@@ -319,6 +321,9 @@ function Shell(): ReactElement {
   const route = useRoute();
   const palette = useCommandPalette();
   const { clientView } = useViewMode();
+  const rails = useRails();
+  const figmaBack = useFigmaReturn();
+  const figmaAdvice = returnAdvice(figmaBack);
   useRunStream(route.runId);
 
   const tabs = route.runId
@@ -372,9 +377,11 @@ function Shell(): ReactElement {
 
   return (
     <div
-      className="shell"
+      className={`shell${rails.focus ? ' shell-focus' : ''}`}
       data-view={clientView ? 'client' : 'studio'}
       data-workspace={clientId ? 'client' : undefined}
+      data-studio-rail={rails.studio}
+      data-focus={rails.focus ? 'true' : undefined}
     >
       <Sidebar
         current={activeSection(route)}
@@ -383,7 +390,22 @@ function Shell(): ReactElement {
       />
 
       <div className="main">
-        <Header onOpenPalette={() => palette.setOpen(true)} />
+        {/* Focus mode is offered from the bar that is always there, rather than
+            from either rail: it is the one control that has to be reachable when
+            both rails are away, or it could not undo itself. */}
+        <Header onOpenPalette={() => palette.setOpen(true)} railControl={<FocusToggle />} />
+
+        {/* Where a Figma connection left off. Rendered here rather than pushed
+            through the notice bus because it is a fact about where this page
+            loaded, not something that happened while it was open — and because a
+            designer who comes back from Figma should find it attached to the
+            screen they left, not floating over whatever they have since
+            navigated to. */}
+        {figmaAdvice && (
+          <p className="figma-return" role="status">
+            <strong>{figmaAdvice.title}</strong> {figmaAdvice.detail}
+          </p>
+        )}
 
         {/* Every screen names itself in its own heading, so a second title
             here was the same word twice. The bar earns its place only on a
@@ -476,6 +498,16 @@ function Entry(): ReactElement {
     );
   }
   // Inside the Gate, so the flag belongs to the studio session and a sign-out
-  // cannot leave a previous person's preview mode standing.
-  return <Gate><ViewModeProvider><Shell /></ViewModeProvider></Gate>;
+  // cannot leave a previous person's preview mode standing. `RailsProvider` is
+  // inside the Gate too, for the same reason: a rail somebody collapsed is their
+  // setting, not the next session's.
+  return (
+    <Gate>
+      <ViewModeProvider>
+        <RailsProvider>
+          <Shell />
+        </RailsProvider>
+      </ViewModeProvider>
+    </Gate>
+  );
 }

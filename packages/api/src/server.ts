@@ -15,6 +15,9 @@ import { renderMarkdown } from './markdown.js';
 import { StaticApp } from './static.js';
 import { RunEvents } from './events.js';
 import {
+  FigmaService, figmaErrorBody, figmaStatusCode, isFigmaUnreachable, type FigmaOptions,
+} from './figma.js';
+import {
   ScopedStore, ensureLocalProject, slugify,
   QUESTIONS, RATIO_STRENGTHS, answerIsValid, progressOf, deriveProject, discoveryBrief,
   measure, applyEdit, seedFromRun, forClient, EditRefused,
@@ -29,6 +32,8 @@ import {
   STRATEGY_SYSTEM, strategyUser, cutTranscript, type Strategy, type TranscriptCut,
   DOCUMENT_SLOTS, isDocumentSlot, manifestFrom, orderedPages, type ClientDocument,
   ClientDocumentEntry, type DocumentPage,
+  figmaSource as parseFigmaSource,
+  type FigmaAppConfig,
   BRAND_TOOLS, BrandDna, BrandHubConfig, BrandHubStatus, assetsInConfiguration, hubEnabled,
   isBrandToolId, moduleAllowed, resolveModules,
   BrandAsset,
@@ -98,6 +103,18 @@ export interface ApiOptions {
   disableAuth?: boolean;
   /** Exact email addresses permitted to set up or sign in. */
   signInAllow?: readonly string[];
+  /**
+   * Reading Figma: the OAuth app and, optionally, one server-wide token.
+   *
+   * Absent means this deployment cannot read a Figma file at all, which is a
+   * supported state rather than a broken one — Figma documents then open as the
+   * link they are, and nothing in the studio claims otherwise. It is never
+   * derived from the environment here: a secret read inside a request handler is
+   * a secret that ends up in a stack trace, and this server is constructed from
+   * an explicit list of options so a deployment cannot acquire a Figma
+   * credential by accident.
+   */
+  figma?: FigmaOptions;
   /** Injectable for deterministic tests. */
   signInAttempts?: SignInAttempts;
 }
@@ -186,6 +203,15 @@ export class ApiServer {
   readonly assets: AssetStore;
   private readonly app: StaticApp | undefined;
   readonly executor: Executor | undefined;
+  /**
+   * Figma, behind a service rather than a bare token.
+   *
+   * Exposed to routes that genuinely need the store (the refresh, which must
+   * read a document before it can re-read its file) and to nothing else. A
+   * route that needs a *token* cannot reach one, because the service only ever
+   * returns frame lists and a boolean.
+   */
+  private readonly figma: FigmaService;
   /** Runs executing right now, so a second request does not start a second loop. */
   private readonly running = new Set<string>();
   /** User controls for each live loop. Persisted status remains on the run itself. */
@@ -220,6 +246,7 @@ export class ApiServer {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean))];
     this.signInAttempts = options.signInAttempts ?? new SignInAttempts();
+    this.figma = new FigmaService(this.store, options.figma ?? {});
     this.routes = this.buildRoutes();
   }
 
@@ -448,6 +475,29 @@ export class ApiServer {
       return;
     }
     send(res, 500, { error: 'internal', message });
+  }
+
+  /**
+   * Turn a Figma refusal into a status and a body the studio can act on.
+   *
+   * **Written here rather than in `fail` because the mapping is not the generic
+   * one.** `fail` answers "did this server do its job", which for a Figma call is
+   * almost always yes: a 404 from Figma is a 404 from us, a throttle is a 429, and
+   * anything that is not a `FigmaUnreachable` at all is a bug in this file and
+   * goes to the 500 branch where it belongs. `figmaStatusCode` decides the rest,
+   * and `Retry-After` is forwarded so a throttled studio is told how long to
+   * wait rather than only that it must.
+   */
+  private refuseFigma(res: ServerResponse, error: unknown): void {
+    if (!isFigmaUnreachable(error)) {
+      this.fail(res, error);
+      return;
+    }
+    const status = figmaStatusCode(error.kind);
+    if (error.retryAfterMs !== undefined) {
+      res.setHeader('retry-after', String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));
+    }
+    send(res, status, figmaErrorBody(error));
   }
 
   /**
@@ -2404,6 +2454,162 @@ export class ApiServer {
           const now = new Date().toISOString();
           scoped.saveDocumentEntry({ ...document, pageCount: pages.length, updatedAt: now });
           send(res, 200, { pages, pageCount: pages.length });
+        },
+      },
+
+      /* ------------------------------------------------------------- figma */
+
+      /**
+       * Whether Figma can be read, and whose grant does the reading.
+       *
+       * **A boolean and a flag, and that is the entire public shape of a token.**
+       * A screen that could read the expiry could read the refresh token next to
+       * it, so nothing here is worth the convenience of showing. The studio
+       * needs exactly one bit for the badge and one for the button that says
+       * whose account a private file would be read as.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/figma\/status$/,
+        run: async ({ res, principal }) => {
+          if (!principal) return;
+          send(res, 200, await this.figma.statusFor(principal.userId));
+        },
+      },
+
+      /**
+       * Start connecting Figma.
+       *
+       * A `POST` that answers with a URL rather than a redirect, so the studio
+       * is the thing that navigates and a failed connection can be reported in
+       * the app it started in. The redirect target is built by the engine from
+       * constants and a registered callback; nothing in the request can move it.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/figma\/connect$/,
+        run: async ({ res, principal }) => {
+          if (!principal) return;
+          try {
+            send(res, 200, { url: this.figma.beginConnect(principal.userId) });
+          } catch (error) {
+            this.refuseFigma(res, error);
+          }
+        },
+      },
+
+      /**
+       * Figma sends the designer back here.
+       *
+       * **A navigation, not an API call, so it answers with a redirect.** The
+       * browser arrives from figma.com and the studio is a single-page app at
+       * `/`, so the one thing this route can usefully do is put the designer back
+       * where they were with a flag in the query string. The flag is the studio's
+       * own vocabulary — `figma=connected`, `figma=cancelled`, `figma=failed` —
+       * and nothing about the grant travels in it, so the URL a designer ends up
+       * with can be pasted to a colleague and carries no authority.
+       *
+       * A failed exchange still redirects rather than rendering a JSON error,
+       * because the alternative is a raw `{"error":"..."}` page in the middle of
+       * a Figma round trip. The failure is said out loud in the studio instead.
+       */
+      {
+        method: 'GET', pattern: /^\/api\/figma\/callback$/,
+        run: async ({ res, url, principal }) => {
+          if (!principal) return;
+          try {
+            await this.figma.completeConnect(principal.userId, url.searchParams);
+            redirect(res, '/?figma=connected#/');
+          } catch (error) {
+            redirect(res, `/?figma=cancelled&reason=${encodeURIComponent(figmaReason(error))}#/`);
+          }
+        },
+      },
+
+      /**
+       * Read the frames behind a pasted Figma link.
+       *
+       * **A studio-only route that never sees a token.** The body is a URL a
+       * person typed; the file key is parsed from it server-side and the API call
+       * is made with a credential that never leaves this process. What comes back
+       * is frame names, sizes, order and short-lived preview URLs — a manifest,
+       * not an account.
+       *
+       * Portal sessions are refused outright. A client-facing reader does not get
+       * to point the studio's Figma credential at a file of their choosing, and
+       * the manifest a document already has is enough to page through it.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/figma\/discover$/,
+        run: async ({ res, body, principal }) => {
+          if (!principal) return;
+          if (principal.kind !== 'studio') {
+            send(res, 403, { error: 'forbidden', message: 'Only the studio reads Figma files.' });
+            return;
+          }
+          const input = body as { url?: string; thumbnails?: boolean };
+          const url = (input?.url ?? '').trim();
+          if (!url) {
+            send(res, 400, { error: 'bad_request', message: 'Paste a Figma link to read.' });
+            return;
+          }
+          try {
+            const file = await this.figma.readLink(
+              principal.userId,
+              url,
+              input.thumbnails !== false,
+            );
+            send(res, 200, figmaReading(file));
+          } catch (error) {
+            this.refuseFigma(res, error);
+          }
+        },
+      },
+
+      {
+        method: 'DELETE', pattern: /^\/api\/figma\/connection$/,
+        run: ({ res, principal }) => {
+          if (!principal) return;
+          if (principal.kind !== 'studio') {
+            send(res, 403, { error: 'forbidden', message: 'Only the studio connects Figma.' });
+            return;
+          }
+          this.figma.disconnect(principal.userId);
+          send(res, 200, { connected: false, perUser: false });
+        },
+      },
+
+      /**
+       * Re-read a document's Figma file and fold it into the manifest.
+       *
+       * **Merged, not replaced, and the route reports what moved.** See
+       * `ScopedStore.syncDocumentPages` for why the designer's order and
+       * exclusions win; what the route adds is honesty about it. A refresh that
+       * dropped three slides or renamed one a client has already seen is worth
+       * stating out loud — `changes` is exactly the difference, as node ids and
+       * the names they moved between.
+       *
+       * The document is fetched through the scope *before* Figma is called, so a
+       * request naming somebody else's document is refused without ever spending
+       * an API call or revealing whether the file exists.
+       */
+      {
+        method: 'POST', pattern: /^\/api\/document-entries\/(?<id>[\w-]+)\/refresh$/,
+        run: async ({ res, params, principal, scoped }) => {
+          if (!scoped || !principal) return;
+          const entry = scoped.getDocumentEntry(params['id'] ?? '');
+          if (!entry) {
+            send(res, 404, { error: 'not_found', message: 'No such document for this session.' });
+            return;
+          }
+          try {
+            const file = await this.figma.readDocument(principal.userId, entry);
+            const merged = scoped.syncDocumentPages(entry.id, file.frames);
+            send(res, 200, {
+              pages: orderedPages(merged.pages), pageCount: merged.pages.length,
+              changes: merged.changes, fileName: file.fileName,
+            });
+          } catch (error) {
+            this.refuseFigma(res, error);
+          }
         },
       },
 
@@ -5061,6 +5267,61 @@ function send(res: ServerResponse, status: number, body: unknown): void {
     'x-content-type-options': 'nosniff',
   });
   res.end(json);
+}
+
+/**
+ * A redirect, for the two routes that are navigations rather than API calls.
+ *
+ * **`Cache-Control: no-store` and a relative `Location`**, both load-bearing: the
+ * target carries a flag about what just happened and a cached 302 would replay
+ * it, and a relative target means this server never needs to know its own
+ * external URL to send somebody back to itself.
+ */
+function redirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, {
+    location,
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+  });
+  res.end();
+}
+
+/**
+ * The shape a Figma reading takes on the wire.
+ *
+ * **A manifest and nothing else.** Frame names, ids, sizes, reading order and
+ * the signed preview URLs Figma hands back for rendering. No token, no account,
+ * no scopes, no expiry — the three things this server knows about a Figma
+ * connection are exactly the three the studio is allowed to know, and none of
+ * them are in here.
+ */
+function figmaReading(file: {
+  fileKey: string;
+  fileName: string;
+  canvasId?: string | undefined;
+  frames: unknown[];
+  pages: unknown[];
+}): unknown {
+  return {
+    fileKey: file.fileKey,
+    fileName: file.fileName,
+    ...(file.canvasId ? { canvasId: file.canvasId } : {}),
+    frames: file.frames,
+    pages: file.pages,
+  };
+}
+
+/**
+ * A one-word reason for the studio to show after a Figma round trip.
+ *
+ * **The failure kind, not the message.** It goes in a query string that a
+ * designer may screenshot, paste into a chat or read over someone's shoulder,
+ * and Figma's own error text can carry a file name or an internal id. The studio
+ * holds the full sentence in `FigmaUnreachable` and says it properly; the URL
+ * only has to be enough to pick which of three banners to raise.
+ */
+function figmaReason(error: unknown): string {
+  return isFigmaUnreachable(error) ? error.kind : 'figma_error';
 }
 
 /**

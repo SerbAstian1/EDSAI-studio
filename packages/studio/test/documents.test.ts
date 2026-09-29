@@ -3,9 +3,11 @@ import {
   canPresent, figmaSource, figmaUrlProblem, isFigmaUrl, pageUrl, withNodeId,
 } from '../src/figmaLinks.js';
 import {
-  clampIndex, hasNext, hasPrevious, isMultiPage, nextIndex, orderedPages, pageCount,
-  pageLabel, pageName, preloadWindow, previousIndex, resolveViewMode, uploadViewMode,
+  clampIndex, deckCount, fitSize, frameRatio, hasNext, hasPrevious, isMultiPage, nextIndex,
+  orderedPages, pageCount, pageLabel, pageName, preloadWindow, previousIndex, readablePages,
+  resolveViewMode, scaleLabel, uploadViewMode, zoomedScale, MAX_SCALE, MIN_SCALE,
 } from '../src/presentation.js';
+import { adviseFailure, canRetry } from '../src/figmaDiscovery.js';
 import { movePage } from '../src/components/AddDocument.js';
 import { groupDocuments } from '../src/components/DocumentLibrary.js';
 import type { DocumentEntry, DocumentPage } from '../src/api.js';
@@ -201,6 +203,178 @@ describe('reordering a page manifest', () => {
     expect(movePage(pages, 0, -1).map((p) => p.name)).toEqual(['A', 'B', 'C']);
     expect(movePage(pages, 2, 3).map((p) => p.name)).toEqual(['A', 'B', 'C']);
     expect(movePage(pages, 0, 0).map((p) => p.name)).toEqual(['A', 'B', 'C']);
+  });
+});
+
+describe('a deck, as distinct from a manifest', () => {
+  it('is the pages that are in, and an excluded frame is not one of them', () => {
+    // The line between "a frame in the file" and "a page of this document". A
+    // scratch frame left on the canvas is still returned by Figma, and counting
+    // it puts `04 / 18` over a six-slide presentation.
+    const manifest = [
+      page(1, 'Cover', '1-1'),
+      page(2, 'Scratch', '1-2'),
+      page(3, 'Strategy', '1-3'),
+    ];
+    manifest[1]!.included = false;
+    expect(readablePages(manifest).map((p) => p.name)).toEqual(['Cover', 'Strategy']);
+    expect(orderedPages(manifest)).toHaveLength(3);
+  });
+
+  it('counts a page that never said it was included as in', () => {
+    // Documents saved before inclusion existed have no flag at all. Treating a
+    // missing flag as excluded would empty every one of them on first load.
+    expect(readablePages([page(1, 'A', '1-1')]).map((p) => p.name)).toEqual(['A']);
+  });
+
+  it('counts the deck on its own, because the manifest is a different number', () => {
+    // The frames panel shows "4 of 18" — four in the deck out of eighteen in the
+    // file — so the count that decides it is the count of included pages, not
+    // the count of rows.
+    const manifest = [page(1, 'A', '1-1'), page(2, 'B', '1-2')];
+    manifest[1]!.included = false;
+    expect(deckCount(manifest)).toBe(1);
+    expect(deckCount([])).toBe(0);
+  });
+});
+
+describe('fitting a frame to a stage', () => {
+  const stage = { width: 1000, height: 600 };
+  const slide = { width: 1920, height: 1080 };
+
+  it('takes the whole slide, letterboxed inside the stage', () => {
+    // 16:9 in a 1000×600 stage, which is taller than 16:9 (1.67): width is the
+    // limit, so the frame is 1000 wide, 563 tall, and 37px of stage is left
+    // below it. Both dimensions are the frame's own shape, never the stage's.
+    expect(fitSize('page', slide, stage)).toEqual({ width: 1000, height: 563 });
+  });
+
+  it('fits to the stage rather than to a fixed slide size', () => {
+    // The point of the whole exercise: the same frame in a taller stage grows,
+    // because the available height is what changed.
+    expect(fitSize('page', slide, { width: 1000, height: 900 }))
+      .toEqual({ width: 1000, height: 563 });
+    expect(fitSize('page', slide, { width: 1600, height: 500 }))
+      .toEqual({ width: 889, height: 500 });
+  });
+
+  it('takes the full width of the stage when asked, letting the height overflow', () => {
+    // "Fit width" is for reading a dense slide, so the frame may be taller than
+    // the stage and scroll — scrolling *within* a page is wanted, scrolling
+    // *between* pages is the thing this viewer refuses to do.
+    expect(fitSize('width', slide, stage)).toEqual({ width: 1000, height: 563 });
+  });
+
+  it('shows a frame at its own size at 100%', () => {
+    expect(fitSize('actual', { width: 800, height: 600 }, stage))
+      .toEqual({ width: 800, height: 600 });
+  });
+
+  it('uses 16:9 for a frame whose size was never learned', () => {
+    // A hand-added page has no width and height, and a document saved before
+    // frames carried sizes has zeros. A fallback ratio is what keeps "fit page"
+    // producing a box rather than `NaN` — Figma will fit its own content to the
+    // iframe regardless, so this only has to be plausible.
+    expect(frameRatio({})).toBe(16 / 9);
+    expect(frameRatio({ width: 0, height: 0 })).toBe(16 / 9);
+    expect(fitSize('page', { width: 0, height: 0 }, stage)).toEqual({ width: 1000, height: 563 });
+  });
+
+  it('draws something rather than a zero box when the stage is not measured yet', () => {
+    // The first paint, before the ResizeObserver has reported. The box is never
+    // exactly right on that frame and is correct on the next.
+    const first = fitSize('page', slide, { width: 0, height: 0 });
+    expect(first.width).toBeGreaterThan(0);
+    expect(first.height).toBeGreaterThan(0);
+  });
+
+  it('keeps a frame’s shape, so a portrait slide is not letterboxed into a landscape box', () => {
+    expect(frameRatio({ width: 390, height: 844 })).toBeCloseTo(390 / 844, 5);
+    // Portrait in a landscape stage: height is the limit, and the width comes
+    // from the frame's own ratio rather than the stage's — a phone-shaped frame
+    // stays phone-shaped, at 277×599, with room either side.
+    expect(fitSize('page', { width: 390, height: 844 }, stage))
+      .toEqual({ width: 277, height: 599 });
+  });
+});
+
+describe('zooming a frame', () => {
+  const slide = { width: 1920, height: 1080 };
+
+  it('steps in and out, and comes back to the fit it started from', () => {
+    const out = zoomedScale(1, 1);
+    expect(out).toBeGreaterThan(1);
+    expect(zoomedScale(out, -1)).toBeCloseTo(1, 2);
+  });
+
+  it('stops at both ends rather than running away', () => {
+    // Unbounded, a held `+` is an unusable page and a scrollbar measured in
+    // screens; unbounded the other way, the frame shrinks to a stamp.
+    let scale = 1;
+    for (let at = 0; at < 40; at += 1) scale = zoomedScale(scale, 1);
+    expect(scale).toBe(MAX_SCALE);
+    for (let at = 0; at < 80; at += 1) scale = zoomedScale(scale, -1);
+    expect(scale).toBe(MIN_SCALE);
+  });
+
+  it('holds at the limit rather than snapping back to the middle', () => {
+    // Clamped, not wrapped: pressing `+` at 400% should stay at 400%, because
+    // wrapping to 100% reads as the control having stopped working.
+    expect(zoomedScale(MAX_SCALE, 1)).toBe(MAX_SCALE);
+    expect(zoomedScale(MIN_SCALE, -1)).toBe(MIN_SCALE);
+  });
+
+  it('shows a number with no float in it, because the scale is displayed', () => {
+    // `0.7500000000000001` in a zoom label is the kind of detail that makes a
+    // tool feel unfinished.
+    expect(scaleLabel({ width: 960, height: 540 }, slide)).toBe('50%');
+    expect(scaleLabel({ width: 1920, height: 1080 }, slide)).toBe('100%');
+  });
+
+  it('says "Fit" rather than a percentage of a frame with no size', () => {
+    expect(scaleLabel({ width: 1000, height: 563 }, { width: 0, height: 0 })).toBe('Fit');
+  });
+});
+
+describe('what a failed Figma read is worth offering', () => {
+  it('offers a retry for a problem that might not happen twice', () => {
+    // A rate limit and a dropped connection are both worth asking again, and
+    // the button sends the same link rather than only clearing the message.
+    expect(canRetry('figma_error')).toBe(true);
+    expect(canRetry('network')).toBe(true);
+    expect(canRetry('unknown')).toBe(true);
+  });
+
+  it('does not offer a retry for a refusal that will refuse again', () => {
+    // Re-sending a request that was turned away for being unsigned or
+    // malformed is how a panel teaches a designer to keep clicking.
+    expect(canRetry('not_connected')).toBe(false);
+    expect(canRetry('bad_request')).toBe(false);
+  });
+
+  it('sends a designer with no connection to Figma rather than to a retry', () => {
+    expect(adviseFailure('not_connected').connect).toBe(true);
+  });
+
+  it('sends a designer who cannot see the file to Figma, and to the retry too', () => {
+    // Sharing: a retry is a reasonable thing to offer because the file's own
+    // sharing is what changes, and a designer who has just fixed it should not
+    // have to re-paste the link. Both buttons appear, and Connect is offered
+    // because the fix may be a different account rather than a different file.
+    const advice = adviseFailure('forbidden');
+    expect(advice.connect).toBe(true);
+    expect(advice.retry).toBe(true);
+  });
+
+  it('has a sentence for every failure a server can name', () => {
+    // A failure kind with no advice is a panel showing a raw code, and a raw
+    // code is the one thing a designer cannot act on.
+    for (const kind of ['not_connected', 'forbidden', 'not_found', 'bad_request',
+      'figma_error', 'network', 'unknown'] as const) {
+      const advice = adviseFailure(kind);
+      expect(advice.title.length).toBeGreaterThan(0);
+      expect(advice.detail.length).toBeGreaterThan(0);
+    }
   });
 });
 

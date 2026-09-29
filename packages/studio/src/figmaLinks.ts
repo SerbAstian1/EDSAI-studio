@@ -8,10 +8,9 @@
  * its subdomains, and `node-id` as the frame parameter — and the studio's copy
  * is the one that decides what a person is told while they are typing.
  *
- * It is a URL parser and nothing more. There is no Figma API client in this
- * codebase and there will not be one: a page list is something a designer can
- * read off the canvas, and a token in the browser is not a price worth paying
- * for it.
+ * It is a URL parser and nothing more. Frame discovery lives in the server-side
+ * engine client; no Figma credential or REST call belongs in this browser
+ * module.
  */
 
 /** The kinds of Figma link a document can arrive as. */

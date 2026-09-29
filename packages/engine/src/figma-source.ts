@@ -63,8 +63,50 @@ export interface FigmaSource {
   innerHref: string;
 }
 
-/** A Figma node id: `12-345`. Deliberately strict — no path, no query, no `#`. */
-const NODE_ID = /^\d+-\d+$/;
+/**
+ * A Figma node id: `12-345`. Deliberately strict — no path, no query, no `#`.
+ *
+ * Exported rather than repeated in `figma-frames.ts` and `documents.ts` because
+ * a node id is validated in four places now — parsed out of a URL, read back
+ * from a frame listing, matched against a manifest, and written into one — and
+ * four regexes that are meant to agree is three chances for them not to.
+ */
+export const NODE_ID = /^\d+-\d+$/;
+
+/**
+ * Figma's API writes the same id with a colon: `12:345`.
+ *
+ * One node, two spellings, and the gap between them is silent. A URL carries
+ * `node-id=12-345`; the `/v1/files` body carries `"id": "12:345"`. So a file read
+ * from the API hands back ids that `NODE_ID` — correctly, for a URL — refuses,
+ * and every frame in a real file gets dropped as malformed while the tests, which
+ * use URL-shaped ids, pass. This is that boundary, named once.
+ */
+const API_NODE_ID = /^(\d+):(\d+)$/;
+
+/**
+ * The URL form of a node id, from either spelling.
+ *
+ * The dash form is the canonical one everywhere in EDSAI — in links, in stored
+ * manifests, in `pageUrl` — so the API's colon form is converted at the edge
+ * rather than carried around. Returns `undefined` for anything that is not a
+ * node id, so a caller gets the same answer it would get from a failed `NODE_ID`
+ * test rather than a malformed id to store.
+ */
+export function toNodeId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Dash form is already canonical, so it passes straight through — this has to
+  // be idempotent, or a stored manifest's ids would stop being recognized the
+  // second time they are read.
+  if (NODE_ID.test(value)) return value;
+  const match = API_NODE_ID.exec(value);
+  return match ? `${match[1]}-${match[2]}` : undefined;
+}
+
+/** Whether a string is a Figma node id, which is a question worth asking directly. */
+export function isNodeId(value: unknown): value is string {
+  return typeof value === 'string' && NODE_ID.test(value);
+}
 
 function parseNodeId(value: string | null): string | undefined {
   if (!value) return undefined;

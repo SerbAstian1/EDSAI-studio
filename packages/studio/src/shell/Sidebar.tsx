@@ -6,6 +6,7 @@ import { ClientIdentity, initialsOf } from '../components/ClientIdentity.js';
 import {
   BLOCKS, findSection, sectionsIn, type Block, type Section,
 } from './navigation.js';
+import { RailToggle, useRails } from './rails.js';
 
 /**
  * The global sidebar.
@@ -200,6 +201,7 @@ export function Sidebar({ current, currentClientId, onOpenPalette }: {
   onOpenPalette: () => void;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  const rails = useRails();
   const menuId = useId();
   const currentLabel = findSection(current)?.label
     ?? (currentClientId ? 'Client' : 'Menu');
@@ -210,8 +212,18 @@ export function Sidebar({ current, currentClientId, onOpenPalette }: {
 
   useEffect(() => setOpen(false), [current, currentClientId]);
 
+  /*
+   * A rail that is closed on a wide screen is a drawer on a narrow one, so
+   * `open` — the mobile disclosure — is not the same bit as `rails.studio`. They
+   * are kept apart here rather than in the CSS on purpose: a phone whose drawer
+   * was left open should come back with the rail collapsed on its desktop, and
+   * reading one from the other would quietly undo that.
+   */
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar${rails.focus ? ' rail-away' : ''}`}
+      data-collapsed={rails.studio === 'closed' ? 'true' : undefined}
+    >
       <div className="sidebar-head">
         <a className="wordmark" href="#/" onClick={() => setOpen(false)}>EDS AI</a>
         <button
@@ -225,6 +237,9 @@ export function Sidebar({ current, currentClientId, onOpenPalette }: {
           <span>{currentLabel}</span>
           <ChevronDown className={open ? 'open' : undefined} size={15} aria-hidden="true" />
         </button>
+        {/* The collapse control, in the head where the rail's own width is, so
+            it does not have to be found among the items it affects. */}
+        <RailToggle which="studio" title="studio sidebar" />
       </div>
 
       <div id={menuId} className={`sidebar-menu${open ? ' open' : ''}`}>

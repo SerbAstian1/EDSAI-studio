@@ -1,14 +1,17 @@
 import { useState, type ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, FileUp, GripVertical, Plus, Trash2 } from 'lucide-react';
+import { FileUp } from 'lucide-react';
 import {
   api,
   DOCUMENT_TYPES,
   type DocumentEntryInput,
+  type DocumentPage,
   type DocumentStatus,
   type DocumentViewMode,
 } from '../api.js';
-import { figmaUrlProblem } from '../figmaLinks.js';
+import { figmaUrlProblem, pageUrl } from '../figmaLinks.js';
+import FigmaFrames from './FigmaFrames.js';
+import { useFigmaDiscovery } from '../figmaDiscovery.js';
 
 /**
  * Adding a document to a client's library.
@@ -19,13 +22,19 @@ import { figmaUrlProblem } from '../figmaLinks.js';
  * PDF in their Downloads folder. Choosing the source first means the rest of the
  * form is only ever asking questions that apply to what was chosen.
  *
- * **A deck's pages are recorded, not discovered.** EDSAI holds no Figma token
- * and puts none in a browser, so the page list is something the designer reads
- * off the canvas and types in — a name and a `node-id` per page, in order. That
- * is why this form is willing to be a long form for a presentation: it is the
- * whole reason the presentation viewer can show one page at a time instead of
- * one infinite canvas. A deck added with no pages still opens as a deck, and can
- * have its pages filled in later.
+ * **A deck's pages are read out of the file, not typed off the canvas.** EDSAI
+ * asks Figma what frames a file has and in what order, and the designer ticks
+ * the ones that are the document. This is the single change that makes the
+ * presentation viewer possible without a human transcribing a `node-id` per
+ * slide: the manifest is a record of a decision rather than a transcription, so
+ * it can be merged against the file later instead of being right once and then
+ * quietly going stale.
+ *
+ * **It reads on paste, not on save.** A designer who pastes a link and waits
+ * should see the frames, not a Save button that might be about to work or might
+ * not. The read happens when the field loses focus with something that looks
+ * like a Figma link in it — a keystroke is not a decision, a field the designer
+ * has finished with is.
  *
  * **The file is uploaded first, then the row is created pointing at it.** A row
  * that references an upload that failed is a broken document nobody can remove;
@@ -49,8 +58,7 @@ const VIEW_MODES: { id: DocumentViewMode; label: string; detail: string }[] = [
 const NODE_ID = /^\d+-\d+$/;
 
 /** Move one page within the manifest, and refuse to move it off either end. */
-export function movePage(pages: { name: string; nodeId?: string }[], from: number, to: number):
-{ name: string; nodeId?: string }[] {
+export function movePage<T>(pages: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0 || from >= pages.length || to >= pages.length) return pages;
   const next = [...pages];
   const [moved] = next.splice(from, 1);
@@ -58,11 +66,38 @@ export function movePage(pages: { name: string; nodeId?: string }[], from: numbe
   return next;
 }
 
+/**
+ * A manifest as the API wants it.
+ *
+ * **The document id and the order numbers are dropped, and previews are kept.**
+ * The server renumbers the order and knows which document the pages belong to —
+ * it was just told — so sending either is redundant, and sending a `documentId`
+ * left over from another document is actively wrong. Figma's preview URLs go the
+ * other way and are kept: they are the only pictures the page overview has on the
+ * first open, they are replaced on every refresh, and a stale one is an image
+ * that fails rather than a frame that fails.
+ */
+export function manifestOf(pages: readonly DocumentPage[]): NonNullable<DocumentEntryInput['pages']> {
+  return pages.map((page) => ({
+    name: page.name.trim(),
+    ...(page.nodeId ? { nodeId: page.nodeId } : {}),
+    ...(page.included === false ? { included: false } : {}),
+    ...(page.width && page.height ? { width: page.width, height: page.height } : {}),
+    ...(page.thumbnailUrl ? { thumbnailUrl: page.thumbnailUrl } : {}),
+  }));
+}
+
+/** Pages the API will accept: every one has a name, and a name is required. */
+export function namedPages(pages: readonly DocumentPage[]): DocumentPage[] {
+  return pages.filter((page) => page.name.trim().length > 0);
+}
+
 export default function AddDocument({ clientId, onDone }: {
   clientId: string;
   onDone: () => void;
 }): ReactElement {
   const queryClient = useQueryClient();
+  const figma = useFigmaDiscovery();
   const [source, setSource] = useState<'upload' | 'figma'>('upload');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -71,14 +106,17 @@ export default function AddDocument({ clientId, onDone }: {
   const [status, setStatus] = useState<DocumentStatus>('ready');
   const [file, setFile] = useState<File | undefined>(undefined);
   const [url, setUrl] = useState('');
-  const [pages, setPages] = useState<{ name: string; nodeId?: string }[]>([]);
+  const [pages, setPages] = useState<DocumentPage[]>([]);
 
   const urlProblem = source === 'figma' ? figmaUrlProblem(url) : undefined;
   // A deck's manifest is only worth asking for once the source can hold one, so
   // switching from Figma to upload clears it rather than leaving dead state.
   const manifestWanted = source === 'figma' && viewMode === 'presentation';
   const titleOk = title.trim().length > 0;
-  const canSave = titleOk && (source === 'figma' ? !urlProblem : file !== undefined);
+  // An unnamed page is refused by the API rather than quietly saved as "", so it
+  // is refused here where the designer can see which one it is.
+  const unnamed = manifestWanted && pages.some((page) => page.name.trim().length === 0);
+  const canSave = titleOk && !unnamed && (source === 'figma' ? !urlProblem : file !== undefined);
 
   const save = useMutation({
     mutationFn: async (): Promise<void> => {
@@ -99,13 +137,29 @@ export default function AddDocument({ clientId, onDone }: {
         ...(description.trim() ? { description: description.trim() } : {}),
         ...(assetId ? { assetId } : {}),
         ...(source === 'figma' ? { sourceUrl: url.trim() } : {}),
-        ...(manifestWanted && pages.length > 0 ? { pages } : {}),
+        ...(manifestWanted && pages.length > 0 ? { pages: manifestOf(namedPages(pages)) } : {}),
       };
       await api.createDocumentEntry(clientId, input);
       void queryClient.invalidateQueries({ queryKey: ['document-entries', clientId] });
     },
     onSuccess: onDone,
   });
+
+  /**
+   * Read a link into a manifest.
+   *
+   * **The URL that was read is the URL that is saved.** A designer who pastes a
+   * link to one Figma page, gets the frames of that page, and is saved against
+   * the whole file would find their deck mysteriously missing half of itself on
+   * the next refresh — so the reading's own `canvasId` is put back onto the
+   * link, which is a link to the same file that names the page it came from.
+   */
+  const read = async (link: string): Promise<void> => {
+    const reading = await figma.read(link);
+    if (!reading) return;
+    setPages(reading.pages);
+    setUrl(reading.canvasId ? pageUrl(link, { nodeId: reading.canvasId }) : link);
+  };
 
   return (
     <form className="card stack" onSubmit={(e) => { e.preventDefault(); if (canSave) save.mutate(); }}>
@@ -139,10 +193,25 @@ export default function AddDocument({ clientId, onDone }: {
       ) : (
         <label className="field">
           <span className="label">Figma link</span>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.figma.com/design/…"
-                 aria-invalid={url.trim() !== '' && urlProblem !== undefined} />
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.figma.com/design/…"
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={url.trim() !== '' && urlProblem !== undefined}
+            // On losing focus, not on every keystroke: a read is a round trip to
+            // Figma, and a designer halfway through pasting a link should not
+            // spend five of them.
+            onBlur={() => {
+              const pasted = url.trim();
+              if (manifestWanted && !urlProblem && pasted && figmaUrlProblem(pasted) === undefined) {
+                void read(pasted);
+              }
+            }}
+          />
           <span className={url.trim() !== '' && urlProblem ? 'err' : 'muted'} style={{ fontSize: 12 }}>
-            {urlProblem ?? 'Previewed here and in the client’s portal. Nobody is sent to Figma.'}
+            {urlProblem ?? 'Shown here and in the client’s portal. Nobody is sent to Figma.'}
           </span>
         </label>
       )}
@@ -188,64 +257,22 @@ export default function AddDocument({ clientId, onDone }: {
       </fieldset>
 
       {manifestWanted && (
-        <div className="stack" style={{ gap: 8 }}>
-          <div className="row" style={{ flexWrap: 'wrap' }}>
-            <span className="label">Pages, in order</span>
-            <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>
-              The frame id is the last part of the frame’s Figma link.
-            </span>
-          </div>
-          {pages.length === 0 && (
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              No pages yet. A deck with no pages opens the file whole, and the client can be sent to
-              the same Figma link — add the pages to page through it here.
-            </p>
-          )}
-          {pages.map((p, i) => (
-            <div key={i} className="row preset-row">
-              <GripVertical size={14} className="muted" aria-hidden="true" />
-              <span className="mono muted" style={{ minWidth: 22 }}>{String(i + 1).padStart(2, '0')}</span>
-              <input
-                value={p.name}
-                aria-label={`Name of page ${i + 1}`}
-                placeholder="Cover"
-                onChange={(e) => setPages(pages.map((q, j) => (j === i ? { ...q, name: e.target.value } : q)))}
-              />
-              <input
-                className="mono"
-                value={p.nodeId ?? ''}
-                aria-label={`Figma frame id of page ${i + 1}`}
-                placeholder="1-2"
-                aria-invalid={(p.nodeId ?? '') !== '' && !NODE_ID.test(p.nodeId ?? '')}
-                onChange={(e) => {
-                  const v = e.target.value.trim();
-                  setPages(pages.map((q, j) => {
-                    if (j !== i) return q;
-                    const { nodeId: _dropped, ...rest } = q;
-                    return { ...rest, ...(NODE_ID.test(v) ? { nodeId: v } : {}) };
-                  }));
-                }}
-              />
-              <button type="button" className="overflow-button row" aria-label={`Move ${p.name || `page ${i + 1}`} up`}
-                      disabled={i === 0} onClick={() => setPages(movePage(pages, i, i - 1))}>
-                <ArrowUp size={14} aria-hidden="true" />
-              </button>
-              <button type="button" className="overflow-button row" aria-label={`Move ${p.name || `page ${i + 1}`} down`}
-                      disabled={i === pages.length - 1} onClick={() => setPages(movePage(pages, i, i + 1))}>
-                <ArrowDown size={14} aria-hidden="true" />
-              </button>
-              <button type="button" className="overflow-button row" aria-label={`Remove ${p.name || `page ${i + 1}`}`}
-                      onClick={() => setPages(pages.filter((_, j) => j !== i))}>
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-          <button type="button" onClick={() => setPages([...pages, { name: '' }])}>
-            <Plus size={14} aria-hidden="true" /> Add a page
-          </button>
-        </div>
+        <FigmaFrames
+          frames={pages}
+          onChange={setPages}
+          discovery={figma}
+          onRead={(link) => void read(link)}
+          fileName={figma.state.reading?.fileName}
+          onAddManual={() => setPages((p) => [...p, {
+            documentId: '', order: p.length + 1, name: '', included: true,
+          }])}
+          onRename={(at, name) => setPages((p) => p.map((q, j) => (j === at ? { ...q, name } : q)))}
+        />
       )}
 
+      {unnamed && (
+        <p className="err">Every page needs a name. Frames read from Figma have one; a page added by hand does not until you give it one.</p>
+      )}
       {save.error && <p className="err">{(save.error as Error).message}</p>}
       <div className="row">
         <button type="submit" className="primary" disabled={!canSave || save.isPending}>

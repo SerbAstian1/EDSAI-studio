@@ -99,6 +99,25 @@ const app = existsSync(appRoot) ? appRoot : undefined;
 const signInAllow = (process.env['EDSAI_SIGNIN_ALLOW'] ?? '')
   .split(',').map((email) => email.trim()).filter(Boolean);
 
+/**
+ * Figma, from the environment.
+ *
+ * **Four optional settings, and every one of them is read here rather than
+ * inside the API.** A secret read at the point of use is a secret that ends up in
+ * a stack trace the first time something throws, and none of these are read in a
+ * request handler. The OAuth app is the supported path; `FIGMA_TOKEN` is the
+ * single-tenant fallback for a studio that would rather not register an app, and
+ * it is deliberately the *second* credential tried so a deployment that has both
+ * ends up per-user.
+ */
+const figmaApp = {
+  ...(process.env['FIGMA_CLIENT_ID'] ? { clientId: process.env['FIGMA_CLIENT_ID'] } : {}),
+  ...(process.env['FIGMA_CLIENT_SECRET'] ? { clientSecret: process.env['FIGMA_CLIENT_SECRET'] } : {}),
+  ...(process.env['FIGMA_REDIRECT_URI'] ? { redirectUri: process.env['FIGMA_REDIRECT_URI'] } : {}),
+};
+const figmaServerToken = process.env['FIGMA_TOKEN']?.trim() || undefined;
+const figmaConfigured = Object.keys(figmaApp).length === 3 || Boolean(figmaServerToken);
+
 const server = new ApiServer({
   store: new RunStore(db),
   assets: new DiskAssetStore(assetRoot),
@@ -115,6 +134,14 @@ const server = new ApiServer({
   ...(process.env['EDSAI_DISABLE_AUTH'] === '1' ? { disableAuth: true } : {}),
   ...(signInAllow.length > 0 ? { signInAllow } : {}),
   ...(executor ? { executor } : {}),
+  ...(figmaConfigured
+    ? {
+      figma: {
+        ...figmaApp,
+        ...(figmaServerToken ? { serverToken: figmaServerToken } : {}),
+      },
+    }
+    : {}),
 });
 
 const actual = await server.listen(port);
@@ -131,6 +158,12 @@ process.stdout.write(rehearsal
       + `${brandModel ? `; ${brandModel} for departments ${brandModelDepartments.join(',')}` : ''}`
       + `; max ${maxOutputTokens} output tokens\n`
     : '  runs     no OPENAI_API_KEY; runs are created but not executed\n');
+process.stdout.write(figmaConfigured
+  ? `  figma    ${Object.keys(figmaApp).length === 3
+    ? 'per-user OAuth'
+    : 'PARTIAL OAuth app — designers cannot connect; set FIGMA_CLIENT_ID, FIGMA_CLIENT_SECRET and FIGMA_REDIRECT_URI'}`
+    + `${figmaServerToken ? '; also a server-wide FIGMA_TOKEN for files the studio account can see' : ''}\n`
+  : '  figma    not configured; Figma documents open as links and their frames are not discovered\n');
 process.stdout.write(server.devOwnerCreated
   ? `  auth     DISABLED (EDSAI_DISABLE_AUTH=1) — every request is the owner\n`
     + `           an owner account was still created, for when this is turned back on:\n`

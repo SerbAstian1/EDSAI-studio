@@ -191,7 +191,38 @@ describe('the documents a studio added', () => {
     store.saveDocumentEntry(entry());
     store.saveDocumentPages('d1', pages);
     store.saveDocumentPages('d1', [{ documentId: 'd1', order: 1, name: 'Cover', nodeId: '1-2' }]);
-    expect(store.listDocumentPages('d1')).toEqual([{ documentId: 'd1', order: 1, name: 'Cover', nodeId: '1-2' }]);
+    expect(store.listDocumentPages('d1')).toEqual([
+      // `included` is filled in rather than left absent: a frame the designer did
+      // not exclude is a page of the document, and having to treat `undefined` as
+      // "yes" at every read is how a deck ends up counting frames somebody
+      // unticked.
+      { documentId: 'd1', order: 1, name: 'Cover', nodeId: '1-2', included: true },
+    ]);
+  });
+
+  it('keeps a frame the designer excluded, rather than dropping it', () => {
+    // Excluding is a decision about this document, not a deletion. A frame left
+    // out of the deck is still a frame in the file, and a designer who changes
+    // their mind has to get it back in the position it was in.
+    const store = fixture();
+    store.saveDocumentEntry(entry());
+    store.saveDocumentPages('d1', [
+      { documentId: 'd1', order: 1, name: 'Cover', nodeId: '1-2' },
+      { documentId: 'd1', order: 2, name: 'Appendix', nodeId: '1-3', included: false },
+    ]);
+    expect(store.listDocumentPages('d1').map((p) => [p.name, p.included])).toEqual([
+      ['Cover', true], ['Appendix', false],
+    ]);
+  });
+
+  it('keeps a frame’s size, so "fit this page" is arithmetic later', () => {
+    const store = fixture();
+    store.saveDocumentEntry(entry());
+    store.saveDocumentPages('d1', [
+      { documentId: 'd1', order: 1, name: 'Cover', nodeId: '1-2', width: 1600, height: 900 },
+    ]);
+    const [stored] = store.listDocumentPages('d1');
+    expect([stored?.width, stored?.height]).toEqual([1600, 900]);
   });
 
   it('stores pages in order however they arrive', () => {

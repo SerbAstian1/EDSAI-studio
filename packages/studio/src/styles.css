@@ -117,6 +117,12 @@
      a rail that wide stops being a rail and starts being a second content
      column. Past `--workspace-break` it becomes a bar rather than a column. */
   --client-sidebar-w: 240px;
+  /* Collapsed rails: icons only. Wide enough for a 16px glyph and its padding,
+     narrow enough that the content has visibly gained something. Both derived
+     from the gap scale rather than guessed, so they stay in step with the rest
+     of the spacing. */
+  --rail-w: 52px;
+  --client-rail-w: 52px;
   --workspace-break: 1100px;
   /* The height of the chrome that is above the content on every screen: the
      header, or — under 900px — the studio rail collapsed into a bar. Sticky
@@ -472,6 +478,70 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 .shell { --shell-inset: var(--sidebar-w); }
 .shell[data-workspace="client"] { --shell-inset: calc(var(--sidebar-w) + var(--client-sidebar-w)); }
 @media (max-width: 900px) { .shell { --shell-inset: 0; } }
+
+/* A collapsed rail becomes a column of glyphs rather than disappearing: it keeps
+ * its place in the grid, so nothing reflows when it collapses, and it keeps the
+ * icons, because a designer who closed the rail to read something does not want
+ * to lose the map as well. The state lives on the *shell*, not on the rail, so
+ * the column widths are one variable per rail rather than a `:has()` in four
+ * places — and so the fixed status bar can be told about it here. */
+.shell[data-studio-rail="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr); --shell-inset: var(--rail-w); }
+.shell[data-workspace="client"][data-studio-rail="closed"] { --shell-inset: calc(var(--rail-w) + var(--client-sidebar-w)); }
+.workspace[data-client-rail="closed"] { grid-template-columns: var(--client-rail-w) minmax(0, 1fr); }
+.shell[data-studio-rail="closed"][data-workspace="client"][data-focus="true"] { --shell-inset: 0; }
+.shell[data-workspace="client"][data-focus="true"] .workspace[data-client-rail="closed"] { --shell-inset: var(--client-sidebar-w); }
+
+/* Focus mode puts both rails away entirely and takes their columns with them, so
+ * a deck gets the whole window rather than the whole window less two hundred
+ * pixels. It is a state on the shell rather than on either rail, which is why one
+ * control can do both — and why it can still be undone when both are gone. */
+.shell-focus { grid-template-columns: 0 minmax(0, 1fr); --shell-inset: 0; }
+.shell-focus .sidebar, .shell-focus .client-sidebar { display: none; }
+.workspace[data-focus="true"] { grid-template-columns: minmax(0, 1fr); }
+
+.rail-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  background: transparent; border: 1px solid transparent; color: var(--text-tertiary, var(--text-secondary));
+  border-radius: var(--radius-sm);
+}
+.rail-toggle:hover { color: var(--text-primary); border-color: var(--border); }
+.rail-toggle[aria-pressed="false"] { color: var(--text-primary); }
+.rail-focus[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+.sidebar[data-collapsed="true"] { padding-inline: calc(var(--step) * 1.5); }
+.sidebar[data-collapsed="true"] .sidebar-head { align-items: center; gap: var(--step); }
+.sidebar[data-collapsed="true"] .wordmark,
+.sidebar[data-collapsed="true"] .mobile-nav-toggle,
+.sidebar[data-collapsed="true"] .search,
+.sidebar[data-collapsed="true"] .nav-group > .label,
+.sidebar[data-collapsed="true"] .nav-more-summary,
+.sidebar[data-collapsed="true"] .nav-client-name,
+.sidebar[data-collapsed="true"] .nav-item > .phase { display: none; }
+/* The search button keeps its glyph and loses its label, so the icon has to be
+   centred and the shortcut hint has to go — a `⌘K` badge on a 52px rail is
+   wider than the rail. */
+.sidebar[data-collapsed="true"] .search { justify-content: center; padding-inline: 0; }
+.sidebar[data-collapsed="true"] .search .kbd { display: none; }
+.sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding-inline: 0; }
+/* `font-size: 0` is the only way to hide a bare text node, and it is undone here
+   for the two things that are text *inside* an icon-sized box and would otherwise
+   disappear: the client's mark and the account's initials. */
+.sidebar[data-collapsed="true"] .nav-item { font-size: 0; }
+.sidebar[data-collapsed="true"] .nav-item .glyph,
+.sidebar[data-collapsed="true"] .search svg { width: 16px; height: 16px; }
+.sidebar[data-collapsed="true"] .nav-client [class*="identity"],
+.sidebar[data-collapsed="true"] .nav-avatar { font-size: 10px; }
+.sidebar[data-collapsed="true"] .nav-account-identity { justify-content: center; }
+.sidebar[data-collapsed="true"] .nav-more-link { display: none; }
+
+.client-sidebar[data-collapsed="true"] { padding-inline: calc(var(--step) * 1.5); }
+.client-sidebar[data-collapsed="true"] .client-sidebar-head { justify-items: center; }
+.client-sidebar[data-collapsed="true"] .client-sidebar-toggle,
+.client-sidebar[data-collapsed="true"] .client-sidebar-names,
+.client-sidebar[data-collapsed="true"] .client-sidebar-status .pill { display: none; }
+.client-sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding-inline: 0; font-size: 0; }
+.client-sidebar[data-collapsed="true"] .nav-item .glyph { width: 16px; height: 16px; }
 
 .sidebar {
   background: var(--surface);
@@ -2629,6 +2699,38 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 
   .workspace { grid-template-columns: minmax(0, 1fr); }
 
+  /* A rail that has become a bar has nothing to collapse: the disclosure button
+     *is* the collapse. Leaving the collapsed rules in force here would hide the
+     client's name, the section list and the toggle, and leave a 52px column of
+     glyphs sitting in a layout that has already stopped being columns — the one
+     combination with no way out. So a collapsed rail is simply an open rail at
+     these widths, and the remembered preference is honoured again above them. */
+  .shell[data-studio-rail="closed"] { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); --shell-inset: var(--sidebar-w); }
+  .workspace[data-client-rail="closed"] { grid-template-columns: minmax(0, 1fr); }
+  .sidebar[data-collapsed="true"] { padding-inline: calc(var(--step) * 2.5); }
+  .sidebar[data-collapsed="true"] .wordmark,
+  .sidebar[data-collapsed="true"] .search,
+  .sidebar[data-collapsed="true"] .nav-group > .label,
+  .sidebar[data-collapsed="true"] .nav-more-summary,
+  .sidebar[data-collapsed="true"] .nav-client-name,
+  .sidebar[data-collapsed="true"] .nav-item > .phase,
+  .sidebar[data-collapsed="true"] .search .kbd { display: revert; }
+  .sidebar[data-collapsed="true"] .search { justify-content: flex-start; padding-inline: var(--step); }
+  .sidebar[data-collapsed="true"] .nav-item { justify-content: flex-start; padding-inline: calc(var(--step) * 2); font-size: 14px; }
+  .client-sidebar[data-collapsed="true"] { padding: calc(var(--step) * 2) var(--space-page) calc(var(--step) * 2); }
+  .client-sidebar[data-collapsed="true"] .client-sidebar-toggle,
+  .client-sidebar[data-collapsed="true"] .client-sidebar-names,
+  .client-sidebar[data-collapsed="true"] .client-sidebar-status .pill { display: revert; }
+  .client-sidebar[data-collapsed="true"] .nav-item { justify-content: flex-start; padding-inline: calc(var(--step) * 2); font-size: 14px; }
+  /* And the control that says so is gone, in *both* states. At this width the
+     layout has already stopped being columns, so pressing the collapse button
+     changes nothing a person can see — the rules above put every hidden part
+     back. A button that appears to do nothing is worse than no button, and
+     matching only `data-collapsed="true"` would hide it precisely when the rail
+     was open and it was still being offered. */
+  .sidebar .rail-toggle,
+  .client-sidebar .rail-toggle { display: none; }
+
   .client-sidebar {
     position: sticky;
     /* Below the studio rail's own bar under 900px, and at the top of the page
@@ -3591,8 +3693,80 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   font-size: var(--text-sm); color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
-.deck-stage { min-height: 60vh; }
+.deck-stage {
+  /* The measured box, and it is measured with `clientWidth`/`clientHeight` —
+     which is why it carries no padding. Those properties include padding, so a
+     padded stage would report itself as larger than the space a frame actually
+     has, and "fit page" would size every frame to a box it then overflows by
+     the padding on each side. The breathing room is the frame's own margin
+     below, which is outside the measured element. */
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: var(--surface-sunken, var(--surface));
+}
 .deck-stage .figma-embed { height: 100%; min-height: 60vh; }
+
+/* The frame's own box, sized to the fit mode. It is a plain `div` rather than a
+   transform on the iframe: Figma's embed fits its node to the box it is given,
+   so resizing the box is how "74%" happens, and nothing is ever resampled. */
+.deck-canvas { max-width: none; margin: calc(var(--step) * 2); }
+.deck-canvas .figma-embed { height: 100%; min-height: 0; }
+
+.deck-tools { align-items: center; gap: calc(var(--step) * 1.5); }
+.deck-zoom {
+  display: flex; align-items: center; gap: 2px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 1px;
+}
+.deck-fit { display: flex; }
+.deck-fit select {
+  appearance: none; border: 0; background: transparent;
+  font: inherit; font-size: var(--text-sm); color: var(--text-secondary);
+  padding: 0 calc(var(--step) * 1.5); min-height: 26px; cursor: pointer;
+}
+.deck-fit select:hover { color: var(--text-primary); }
+.deck-scale {
+  min-width: 44px; text-align: center; font-size: var(--text-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* The overview: every page of the deck at once, as pictures, so somebody can
+   find "the one with the pricing table" without paging to it. It is a grid of
+   frames rather than a strip of names because the name of a Figma frame is
+   often "Page 3" and tells you nothing about what is on it. */
+.deck-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: calc(var(--step) * 2);
+  margin: 0; padding: calc(var(--step) * 2);
+  list-style: none;
+  border-top: 1px solid var(--border);
+  max-height: 42vh; overflow-y: auto;
+}
+.deck-overview button {
+  display: grid; gap: 6px; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; padding: 4px;
+  min-height: 0;
+}
+.deck-overview button:hover { border-color: var(--border); }
+.deck-overview button.on { border-color: var(--accent); background: var(--surface-elevated); }
+/* The thumbnail's shape comes from the frame's own ratio, set inline, so the
+   grid does not jump about as the pages load and a portrait deck does not get
+   letterboxed into a landscape cell. */
+.deck-overview-thumb {
+  display: grid; place-items: center; width: 100%;
+  background: var(--surface-sunken, var(--surface));
+  border: 1px solid var(--border); overflow: hidden;
+}
+.deck-overview-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.deck-overview-label {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: var(--text-xs); color: var(--text-secondary);
+}
+.deck-overview button.on .deck-overview-label { color: var(--text-primary); font-weight: 600; }
+
 .deck-strip {
   display: flex; gap: 2px; margin: 0; padding: 0; list-style: none;
   overflow-x: auto; scrollbar-width: thin;
@@ -3621,9 +3795,132 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   padding: calc(var(--step) * 3);
 }
 .deck-full .deck-stage, .deck-full .deck-stage .figma-embed { min-height: 0; height: 100%; }
+.deck-full .deck-stage { padding: 0; }
 
 /* One document, read the way it was declared. */
 .doc-viewer { display: grid; gap: calc(var(--step) * 2); }
+
+/* — figma frames ————————————————————————————————————————————————— */
+
+.figma-frames {
+  display: grid; gap: calc(var(--step) * 3);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: calc(var(--step) * 3); background: var(--surface);
+}
+.figma-frames-header { display: flex; align-items: flex-start; gap: calc(var(--step) * 3); }
+.figma-frames-heading { min-width: 0; }
+.figma-frames-heading h3 {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0; font-size: var(--text-sm); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
+}
+.figma-frames-count { margin: 4px 0 0; font-size: var(--text-xs); color: var(--text-tertiary, var(--text-secondary)); }
+.figma-frames-bulk { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+.figma-frames-bulk button {
+  min-height: 24px; padding: 0 8px; font-size: var(--text-xs);
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+}
+.figma-frames-bulk button:hover:not([disabled]) { color: var(--text-primary); border-color: var(--accent); }
+
+.figma-frames-read { display: flex; gap: var(--step); }
+.figma-frames-read input { flex: 1; min-width: 0; font-size: var(--text-sm); }
+
+.figma-frames-refresh { display: grid; gap: 4px; justify-items: start; }
+.figma-frames-refresh-note { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary, var(--text-secondary)); }
+
+.figma-frames-note, .figma-frames-empty {
+  margin: 0; font-size: var(--text-sm); color: var(--text-secondary);
+}
+.figma-frames-note { padding: calc(var(--step) * 2); background: var(--surface-elevated); border-radius: var(--radius-sm); }
+
+/* A failure is given a box and a title rather than a red sentence, because the
+   three that matter most — not connected, forbidden, rate-limited — all look
+   identical as text and each needs a different thing done about it. */
+.figma-frames-failure {
+  display: grid; gap: 6px; padding: calc(var(--step) * 3);
+  border: 1px solid var(--border); border-left: 3px solid var(--warning, var(--accent));
+  background: var(--surface-elevated); border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.figma-frames-failure p { margin: 0; }
+.figma-frames-failure-title { display: flex; flex-wrap: wrap; gap: 6px; font-weight: 600; color: var(--text-primary); }
+.figma-frames-failure-detail { font-weight: 400; color: var(--text-tertiary, var(--text-secondary)); }
+.figma-frames-failure-actions { display: flex; gap: var(--step); }
+
+.figma-frames-list {
+  display: grid; gap: 2px; margin: 0; padding: 0; list-style: none;
+  max-height: 46vh; overflow-y: auto; scrollbar-width: thin;
+}
+.figma-frame {
+  display: grid; grid-template-columns: auto 68px minmax(0, 1fr) auto;
+  align-items: center; gap: calc(var(--step) * 2);
+  padding: 6px; border: 1px solid transparent; border-radius: var(--radius-sm);
+}
+.figma-frame:hover { background: var(--surface-elevated); border-color: var(--border); }
+/* An excluded frame stays legible rather than being greyed out. It is still a
+   real frame in a real file; it is just not a page of this document, and the
+   difference is a tick, not a fade. */
+.figma-frame.excluded .figma-frame-name,
+.figma-frame.excluded .figma-frame-size { opacity: 0.5; }
+
+.figma-frame-thumb {
+  display: grid; place-items: center; width: 68px; height: 38px;
+  background: var(--surface-sunken, var(--surface));
+  border: 1px solid var(--border); overflow: hidden;
+}
+.figma-frame-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.figma-frame-thumb-blank { display: grid; place-items: center; color: var(--text-tertiary, var(--text-secondary)); }
+
+.figma-frame-meta { display: grid; gap: 1px; min-width: 0; }
+.figma-frame-name {
+  font-size: var(--text-sm); color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: transparent; border: 0; padding: 0; width: 100%;
+}
+.figma-frame-size {
+  display: flex; gap: 8px; font-size: var(--text-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.figma-frame-order { font-variant-numeric: tabular-nums; }
+.figma-frame-move { display: flex; gap: 2px; }
+.figma-frame-move button { padding: 4px; min-height: 0; }
+
+.figma-frames-manual {
+  justify-self: start; display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs); color: var(--text-secondary);
+  background: transparent; border: 1px dashed var(--border); padding: 6px 10px;
+}
+.figma-frames-manual:hover { color: var(--text-primary); border-color: var(--accent); }
+
+/* — a figma document, with its frames beside it ——————————————————————— */
+
+.figma-doc { display: grid; }
+.figma-doc-frames-bar {
+  display: flex; align-items: center; gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 2) calc(var(--step) * 3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs); color: var(--text-secondary);
+}
+.figma-doc-unsaved { color: var(--warning, var(--accent)); font-weight: 600; }
+.figma-doc-frames-panel { padding: calc(var(--step) * 3); border-top: 1px solid var(--border); }
+.figma-doc-frames-panel .figma-frames { border: 0; padding: 0; }
+
+.figma-doc-changes {
+  display: flex; align-items: flex-start; gap: calc(var(--step) * 3);
+  padding: calc(var(--step) * 2) calc(var(--step) * 3);
+  background: var(--surface-elevated); border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+.figma-doc-changes p { margin: 0; }
+.figma-doc-changes.link-button, .figma-doc-changes button { margin-left: auto; flex-shrink: 0; }
+
+/* Where a Figma connection left off. */
+.figma-return {
+  margin: 0; padding: calc(var(--step) * 2) calc(var(--step) * 4);
+  background: var(--surface-elevated); border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm); color: var(--text-secondary);
+}
+.figma-return strong { color: var(--text-primary); }
 .doc-image {
   max-width: 100%; max-height: 70vh; object-fit: contain;
   justify-self: center;

@@ -11,7 +11,8 @@ import type { Asset } from './assets.js';
 import type { Run } from './types.js';
 import type { Deliverable } from './deliverables.js';
 import type { ClientDocument, ClientDocumentEntry, DocumentPage } from './documents.js';
-import { figmaUrlProblem } from './figma-source.js';
+import { figmaSource, figmaUrlProblem } from './figma-source.js';
+import { mergeFrames, type FigmaFrame, type FrameChanges } from './figma-frames.js';
 import {
   assetsInBrandAsset, hubEnabled,
   type BrandAsset, type BrandHub, type BrandProject,
@@ -519,6 +520,20 @@ export class ScopedStore {
       throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
         'an uploaded document cannot also carry a link');
     }
+    // The file key and canvas id are *derived* from the link rather than
+    // accepted. Both are used to address Figma's API, so a caller that could
+    // set them independently of the URL could aim this studio's Figma
+    // credential at a file the document does not point at — the one thing the
+    // credential's existence makes worth preventing. Re-parsing here means the
+    // stored key and the stored URL can never disagree.
+    if (entry.source === 'figma') {
+      const source = figmaSource(entry.sourceUrl ?? '');
+      entry = {
+        ...entry,
+        ...(source?.fileKey ? { figmaFileKey: source.fileKey } : {}),
+        ...(source?.nodeId ? { figmaPageId: source.nodeId } : {}),
+      };
+    }
     for (const id of [entry.assetId, entry.thumbnailAssetId]) {
       if (!id) continue;
       const target = this.store.getAsset(id);
@@ -578,6 +593,52 @@ export class ScopedStore {
         'pages must be numbered 1 to n with no gaps');
     }
     this.store.saveDocumentPages(documentId, pages);
+  }
+
+  /**
+   * Re-read a document's Figma file and fold what came back into its manifest.
+   *
+   * **This is a merge, not a replace, and that is the whole design.** A refresh
+   * is a designer opening a deck that has been presented from three times and
+   * asking whether Figma has changed — it is not a request to rebuild the deck.
+   * So the *set* of pages follows Figma and the *arrangement* follows the
+   * studio: an order, or an exclusion, that a designer made by hand survives
+   * every refresh, and a frame added in Figma arrives at the end of the
+   * reading order rather than shuffling a presented deck's page numbering. A
+   * frame deleted in Figma leaves, because leaving it would be a page that
+   * renders as a blank stage forever.
+   *
+   * `frames` is the discovered set and `existing` the manifest as stored, so the
+   * merge is a pure function of the two and the permission check that guards it
+   * happens here rather than in the route that fetched the frames.
+   *
+   * The changes come back out because a refresh that quietly drops three pages
+   * reads as data loss, and one that quietly renames a slide the client has
+   * already seen reads as a different document. The studio is told what moved
+   * rather than left to infer it from a page counter that now says `11 / 15`.
+   */
+  syncDocumentPages(documentId: string, frames: readonly FigmaFrame[]):
+  { pages: DocumentPage[]; changes: FrameChanges } {
+    const entry = this.getDocumentEntry(documentId);
+    if (!entry) {
+      throw new Forbidden('write', { kind: 'document', clientId: '' },
+        'no such document');
+    }
+    this.mustWrite('document', entry.clientId);
+    if (entry.source !== 'figma' || !entry.figmaFileKey) {
+      throw new Forbidden('write', { kind: 'document', clientId: entry.clientId },
+        'only a Figma document has frames');
+    }
+    const merged = mergeFrames(this.store.listDocumentPages(documentId), frames);
+    this.store.saveDocumentPages(documentId, merged.pages);
+    // Written with the manifest rather than left to be recomputed by a reader,
+    // so the library's "18 pages" and the deck's counter cannot disagree.
+    this.store.saveDocumentEntry({
+      ...entry,
+      pageCount: merged.pages.length,
+      updatedAt: new Date().toISOString(),
+    });
+    return merged;
   }
 
   /* -------------------------------------------------------------- milestones */

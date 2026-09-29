@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { Download, ExternalLink, FileWarning } from 'lucide-react';
 import { api, type Asset, type DocumentEntry, type DocumentPage } from '../api.js';
-import FigmaEmbed from './FigmaEmbed.js';
+import FigmaDocument from './FigmaDocument.js';
 import PresentationViewer from './PresentationViewer.js';
 import { resolveViewMode } from '../presentation.js';
 
@@ -14,9 +14,10 @@ import { resolveViewMode } from '../presentation.js';
  *  - `document` is an uploaded file, framed by the browser — a PDF scrolls, an
  *    image appears. It is an `<iframe>` on the asset's own URL rather than a
  *    custom reader, because the browser already has a good one.
- *  - `presentation` is a Figma deck, one frame at a time, in
- *    `PresentationViewer`. This is the mode that exists because an eighteen-page
- *    deck as a single infinite canvas is unusable.
+ *  - `presentation` is a Figma deck, one frame at a time, in `FigmaDocument` —
+ *    the deck itself plus the panel that chooses and maintains its frames. This
+ *    is the mode that exists because an eighteen-page deck as a single infinite
+ *    canvas is unusable.
  *  - `external` is anything this codebase cannot honestly draw — a Keynote
  *    export, a Drive folder, a private file. It shows what it is and offers the
  *    file, rather than opening a blank rectangle and calling it a preview.
@@ -41,7 +42,12 @@ export default function DocumentViewer({ entry, pages, assets, onClose }: {
   const src = entry.assetId ? api.downloadPath(entry.assetId) : undefined;
 
   if (mode === 'presentation' && entry.sourceUrl) {
-    return (
+    // A Figma document gets the frames panel as well as the deck; a deck with
+    // no Figma file behind it — hand-made pages, or a link this server cannot
+    // read — is still read one page at a time, and just has nothing to refresh.
+    return entry.source === 'figma' ? (
+      <FigmaDocument entry={entry} pages={pages} {...(onClose ? { onClose } : {})} />
+    ) : (
       <PresentationViewer
         sourceUrl={entry.sourceUrl}
         pages={pages}

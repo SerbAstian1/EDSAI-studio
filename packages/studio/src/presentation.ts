@@ -137,3 +137,126 @@ export function uploadViewMode(asset: { contentType: string } | undefined): Docu
   if (!asset) return 'external';
   return VIEWABLE_UPLOAD.test(asset.contentType) ? 'document' : 'external';
 }
+
+/* ───────────────────────────────────────────────────────── frame geometry */
+
+/**
+ * Reading a Figma file is the *other* half of not giving the designer Figma's
+ * canvas.
+ *
+ * Figma decides what a file contains; EDSAI decides which of it is the
+ * document. A frame is a frame in a file whether or not it is a slide, so
+ * `included` is the decision, and it is kept on the page rather than applied by
+ * deleting it: excluding a section from a deck is a thing a designer undoes,
+ * and it is also the thing a presenter needs to be able to open in Figma
+ * afterwards. Everything below reads the *readable* deck, not the manifest.
+ */
+export function readablePages(pages: readonly DocumentPage[]): DocumentPage[] {
+  return orderedPages(pages).filter((page) => page.included !== false);
+}
+
+/**
+ * The deck, with a deck's page count.
+ *
+ * `pageCount` on the entry is the count of *everything* in the file, so it is
+ * the wrong number to put in a counter over a deck that has excluded half of
+ * it — `04 / 18` for a six-slide presentation is a lie told to a client.
+ */
+export function deckCount(pages: readonly DocumentPage[]): number {
+  return readablePages(pages).length;
+}
+
+/** A size in CSS pixels. */
+export interface FrameSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * The aspect ratio of a frame.
+ *
+ * **A documented fallback rather than a division by zero.** Every frame read
+ * from Figma has a size, but a manifest typed by hand or written by an older
+ * version of this code may not, and `NaN` in a `width` is a stage that stays
+ * blank. A 16:9 assumption is wrong for some decks and still draws every one of
+ * them, which is strictly better than drawing none.
+ *
+ * Takes a partial because a `DocumentPage` has optional dimensions, and this is
+ * the one function that is asked about pages as often as about boxes.
+ */
+export const FALLBACK_RATIO = 16 / 9;
+
+export function frameRatio(frame: { width?: number | undefined; height?: number | undefined }): number {
+  const { width, height } = frame;
+  if (width === undefined || height === undefined) return FALLBACK_RATIO;
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return FALLBACK_RATIO;
+  return width > 0 && height > 0 ? width / height : FALLBACK_RATIO;
+}
+
+/** How a frame is fitted into the space available for it. */
+export type FitMode =
+  /** The whole frame, height and width, with whatever is left over around it. */
+  | 'page'
+  /** As wide as the space allows, scrolling down for the rest. */
+  | 'width'
+  /** One screen pixel per Figma pixel. */
+  | 'actual';
+
+/**
+ * The size a frame is *drawn* at, for a fit mode.
+ *
+ * **An iframe, not a scale.** Figma's embed fits whatever node it is given to
+ * whatever box it has been given, so the way to show a frame at 74% is to hand
+ * it an iframe 74% of the frame's size — there is no transform in this, and
+ * therefore no blurred text and no scaled hit targets. `fit-width` is
+ * deliberately allowed to exceed the stage's height: scrolling *within* a page
+ * is a thing a designer needs to read a dense frame, and scrolling *between*
+ * pages is the thing this viewer refuses to do.
+ */
+export function fitSize(mode: FitMode, frame: FrameSize, stage: FrameSize): FrameSize {
+  const ratio = frameRatio(frame);
+  const known = frame.width > 0 && frame.height > 0;
+  if (mode === 'actual' && known) return { width: frame.width, height: frame.height };
+  if (mode === 'width') {
+    return { width: Math.max(1, stage.width), height: Math.max(1, Math.round(stage.width / ratio)) };
+  }
+  const width = Math.max(1, Math.min(stage.width, Math.round(stage.height * ratio)));
+  return { width, height: Math.max(1, Math.round(width / ratio)) };
+}
+
+/** The furthest a frame can be zoomed, in either direction. */
+export const MIN_SCALE = 0.1;
+export const MAX_SCALE = 4;
+
+/** One notch of the zoom control: a quarter bigger or a quarter smaller. */
+export const ZOOM_STEP = 1.25;
+
+/**
+ * A scale inside the permitted range, and not a float.
+ *
+ * Snapped to hundredths on purpose: the scale is *displayed* (`74%`), and
+ * `0.7500000000000001` in a label is the kind of detail that makes a tool feel
+ * like it is not quite finished. Clamped rather than wrapped, so pressing `+`
+ * at 400% holds at 400% instead of snapping back to 10%.
+ */
+export function clampScale(scale: number): number {
+  if (!Number.isFinite(scale)) return 1;
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(scale * 100) / 100));
+}
+
+/** The scale one notch up or down from here. */
+export function zoomedScale(scale: number, direction: 1 | -1): number {
+  return clampScale(clampScale(scale) * (direction === 1 ? ZOOM_STEP : 1 / ZOOM_STEP));
+}
+
+/**
+ * The zoom readout, which is the *frame's own* size being fractioned.
+ *
+ * So `100%` is one Figma pixel per screen pixel rather than an arbitrary
+ * middle, and the number a designer sees is comparable to the number they see in
+ * Figma's own zoom bar.
+ */
+export function scaleLabel(drawn: FrameSize, frame: FrameSize): string {
+  if (frame.width <= 0 || frame.height <= 0) return 'Fit';
+  return `${Math.round((drawn.width / frame.width) * 100)}%`;
+}

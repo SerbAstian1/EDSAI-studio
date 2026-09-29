@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactElement } from 'react';
+import { useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Eye, EyeOff, Moon, Search, Sun } from 'lucide-react';
 import { api } from '../api.js';
@@ -93,7 +93,18 @@ function ViewAsClientToggle(): ReactElement {
   );
 }
 
-export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactElement {
+export function Header({ onOpenPalette, railControl }: {
+  onOpenPalette: () => void;
+  /**
+   * A control for the rails, rendered beside the other header buttons.
+   *
+   * Passed in rather than imported so the header does not have to know what a
+   * rail is, and so the studio rail, the client rail and focus mode can each
+   * offer their own control here without the bar growing a list of sidebar
+   * specifics.
+   */
+  railControl?: ReactNode;
+}): ReactElement {
   const { data: session } = useQuery({ queryKey: ['session'], queryFn: api.session });
   const principal = session?.principal;
   const name = session?.user?.name ?? (principal?.kind === 'portal' ? 'Client' : 'Studio');
@@ -107,6 +118,8 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }): ReactE
         <span className="header-search-text">Client, project, stage, or task</span>
         <span className="kbd" aria-hidden="true">⌘K</span>
       </button>
+
+      {railControl}
 
       <ThemeToggle />
 
