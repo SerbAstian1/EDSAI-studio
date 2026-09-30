@@ -1,6 +1,6 @@
 import { useId, useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, Menu } from 'lucide-react';
+import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api, type Client } from '../api.js';
 import BrandHubSection from './sections/BrandHub.js';
 import DocumentsSection from './sections/Documents.js';
@@ -36,12 +36,13 @@ const SECTIONS: Section[] = [
 
 /** The one section that exists only for a client who has it. */
 const BRAND_HUB: Section = {
-  id: 'brand-hub', label: 'Brand Hub', render: (p) => <BrandHubSection {...p} />,
+  id: 'brand-hub', label: 'Brand Hub', render: (p) => <BrandHubSection key={p.client.id} {...p} />,
 };
 
 export function PortalShell({ client, role }: { client: Client; role: string }): ReactElement {
   const [active, setActive] = useState(SECTIONS[0]?.id ?? 'deliverables');
   const [navOpen, setNavOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const menuId = useId();
   // Asked once, here: the server says `enabled: false` unless the hub is
   // active, so a client without one never sees the room at all.
@@ -55,15 +56,16 @@ export function PortalShell({ client, role }: { client: Client; role: string }):
   const canWrite = role === 'editor' || role === 'brand_manager' || role === 'owner';
 
   return (
-    <div className="portal">
+    <div className={`portal${section?.id === 'brand-hub' ? ' portal-brand-workspace' : ''}${collapsed ? ' portal-collapsed' : ''}`}>
       <aside className="portal-sidebar">
         <div className="portal-sidebar-head">
-          <div>
+          <div className="portal-identity">
             <p className="wordmark" style={{ marginBottom: 4 }}>Client Portal</p>
             <p className="muted portal-tagline" style={{ fontSize: 13, margin: 0 }}>
               Your project. Our process.<br />Always in sync.
             </p>
           </div>
+          <button type="button" className="portal-collapse" aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
           <button
             type="button"
             className="portal-nav-toggle"
@@ -84,11 +86,13 @@ export function PortalShell({ client, role }: { client: Client; role: string }):
                 key={s.id}
                 type="button"
                 className="portal-nav-item"
+                title={s.label}
+                aria-label={s.label}
                 aria-current={s.id === active ? 'page' : undefined}
                 onClick={() => { setActive(s.id); setNavOpen(false); }}
               >
                 <span className="portal-nav-index">{String(i + 1).padStart(2, '0')}</span>
-                {s.label}
+                <span className="portal-nav-label">{s.label}</span>
               </button>
             ))}
           </nav>
