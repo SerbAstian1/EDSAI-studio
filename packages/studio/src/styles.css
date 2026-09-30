@@ -471,7 +471,12 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
 
 /* — shell ——————————————————————————————————————————————————————— */
 
-.shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  transition: grid-template-columns var(--transition);
+}
 
 /* How far in from the left edge the content column starts, which is what the
    fixed status bar has to clear. One variable, set by whoever added a column:
@@ -488,6 +493,8 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
  * places — and so the fixed status bar can be told about it here. */
 .shell[data-studio-rail="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr); --shell-inset: var(--rail-w); }
 .shell[data-workspace="client"][data-studio-rail="closed"] { --shell-inset: calc(var(--rail-w) + var(--client-sidebar-w)); }
+.shell[data-workspace="client"][data-client-rail="closed"] { --shell-inset: calc(var(--sidebar-w) + var(--client-rail-w)); }
+.shell[data-workspace="client"][data-studio-rail="closed"][data-client-rail="closed"] { --shell-inset: calc(var(--rail-w) + var(--client-rail-w)); }
 .workspace[data-client-rail="closed"] { grid-template-columns: var(--client-rail-w) minmax(0, 1fr); }
 .shell[data-studio-rail="closed"][data-workspace="client"][data-focus="true"] { --shell-inset: 0; }
 .shell[data-workspace="client"][data-focus="true"] .workspace[data-client-rail="closed"] { --shell-inset: var(--client-sidebar-w); }
@@ -656,6 +663,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"], input[type="co
   flex: 1;
   min-height: 0;
   align-items: start;
+  transition: grid-template-columns var(--transition);
 }
 
 .client-sidebar {
@@ -2264,6 +2272,7 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--background);
+  transition: grid-template-columns var(--transition);
 }
 
 .portal-sidebar {
@@ -2279,6 +2288,33 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
   overflow-y: auto;
 }
 .portal-sidebar-head { display: flex; flex-direction: column; }
+.portal-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
+}
+.portal-collapse:hover { color: var(--text-primary); border-color: var(--border); }
+.portal.portal-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
+.portal-collapsed .portal-sidebar { padding-inline: 12px; overflow-x: hidden; }
+.portal-collapsed .portal-sidebar-head { align-items: center; }
+.portal-collapsed .portal-collapse { align-self: center; }
+.portal-collapsed .portal-identity,
+.portal-collapsed .portal-nav-label,
+.portal-collapsed .portal-help { display: none; }
+.portal-collapsed .portal-nav-item {
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px;
+}
+.portal-collapsed .portal-nav-index { width: auto; font-size: 12px; }
 .portal-sidebar-menu {
   display: flex;
   flex: 1;
@@ -2367,6 +2403,15 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 
 @media (max-width: 900px) {
   .portal { grid-template-columns: 1fr; }
+  .portal.portal-collapsed { grid-template-columns: 1fr; }
+  .portal-collapse { display: none; }
+  .portal-collapsed .portal-sidebar { padding-inline: var(--space-page); overflow: visible; }
+  .portal-collapsed .portal-sidebar-head { align-items: center; }
+  .portal-collapsed .portal-identity,
+  .portal-collapsed .portal-nav-label,
+  .portal-collapsed .portal-help { display: block; }
+  .portal-collapsed .portal-nav-item { justify-content: flex-start; width: auto; min-height: 0; }
+  .portal-collapsed .portal-nav-index { width: 18px; font-size: 11px; }
   .portal-sidebar {
     position: static;
     height: auto;
@@ -2710,6 +2755,10 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
    have never seen. */
 @media (max-width: 1100px) {
   .shell[data-workspace="client"] { --shell-inset: var(--sidebar-w); }
+  .shell[data-workspace="client"][data-client-rail="closed"],
+  .shell[data-workspace="client"][data-studio-rail="closed"][data-client-rail="closed"] {
+    --shell-inset: var(--sidebar-w);
+  }
 
   .workspace { grid-template-columns: minmax(0, 1fr); }
 
@@ -2802,7 +2851,12 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
 }
 
 @media (max-width: 900px) {
+  .shell[data-studio-rail="closed"] { --shell-inset: 0; }
   .shell[data-workspace="client"] { --shell-inset: 0; }
+  .shell[data-workspace="client"][data-client-rail="closed"],
+  .shell[data-workspace="client"][data-studio-rail="closed"][data-client-rail="closed"] {
+    --shell-inset: 0;
+  }
   .client-sidebar { top: calc(var(--chrome-h) + env(safe-area-inset-top)); }
   /* Two bars stacked: the studio's and this one. The studio's stays on top,
      because it is the one that answers "where am I in the studio" and the other
@@ -3072,10 +3126,12 @@ button.ghost-light:hover:not([disabled]) { background: rgba(26, 26, 26, 0.16); b
    mouse. On touch those late declarations must not override the 44px target
    promised by the base control system. */
 @media (pointer: coarse) {
+  :root { --rail-w: 64px; --client-rail-w: 64px; }
   button.rail-toggle,
   button.header-icon-button,
   button.bookmark,
-  button.overflow-button {
+  button.overflow-button,
+  button.portal-collapse {
     width: 44px;
     min-width: 44px;
     height: 44px;

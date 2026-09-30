@@ -381,6 +381,7 @@ function Shell(): ReactElement {
       data-view={clientView ? 'client' : 'studio'}
       data-workspace={clientId ? 'client' : undefined}
       data-studio-rail={rails.studio}
+      data-client-rail={clientId ? rails.client : undefined}
       data-focus={rails.focus ? 'true' : undefined}
     >
       <Sidebar

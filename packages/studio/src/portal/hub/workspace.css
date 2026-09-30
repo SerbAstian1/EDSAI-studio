@@ -8,12 +8,6 @@
 }
 .portal-brand-workspace .portal-main { max-width: 1580px; padding: 26px 36px; }
 .portal-brand-workspace .portal-topline { padding-bottom: 22px; border-bottom: 1px solid var(--border); }
-.portal-collapse { display: inline-flex; align-items: center; justify-content: center; align-self: flex-end; padding: 7px; }
-.portal.portal-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
-.portal-collapsed .portal-sidebar { padding-inline: 12px; }
-.portal-collapsed .portal-identity, .portal-collapsed .portal-nav-label, .portal-collapsed .portal-help { display: none; }
-.portal-collapsed .portal-nav-item { justify-content: center; padding: 10px; }
-.portal-collapsed .portal-nav-index { font-size: 13px; }
 .bh-workspace { min-width: 0; --space-section: 24px; }
 .bh-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .bh-heading h1 { font: 500 clamp(28px, 3vw, 38px)/1.2 var(--font-display); letter-spacing: -.04em; margin: 9px 0; }
@@ -90,13 +84,6 @@
 .bh-preview>.primary { margin-top: 20px; }
 @media(max-width:1200px) { .bh-overview-grid { grid-template-columns: 1.3fr 1fr; } .bh-stats svg { display: none; } .bh-stats strong { display: block; } .portal-brand-workspace .portal-main { padding-inline: 24px; } .bh-heading { flex-wrap: wrap; } }
 @media(max-width:1000px) { .bh-overview-grid { grid-template-columns: 1fr; } .bh-assets { grid-template-columns: repeat(2,minmax(0,1fr)); } .bh-foundations { display: grid; grid-template-columns: 1fr 1fr; } .bh-foundations .bh-section-title,.bh-foundations .bh-type-summary { grid-column: 1/-1; } .bh-foundations .bh-palette { align-self: center; } }
-@media(max-width:900px) {
-  .portal.portal-collapsed { grid-template-columns: 1fr; }
-  .portal-collapse { display: none; }
-  .portal-collapsed .portal-identity,.portal-collapsed .portal-nav-label,.portal-collapsed .portal-help { display: block; }
-  .portal-collapsed .portal-nav-item { justify-content: flex-start; }
-  .portal-collapsed .portal-sidebar { padding: 16px; }
-}
 @media(max-width:600px) {
   .portal-brand-workspace .portal-main { padding: 20px 16px; }
   .bh-heading { gap: 16px; }.bh-heading>.primary { width: 100%; }
@@ -113,4 +100,4 @@
   .bh-section-title { gap: 12px; }.bh-section-title h2 { font-size: 17px; }
   .bh-library-toolbar select { flex: 1; min-width: 0; }.bh-footer>span:first-child { display: none; }
 }
-@media(prefers-reduced-motion:reduce) { .bh-workspace *, .portal-collapse { transition: none; } }
+@media(prefers-reduced-motion:reduce) { .bh-workspace * { transition: none; } }
